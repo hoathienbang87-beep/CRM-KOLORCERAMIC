@@ -1270,7 +1270,7 @@ function renderExecutiveDashboard() {
   const completedDeals = reportDeals.filter(isCompletedDeal);
   const boughtCustomers = rows.filter(c => customerHasCompletedDeal(c.id));
   const pendingValue = pendingDeals.reduce((sum, d) => sum + dealAmount(d), 0);
-  const pendingKpi = kpiProposals.filter(p => p.status === "pending" && !p.isDeleted).length;
+  const pendingKpi = kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length;
   const dueCare = rows.filter(isCareDue);
   const overdueCare = rows.filter(isCareOverdue);
   const cards = [
@@ -1837,7 +1837,7 @@ async function exportKpiReport() {
     ...proposalRows.map(p => [
       personExportCell(p.owner, p.email || p.ownerEmail), p.kpiName || "", p.month || "", p.phone || "", p.department || "",
       p.customerName || "", p.customerPhone || "", p.customerCompanyName || "", p.customerChannel || "",
-      p.status === "approved" ? "Đã duyệt" : p.status === "rejected" ? "Từ chối" : "Chờ duyệt",
+      isApprovedKpiProposal(p) ? "Đã duyệt" : isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt",
       p.content || "", p.evidenceUrl || "", fmtDate(p.createdAt), p.reviewedByEmail || "", fmtDate(p.reviewedAt), p.reviewNote || ""
     ])
   ];
@@ -1896,7 +1896,7 @@ async function exportManagementReport() {
     customers: currentReportCustomers(),
     deals: currentReportDeals(),
     pipeline: pipelineReportData(),
-    pendingKpi: kpiProposals.filter(p => p.status === "pending" && !p.isDeleted).length
+    pendingKpi: kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length
   };
   const completed = report.deals.filter(isCompletedDeal);
   const pending = report.deals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
@@ -2067,7 +2067,7 @@ function hydrateProposalKpiOptions() {
 function kpiRuleValue(rule, ownerKey) {
   return kpiProposals.filter(p => {
     if (p.isDeleted) return false;
-    if (p.status !== "approved") return false;
+    if (!isApprovedKpiProposal(p)) return false;
     if (clean(p.kpiRuleId) !== clean(rule.id)) return false;
     if (clean(p.month) !== clean(rule.month)) return false;
     if (!kpiRuleAppliesToOwner(rule, ownerKey)) return false;
@@ -2079,8 +2079,16 @@ function kpiRuleValue(rule, ownerKey) {
   }).length;
 }
 
+const isApprovedKpiProposal = p => clean(p?.status).toLowerCase() === "approved";
+const isPendingKpiProposal = p => clean(p?.status).toLowerCase() === "pending";
+const isRejectedKpiProposal = p => clean(p?.status).toLowerCase() === "rejected";
+
 function kpiProposalsForRule(ruleId) {
   return kpiProposals.filter(p => clean(p.kpiRuleId) === clean(ruleId) && !p.isDeleted);
+}
+
+function approvedKpiProposalsForRule(ruleId) {
+  return kpiProposalsForRule(ruleId).filter(isApprovedKpiProposal);
 }
 
 function renderKpiControlRows() {
@@ -2120,7 +2128,7 @@ function renderKpiRuleList() {
 function renderKpiApprovalPanel() {
   if (!isManager()) return;
   const proposalPending = kpiProposals
-    .filter(p => p.status === "pending" && !p.isDeleted)
+    .filter(p => isPendingKpiProposal(p) && !p.isDeleted)
     .sort(byDateDesc);
   const proposalHtml = proposalPending.length ? proposalPending.map(p => `
     <div class="rule-item">
@@ -2198,7 +2206,7 @@ function evidencePreviewHtml(value) {
 
 function kpiProposalDetailHtml(p) {
   const rule = kpiRules.find(r => r.id === p.kpiRuleId);
-  const statusLabel = p.status === "approved" ? "Đã duyệt" : (p.status === "rejected" ? "Từ chối" : "Chờ duyệt");
+  const statusLabel = isApprovedKpiProposal(p) ? "Đã duyệt" : (isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt");
   return `
     <div class="detail-list">
       <div class="detail-row">
@@ -2249,7 +2257,7 @@ function kpiProposalDetailHtml(p) {
 }
 
 function kpiProposalCard(p) {
-  const statusLabel = p.status === "approved" ? "Đã duyệt" : (p.status === "rejected" ? "Từ chối" : "Chờ duyệt");
+  const statusLabel = isApprovedKpiProposal(p) ? "Đã duyệt" : (isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt");
   return `
     <div class="detail-row">
       <div class="detail-row-head">
@@ -2277,11 +2285,14 @@ function kpiProposalCard(p) {
 function openKpiRuleProposals(ruleId) {
   if (!isManager()) return notice("Chỉ admin/manager được xem chi tiết KPI.", true);
   const rule = kpiRules.find(r => r.id === ruleId);
-  const rows = kpiProposalsForRule(ruleId).sort(byDateDesc);
+  const allRows = kpiProposalsForRule(ruleId);
+  const rows = approvedKpiProposalsForRule(ruleId).sort(byDateDesc);
+  const pending = allRows.filter(isPendingKpiProposal).length;
+  const rejected = allRows.filter(isRejectedKpiProposal).length;
   openDetailModal(
-    `Chi tiết KPI: ${rule?.name || "KPI"}`,
-    `${rows.length} đề xuất trong tháng ${rule?.month || ""}`,
-    `${rule?.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Chưa có đề xuất KPI.</div>`}`
+    `KPI đã duyệt: ${rule?.name || "KPI"}`,
+    `${rows.length} đã duyệt trong tháng ${rule?.month || ""} · Chờ duyệt ${pending} · Từ chối ${rejected}`,
+    `${rule?.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Chưa có đề xuất KPI đã duyệt.</div>`}`
   );
 }
 
@@ -2315,17 +2326,18 @@ function openKpiOwnerDetail(ruleId, ownerKey) {
   const rule = kpiRules.find(r => r.id === ruleId);
   if (!rule) return notice("Không tìm thấy KPI.", true);
   const profile = ownerProfileByValue(ownerKey);
-  const rows = kpiProposalsForRule(ruleId)
+  const allRows = kpiProposalsForRule(ruleId)
     .filter(p => kpiProposalMatchesOwner(p, ownerKey))
     .sort(byDateDesc);
-  const approved = rows.filter(p => p.status === "approved").length;
-  const pending = rows.filter(p => p.status === "pending").length;
-  const rejected = rows.filter(p => p.status === "rejected").length;
+  const rows = allRows.filter(isApprovedKpiProposal);
+  const approved = rows.length;
+  const pending = allRows.filter(isPendingKpiProposal).length;
+  const rejected = allRows.filter(isRejectedKpiProposal).length;
   const target = kpiRuleTargetForOwner(rule, ownerKey);
   openDetailModal(
     `KPI: ${rule.name || "KPI"}`,
     `${profile.name || ownerKey}${profile.email && profile.email !== profile.name ? " · " + profile.email : ""} · Đã duyệt ${approved}/${target || 0} · Chờ ${pending} · Từ chối ${rejected}`,
-    `${rule.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Nhân viên này chưa gửi đề xuất cho KPI này.</div>`}`
+    `${rule.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Nhân viên này chưa có đề xuất KPI đã duyệt.</div>`}`
   );
 }
 
@@ -3673,7 +3685,7 @@ function renderHistories(id) {
       at: p.createdAt,
       html: `
         <div class="log-item">
-          <b>KPI: ${esc(p.kpiName || "")}</b> · ${esc(p.status === "approved" ? "Đã duyệt" : p.status === "rejected" ? "Từ chối" : "Chờ duyệt")} · ${esc(fmtDate(p.createdAt))}
+          <b>KPI: ${esc(p.kpiName || "")}</b> · ${esc(isApprovedKpiProposal(p) ? "Đã duyệt" : isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt")} · ${esc(fmtDate(p.createdAt))}
           <div class="muted">${esc(p.content || "")}</div>
           ${p.evidenceUrl ? `<div><button class="small" type="button" data-kpi-proposal-detail="${esc(p.id)}">Xem ảnh minh chứng</button></div>` : ""}
         </div>
@@ -3900,7 +3912,7 @@ function renderReportCenter() {
     ["Đơn hoàn thành", completed.length, ""],
     ["Đơn đang xử lý", pending.length, pending.length ? "warn" : ""],
     ["Doanh số tháng", money(monthCompleted.reduce((sum,d) => sum + dealAmount(d), 0)), ""],
-    ["KPI chờ duyệt", kpiProposals.filter(p => p.status === "pending" && !p.isDeleted).length, kpiProposals.some(p => p.status === "pending" && !p.isDeleted) ? "warn" : ""],
+    ["KPI chờ duyệt", kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length, kpiProposals.some(p => isPendingKpiProposal(p) && !p.isDeleted) ? "warn" : ""],
     ["Sản phẩm đang bán", products.length, ""]
   ];
   $("reportCenterTime").textContent = `Cập nhật ${new Date().toLocaleString("vi-VN")}`;
