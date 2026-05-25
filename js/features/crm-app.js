@@ -19,6 +19,7 @@
   runTransaction,
   writeBatch,
   deleteField,
+  supabase,
 } from "../firebase.js";
 
 import { DEFAULT_SETTINGS } from "../config/default-settings.js";
@@ -80,6 +81,9 @@ let channelReportHitAreas = [];
 let activeMainView = "crm";
 let editingKpiRuleId = "";
 let kpiProposalCustomerContext = null;
+const KPI_EVIDENCE_BUCKET = "kpi-evidence";
+const KPI_EVIDENCE_MAX_FILES = 6;
+const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
 
 const roleKey = () => clean(appUser?.role).toLowerCase();
 const isAdmin = () => roleKey() === "admin";
@@ -2017,7 +2021,7 @@ function hydrateProposalKpiOptions() {
   const month = clean($("kpiRuleMonth")?.value) || currentMonth();
   const rules = proposalKpiRulesForMonth(month);
   el.innerHTML = `<option value="">-- Chọn KPI --</option>`;
-  rules.forEach(rule => el.insertAdjacentHTML("beforeend", `<option value="${esc(rule.id)}">${esc(rule.name)} · ${esc(rule.month)}</option>`));
+  rules.forEach(rule => el.insertAdjacentHTML("beforeend", `<option value="${esc(rule.id)}" data-month="${esc(rule.month || "")}">${esc(rule.name)} · ${esc(rule.month)}</option>`));
   if (!rules.length) el.insertAdjacentHTML("beforeend", `<option value="" disabled>Chưa có KPI được gán cho bạn trong tháng này</option>`);
   if (rules.some(rule => rule.id === current)) el.value = current;
 }
@@ -2125,6 +2129,13 @@ function drivePreviewUrl(url) {
   return id ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1200` : "";
 }
 
+function directImagePreviewUrl(url) {
+  const value = clean(url);
+  if (!value) return "";
+  if (/\/storage\/v1\/object\/public\//i.test(value)) return value;
+  return /\.(png|jpe?g|webp|gif|bmp|avif)(\?|#|$)/i.test(value) ? value : "";
+}
+
 function evidencePreviewHtml(value) {
   const links = evidenceLinks(value);
   if (!links.length) return "";
@@ -2133,11 +2144,11 @@ function evidencePreviewHtml(value) {
       <b>Minh chứng</b>
       <div class="evidence-grid">
         ${links.map((link, index) => {
-          const preview = drivePreviewUrl(link);
+          const preview = drivePreviewUrl(link) || directImagePreviewUrl(link);
           return `
             <div class="evidence-card">
               ${preview ? `<img src="${esc(preview)}" alt="Minh chứng ${esc(index + 1)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.classList.remove('hide');">` : ""}
-              <div class="muted ${preview ? "hide" : ""}">Không xem trước được ảnh. Kiểm tra quyền chia sẻ Google Drive hoặc mở link gốc.</div>
+              <div class="muted ${preview ? "hide" : ""}">Không xem trước được ảnh. Kiểm tra quyền ảnh hoặc mở link gốc.</div>
               <a href="${esc(link)}" target="_blank" rel="noopener">Mở minh chứng ${esc(index + 1)}</a>
             </div>
           `;
@@ -2417,6 +2428,53 @@ function proposalCustomerText(ctx) {
   ].filter(Boolean).join("\n");
 }
 
+function proposalEvidenceFiles() {
+  return Array.from($("proposalEvidenceFiles")?.files || []);
+}
+
+function storageSafePart(value, fallback = "file") {
+  const text = normalizeKey(value).replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return text || fallback;
+}
+
+function fileExtension(file) {
+  const byName = clean(file?.name).split(".").pop();
+  if (byName && byName.length <= 8) return byName.toLowerCase();
+  return clean(file?.type).split("/").pop() || "jpg";
+}
+
+async function uploadKpiEvidenceFiles(proposalId) {
+  const files = proposalEvidenceFiles();
+  if (!files.length) return [];
+  if (files.length > KPI_EVIDENCE_MAX_FILES) {
+    throw new Error(`Chỉ được chọn tối đa ${KPI_EVIDENCE_MAX_FILES} ảnh minh chứng.`);
+  }
+
+  const ownerFolder = storageSafePart(ownerEmail() || currentUser?.email || "sale");
+  const monthFolder = storageSafePart(clean($("proposalKpiRule").selectedOptions?.[0]?.dataset.month) || currentMonth(), "month");
+  const uploaded = [];
+
+  for (const [index, file] of files.entries()) {
+    if (!file.type.startsWith("image/")) throw new Error("Minh chứng chỉ nhận file ảnh.");
+    if (file.size > KPI_EVIDENCE_MAX_SIZE) throw new Error(`Ảnh "${file.name}" vượt quá 8MB.`);
+
+    const ext = fileExtension(file);
+    const filename = `${Date.now()}-${index + 1}-${crypto.randomUUID()}.${ext}`;
+    const path = `${ownerFolder}/${monthFolder}/${proposalId}/${filename}`;
+    const { error } = await supabase.storage.from(KPI_EVIDENCE_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type || undefined
+    });
+    if (error) throw new Error(`Upload ảnh "${file.name}" thất bại: ${error.message}`);
+
+    const { data } = supabase.storage.from(KPI_EVIDENCE_BUCKET).getPublicUrl(path);
+    if (data?.publicUrl) uploaded.push(data.publicUrl);
+  }
+
+  return uploaded;
+}
+
 function openKpiProposalModal(source = "") {
   const customerId = typeof source === "string" ? source : "";
   const customer = customerId ? customers.find(c => c.id === customerId) : null;
@@ -2428,6 +2486,7 @@ function openKpiProposalModal(source = "") {
   $("proposalDepartment").value = clean(appUser?.team || appUser?.department || "");
   $("proposalContent").value = kpiProposalCustomerContext ? proposalCustomerText(kpiProposalCustomerContext) : "";
   $("proposalEvidenceUrl").value = "";
+  if ($("proposalEvidenceFiles")) $("proposalEvidenceFiles").value = "";
   if ($("proposalCustomerContext")) {
     $("proposalCustomerContext").classList.toggle("hide", !kpiProposalCustomerContext);
     $("proposalCustomerContext").innerHTML = kpiProposalCustomerContext ? `
@@ -2448,6 +2507,7 @@ function openKpiProposalModal(source = "") {
 function closeKpiProposalModal() {
   $("kpiProposalBackdrop").classList.add("hide");
   $("kpiProposalModal").classList.add("hide");
+  if ($("proposalEvidenceFiles")) $("proposalEvidenceFiles").value = "";
   kpiProposalCustomerContext = null;
 }
 
@@ -2456,6 +2516,10 @@ async function submitKpiProposal() {
   const rule = kpiRules.find(r => r.id === clean($("proposalKpiRule").value));
   if (!rule) return notice("Vui lòng chọn KPI cần đề xuất.", true);
   if (!kpiRuleAppliesToCurrentUser(rule)) return notice("KPI này chưa được gán cho bạn.", true);
+  const proposalRef = doc(collection(db, "kpiProposals"));
+  const manualEvidence = clean($("proposalEvidenceUrl").value);
+  const content = clean($("proposalContent").value);
+  if (!content) return notice("Vui lòng nhập nội dung công việc đạt KPI.", true);
   const data = {
     kpiRuleId: rule.id,
     kpiName: rule.name || "",
@@ -2465,8 +2529,8 @@ async function submitKpiProposal() {
     email: ownerEmail(),
     phone: clean($("proposalPhone").value),
     department: clean($("proposalDepartment").value),
-    content: clean($("proposalContent").value),
-    evidenceUrl: clean($("proposalEvidenceUrl").value),
+    content,
+    evidenceUrl: manualEvidence,
     ...(kpiProposalCustomerContext || {}),
     status: "pending",
     isDeleted: false,
@@ -2474,10 +2538,10 @@ async function submitKpiProposal() {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
-  if (!data.content) return notice("Vui lòng nhập nội dung công việc đạt KPI.", true);
   try {
+    const uploadedEvidence = await uploadKpiEvidenceFiles(proposalRef.id);
+    data.evidenceUrl = [manualEvidence, ...uploadedEvidence].filter(Boolean).join("\n");
     const batch = writeBatch(db);
-    const proposalRef = doc(collection(db, "kpiProposals"));
     batch.set(proposalRef, data);
     batch.set(doc(collection(db, "auditLogs")), {
       action: "submitKpiProposal",

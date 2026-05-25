@@ -508,7 +508,12 @@
     </div>
     <div class="field"><label>KPI đề xuất</label><select id="proposalKpiRule"></select></div>
     <div class="field"><label>Nội dung công việc đạt KPI</label><textarea id="proposalContent" placeholder="VD: Đã giới thiệu kệ trưng bày cho công ty xây dựng..., khách phản hồi..., bước tiếp theo..."></textarea></div>
-    <div class="field"><label>Link Google Drive / minh chứng</label><textarea id="proposalEvidenceUrl" placeholder="Dán 1 hoặc nhiều link Google Drive, mỗi dòng một ảnh minh chứng..."></textarea></div>
+    <div class="field">
+      <label>Ảnh minh chứng</label>
+      <input id="proposalEvidenceFiles" type="file" accept="image/*" multiple>
+      <div class="muted">Chọn tối đa 6 ảnh, mỗi ảnh dưới 8MB.</div>
+    </div>
+    <div class="field"><label>Link minh chứng bổ sung</label><textarea id="proposalEvidenceUrl" placeholder="Có thể dán thêm link nếu cần, mỗi dòng một link..."></textarea></div>
     <div class="actions">
       <button id="submitKpiProposalBtn" class="primary" type="button">Gửi đề xuất</button>
     </div>
