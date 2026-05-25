@@ -77,15 +77,7 @@
       </aside>
 
       <section>
-        <div class="view-tabs">
-          <button id="crmViewBtn" class="primary" type="button">CRM</button>
-          <button id="customersViewBtn" type="button">Khách hàng</button>
-          <button id="ordersViewBtn" type="button">Đơn hàng</button>
-          <button id="productsViewBtn" type="button">Sản phẩm</button>
-          <button id="kpiViewBtn" type="button">KPI</button>
-          <button id="reportsViewBtn" class="hide" type="button">Báo cáo</button>
-          <button id="adminViewBtn" class="hide" type="button">Quản trị</button>
-        </div>
+        <div id="viewTabsSlot"></div>
 
         <div id="executiveDashboard" class="panel manager-only hide" style="margin-bottom:14px">
           <div class="pro-section-title">
@@ -511,7 +503,7 @@
     <div class="field">
       <label>Ảnh minh chứng</label>
       <input id="proposalEvidenceFiles" type="file" accept="image/*" multiple>
-      <div class="muted">Chọn tối đa 6 ảnh, mỗi ảnh dưới 8MB.</div>
+      <div class="muted">Chọn tối đa 6 ảnh, mỗi ảnh dưới 5MB.</div>
     </div>
     <div class="field"><label>Link minh chứng bổ sung</label><textarea id="proposalEvidenceUrl" placeholder="Có thể dán thêm link nếu cần, mỗi dòng một link..."></textarea></div>
     <div class="actions">

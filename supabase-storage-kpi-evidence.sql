@@ -16,7 +16,10 @@ create policy "kpi_evidence_authenticated_insert"
 on storage.objects
 for insert
 to authenticated
-with check (bucket_id = 'kpi-evidence');
+with check (
+  bucket_id = 'kpi-evidence'
+  and (storage.foldername(name))[1] = regexp_replace(lower(auth.jwt() ->> 'email'), '[^a-z0-9]+', '', 'g')
+);
 
 drop policy if exists "kpi_evidence_authenticated_select" on storage.objects;
 create policy "kpi_evidence_authenticated_select"

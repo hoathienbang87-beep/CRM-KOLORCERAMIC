@@ -247,6 +247,16 @@ function rowFor(ref, input) {
         payload_json: first(data.payloadJson, data.payload_json, null),
         created_at: first(data.createdAt, data.created_at, null)
       };
+    case "userSessions":
+      return {
+        ...rowBase(ref, data),
+        email: first(data.email, null),
+        name: first(data.name, null),
+        role: first(data.role, null),
+        online: first(data.online, false),
+        last_seen_at: first(data.lastSeenAt, data.last_seen_at, null),
+        updated_at: first(data.updatedAt, data.updated_at, null)
+      };
     default:
       return rowBase(ref, data);
   }
@@ -267,7 +277,6 @@ function snapFromRows(rows, collectionName) {
 }
 
 async function selectRows(target) {
-  if (target.collection === "userSessions") return [];
   const table = tableName(target.collection);
   let q = supabase.from(table).select("*");
   (target.filters || []).forEach(f => {
@@ -281,7 +290,6 @@ async function selectRows(target) {
 }
 
 async function fetchRef(ref) {
-  if (ref.collection === "userSessions") return null;
   const table = tableName(ref.collection);
   const idField = ref.collection === "phoneIndex" ? "phone" : "id";
   let { data, error } = await supabase.from(table).select("*").eq(idField, ref.id).maybeSingle();
@@ -299,7 +307,6 @@ async function fetchRef(ref) {
 }
 
 async function writeRef(ref, data, options = {}) {
-  if (ref.collection === "userSessions") return;
   const table = tableName(ref.collection);
   const row = stripUndefined(rowFor(ref, data));
   if (options.merge) {
@@ -314,7 +321,6 @@ async function writeRef(ref, data, options = {}) {
 }
 
 async function updateRef(ref, data) {
-  if (ref.collection === "userSessions") return;
   const existing = await fetchRef(ref);
   const oldRaw = existing?.raw_data && typeof existing.raw_data === "object" ? existing.raw_data : {};
   const row = stripUndefined(rowFor(ref, { ...oldRaw, ...normalizeValue(data) }));
@@ -327,7 +333,6 @@ async function updateRef(ref, data) {
 }
 
 async function deleteRef(ref) {
-  if (ref.collection === "userSessions") return;
   const table = tableName(ref.collection);
   const idField = ref.collection === "phoneIndex" ? "phone" : "id";
   const { error } = await supabase.from(table).delete().eq(idField, ref.id);

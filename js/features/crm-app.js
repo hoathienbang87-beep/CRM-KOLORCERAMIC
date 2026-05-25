@@ -1959,6 +1959,7 @@ function renderOnlineUsers() {
   if (!isAdmin()) return;
   const cutoff = Date.now() - 2 * 60 * 1000;
   const active = onlineSessions
+    .filter(s => s.online !== false)
     .filter(s => (toDate(s.lastSeenAt)?.getTime() || 0) >= cutoff)
     .sort((a,b) => (toDate(b.lastSeenAt)?.getTime() || 0) - (toDate(a.lastSeenAt)?.getTime() || 0));
   $("onlineUsers").innerHTML = active.length ? active.map(s => `
