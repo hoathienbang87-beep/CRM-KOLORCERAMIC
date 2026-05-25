@@ -451,7 +451,17 @@ export async function signInWithEmailAndPassword(_auth, email, password) {
 export class GoogleAuthProvider {}
 
 export async function signInWithPopup() {
-  const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google" });
+  const redirectTo = `${window.location.origin}${window.location.pathname}`;
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      queryParams: {
+        access_type: "offline",
+        prompt: "select_account"
+      }
+    }
+  });
   if (error) throw error;
   return data;
 }
