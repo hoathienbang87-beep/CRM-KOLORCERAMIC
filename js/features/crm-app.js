@@ -1093,22 +1093,16 @@ const latestDealStatus = c => normalizeDealStatus(customerDeals(c.id)[0]?.dealSt
 const daysBetweenIso = (a, b) => Math.floor((new Date(a + "T00:00:00") - new Date(b + "T00:00:00")) / 86400000);
 const careDeltaDays = c => clean(c.nextCareDate) ? daysBetweenIso(todayIso(), clean(c.nextCareDate)) : null;
 const careDueDays = () => Math.max(0, Number(settings.careDueDays ?? DEFAULT_SETTINGS.careDueDays ?? 3) || 0);
-const careReferenceIso = c => dateInputValue(c?.lastContactAt || c?.updatedAt || c?.createdAt);
-const careStaleDays = c => careReferenceIso(c) ? daysBetweenIso(todayIso(), careReferenceIso(c)) : null;
 const isLeadStatus = c => sameLabel(c?.status, "leadStatus");
 const isCustomerClosed = c => purchaseCount(c.id) > 0 || isCanceledDeal(latestDealStatus(c)) || isFailStatus(latestDealStatus(c)) || sameLabel(c.status, "noNeedStatus");
 function computedFollowStatus(c) {
   if (!c) return "";
   if (isCustomerClosed(c)) return systemLabel("closedFollow");
   const nextDate = clean(c.nextCareDate);
-  if (!nextDate) {
-    const staleDays = careStaleDays(c);
-    if (staleDays !== null && staleDays > careDueDays()) return systemLabel("overdueFollow");
-    return isLeadStatus(c) ? systemLabel("noDateFollow") : systemLabel("activeFollow");
-  }
+  if (!nextDate) return isLeadStatus(c) ? systemLabel("noDateFollow") : systemLabel("closedFollow");
   const delta = careDeltaDays(c);
   if (delta === null) return isLeadStatus(c) ? systemLabel("noDateFollow") : systemLabel("closedFollow");
-  if (delta > 0) return systemLabel("overdueFollow");
+  if (delta > careDueDays()) return systemLabel("overdueFollow");
   if (delta >= 0) return systemLabel("dueFollow");
   return systemLabel("activeFollow");
 }
