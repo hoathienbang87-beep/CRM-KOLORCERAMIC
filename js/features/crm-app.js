@@ -1089,6 +1089,8 @@ const dealCounts = id => {
 const isCompletedDeal = d => d?.completed === true || sameLabel(normalizeDealStatus(d?.dealStatus), "boughtStatus");
 const dealAmount = d => Number(d?.amount || 0);
 const purchaseCount = id => customerDeals(id).filter(isCompletedDeal).length;
+const customerHasDealStatus = (id, labelKey) => customerDeals(id).some(d => sameLabel(normalizeDealStatus(d.dealStatus), labelKey));
+const customerHasCompletedDeal = id => customerDeals(id).some(isCompletedDeal);
 const latestDealStatus = c => normalizeDealStatus(customerDeals(c.id)[0]?.dealStatus || c.dealStatus || "");
 const daysBetweenIso = (a, b) => Math.floor((new Date(a + "T00:00:00") - new Date(b + "T00:00:00")) / 86400000);
 const careDeltaDays = c => clean(c.nextCareDate) ? daysBetweenIso(todayIso(), clean(c.nextCareDate)) : null;
@@ -1229,7 +1231,8 @@ function renderKpis() {
   const monthLead = rows.filter(c => monthOf(c.createdAt) === thisMonth).length;
   const revenue = completed.reduce((sum, d) => sum + dealAmount(d), 0);
   const pendingValue = pending.reduce((sum, d) => sum + dealAmount(d), 0);
-  const conversionRate = rows.length ? Math.round(completed.length / rows.length * 100) : 0;
+  const boughtCustomers = rows.filter(c => customerHasCompletedDeal(c.id));
+  const conversionRate = rows.length ? Math.round(boughtCustomers.length / rows.length * 100) : 0;
   const items = [
     ["Tổng khách", rows.length],
     ["Khách mới tháng này", monthLead],
@@ -1265,6 +1268,7 @@ function renderExecutiveDashboard() {
   const completedMonth = reportDeals.filter(d => isCompletedDeal(d) && monthOf(d.completedAt || d.dealDate || d.createdAt) === month);
   const pendingDeals = reportDeals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
   const completedDeals = reportDeals.filter(isCompletedDeal);
+  const boughtCustomers = rows.filter(c => customerHasCompletedDeal(c.id));
   const pendingValue = pendingDeals.reduce((sum, d) => sum + dealAmount(d), 0);
   const pendingKpi = kpiProposals.filter(p => p.status === "pending" && !p.isDeleted).length;
   const dueCare = rows.filter(isCareDue);
@@ -1281,7 +1285,7 @@ function renderExecutiveDashboard() {
     ["Cần chăm", dueCare.length, dueCare.length ? "warn" : "", "due-care"],
     ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "bad" : "", "overdue-care"],
     ["KPI chờ duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
-    ["Tỉ lệ mua", rows.length ? Math.round(completedDeals.length / rows.length * 100) + "%" : "0%", ""]
+    ["Tỉ lệ mua", rows.length ? Math.round(boughtCustomers.length / rows.length * 100) + "%" : "0%", ""]
   ];
   $("executiveGrid").innerHTML = cards.map(([label,value,cls,action]) => `
     <div class="executive-card ${esc(cls)} ${action ? "clickable" : ""}" ${action ? `role="button" tabindex="0" data-dashboard-action="${esc(action)}"` : ""}>
@@ -1298,6 +1302,9 @@ function pipelineReportData() {
     const matched = rows.filter(c => {
       const status = clean(c.status);
       const dealStatus = latestDealStatus(c);
+      if (sameLabel(label, "boughtStatus")) return customerHasCompletedDeal(c.id) || sameLabel(status, "boughtStatus");
+      if (sameLabel(label, "depositStatus")) return customerHasDealStatus(c.id, "depositStatus") || sameLabel(status, "depositStatus");
+      if (sameLabel(label, "canceledStatus")) return customerHasDealStatus(c.id, "canceledStatus") || sameLabel(status, "canceledStatus");
       return normalizeKey(status) === normalizeKey(label) || normalizeKey(dealStatus) === normalizeKey(label);
     });
     return {label, count: matched.length, customers: matched};
@@ -1708,11 +1715,12 @@ function renderKpiTable() {
     const monthLead = week ? cs.filter(c => weekOf(c.createdAt) === week).length : month ? cs.filter(c => monthOf(c.createdAt) === month).length : cs.length;
     const closeCount = ds.filter(isCompletedDeal).length;
     const dealCount = ds.filter(isCompletedDeal).length;
+    const boughtCustomerCount = cs.filter(c => customerHasCompletedDeal(c.id)).length;
     const cancelCount = ds.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus")).length;
     const due = cs.filter(isCareDue).length;
     const overdue = cs.filter(isCareOverdue).length;
     const revenue = ds.filter(isCompletedDeal).reduce((sum, d) => sum + dealAmount(d), 0);
-    const rate = cs.length ? Math.round(closeCount / cs.length * 100) : 0;
+    const rate = cs.length ? Math.round(boughtCustomerCount / cs.length * 100) : 0;
     const ruleCells = monthRules.map(rule => {
       if (!kpiRuleAppliesToOwner(rule, o)) return `<td><span class="muted">Không gán</span></td>`;
       const value = kpiRuleValue(rule, o);
@@ -1735,8 +1743,9 @@ function kpiReportData() {
     const ids = new Set(cs.map(c => c.id));
     const ds = deals.filter(d => ids.has(d.customerId));
     const closeCount = ds.filter(isCompletedDeal).length;
+    const boughtCustomerCount = cs.filter(c => customerHasCompletedDeal(c.id)).length;
     const revenue = ds.filter(isCompletedDeal).reduce((sum, d) => sum + dealAmount(d), 0);
-    const rate = cs.length ? Math.round(closeCount / cs.length * 100) : 0;
+    const rate = cs.length ? Math.round(boughtCustomerCount / cs.length * 100) : 0;
     const row = {
       owner: clean(profile.name || o),
       email: clean(profile.email && profile.email !== profile.name ? profile.email : o),
