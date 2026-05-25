@@ -1267,6 +1267,8 @@ function renderExecutiveDashboard() {
   const completedDeals = reportDeals.filter(isCompletedDeal);
   const pendingValue = pendingDeals.reduce((sum, d) => sum + dealAmount(d), 0);
   const pendingKpi = kpiProposals.filter(p => p.status === "pending" && !p.isDeleted).length;
+  const dueCare = rows.filter(isCareDue);
+  const overdueCare = rows.filter(isCareOverdue);
   const cards = [
     ["Khách đang quản lý", rows.length, ""],
     ["Khách mới tháng này", monthCustomers.length, ""],
@@ -1276,13 +1278,13 @@ function renderExecutiveDashboard() {
     ["Đơn hoàn thành", completedDeals.length, ""],
     [systemLabel("depositStatus"), reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")).length, ""],
     [systemLabel("canceledStatus"), reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus")).length, ""],
-    ["Cần chăm", rows.filter(isCareDue).length, rows.some(isCareDue) ? "warn" : ""],
-    ["Quá hạn chăm", rows.filter(isCareOverdue).length, rows.some(isCareOverdue) ? "bad" : ""],
-    ["KPI chờ duyệt", pendingKpi, pendingKpi ? "warn" : ""],
+    ["Cần chăm", dueCare.length, dueCare.length ? "warn" : "", "due-care"],
+    ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "bad" : "", "overdue-care"],
+    ["KPI chờ duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
     ["Tỉ lệ mua", rows.length ? Math.round(completedDeals.length / rows.length * 100) + "%" : "0%", ""]
   ];
-  $("executiveGrid").innerHTML = cards.map(([label,value,cls]) => `
-    <div class="executive-card ${esc(cls)}">
+  $("executiveGrid").innerHTML = cards.map(([label,value,cls,action]) => `
+    <div class="executive-card ${esc(cls)} ${action ? "clickable" : ""}" ${action ? `role="button" tabindex="0" data-dashboard-action="${esc(action)}"` : ""}>
       <span class="muted">${esc(label)}</span>
       <b>${esc(value)}</b>
     </div>
@@ -1507,6 +1509,32 @@ function customerDetailRows(rows) {
       ${c.note ? `<div class="detail-note">${esc(c.note)}</div>` : ""}
     </div>
   `).join("")}</div>` : `<div class="muted">Không có khách trong nhóm này.</div>`;
+}
+
+function openCareDashboardDetail(type) {
+  if (!isManager()) return;
+  const isOverdue = type === "overdue-care";
+  const rows = currentReportCustomers()
+    .filter(isOverdue ? isCareOverdue : isCareDue)
+    .sort((a,b) => {
+      const byDate = clean(a.nextCareDate).localeCompare(clean(b.nextCareDate));
+      return byDate || clean(a.name).localeCompare(clean(b.name), "vi");
+    });
+  openDetailModal(
+    isOverdue ? "Quá hạn chăm" : "Cần chăm",
+    `${rows.length} khách ${isOverdue ? "đã quá hạn chăm" : "đang cần chăm"}`,
+    customerDetailRows(rows)
+  );
+}
+
+function jumpToPendingKpi() {
+  if (!isManager()) return;
+  setMainView("kpi");
+  setTimeout(() => {
+    $("kpiApprovalPanel")?.scrollIntoView({behavior: "smooth", block: "start"});
+    $("kpiApprovalPanel")?.classList.add("focus-flash");
+    setTimeout(() => $("kpiApprovalPanel")?.classList.remove("focus-flash"), 1400);
+  }, 80);
 }
 
 function openChannelReportDetail(area) {
@@ -4162,6 +4190,9 @@ document.addEventListener("click", e => {
   const permanentDeleteCustomerId = e.target.closest("[data-permanent-delete-customer]")?.dataset.permanentDeleteCustomer;
   const saveUserId = e.target.closest("[data-save-user]")?.dataset.saveUser;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
+  const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
+  if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
+  if (dashboardAction === "pending-kpi") jumpToPendingKpi();
   if (careId) {
     closeDetailModal();
     openDrawer(careId, "care");
@@ -4200,6 +4231,15 @@ document.addEventListener("click", e => {
     e.target.closest("[data-deal-item]")?.remove();
     if (!document.querySelector("[data-deal-item]")) addDealItem();
   }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const dashboardAction = e.target.closest?.("[data-dashboard-action]")?.dataset.dashboardAction;
+  if (!dashboardAction) return;
+  e.preventDefault();
+  if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
+  if (dashboardAction === "pending-kpi") jumpToPendingKpi();
 });
 
 ["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => $(id).addEventListener("input", scheduleRenderAll));

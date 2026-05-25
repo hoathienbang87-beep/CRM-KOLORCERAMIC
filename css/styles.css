@@ -101,6 +101,10 @@
 .evidence-card img{display:block;width:100%;max-height:360px;object-fit:contain;background:#fff;border:1px solid #e6edf6;border-radius:6px}
 .evidence-card .muted{font-size:12px;word-break:break-all}
     .section{border:1px solid var(--line);border-radius:8px;padding:14px;margin-top:12px}
+    .executive-card.clickable{cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+    .executive-card.clickable:hover,.executive-card.clickable:focus{transform:translateY(-1px);box-shadow:0 8px 22px rgba(15,23,42,.12);border-color:#95b8f6;outline:none}
+    .focus-flash{animation:focusFlash 1.3s ease}
+    @keyframes focusFlash{0%,100%{box-shadow:0 0 0 rgba(37,99,235,0)}35%{box-shadow:0 0 0 4px rgba(37,99,235,.18)}}
     .section h3{margin:0 0 12px}
     .log-item,.deal-item{border-left:3px solid #cbd5e1;padding:9px 0 9px 12px;margin:8px 0}
     .deal-item{border-left-color:var(--brand)}
