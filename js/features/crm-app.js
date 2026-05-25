@@ -169,11 +169,11 @@ const scheduleRenderChart = debounce(() => { renderChart(); renderChannelReportC
 
 function authMessage(err) {
   const code = err?.code || "";
-  if (code.includes("unauthorized-domain")) return "Domain này chưa được cho phép trong Firebase Authentication. Hãy dùng Firebase Hosting hoặc thêm localhost vào Authorized domains.";
+  if (code.includes("unauthorized-domain")) return "Domain này chưa được cho phép trong Supabase Authentication. Hãy kiểm tra Site URL/Redirect URLs trong Supabase.";
   if (code.includes("invalid-credential") || code.includes("wrong-password")) return "Email hoặc mật khẩu chưa đúng.";
-  if (code.includes("user-not-found")) return "Chưa có tài khoản này trong Firebase Authentication.";
+  if (code.includes("user-not-found")) return "Chưa có tài khoản này trong Supabase Authentication.";
   if (code.includes("popup")) return "Trình duyệt đang chặn popup đăng nhập Google.";
-  if (err?.message?.includes("permission")) return "Bạn chưa có quyền đọc/ghi Firestore. Hãy deploy lại firestore.rules bản mới và kiểm tra role/active trong collection users.";
+  if (err?.message?.includes("permission")) return "Bạn chưa có quyền đọc/ghi Supabase. Hãy kiểm tra RLS và role/active trong bảng app_users.";
   if (err?.message?.includes("Chưa được cấp quyền")) return err.message;
   return err?.message || "Không đăng nhập được.";
 }
@@ -427,7 +427,7 @@ async function loadAppUser(user) {
     createdAt: serverTimestamp()
   };
   await setDoc(ref, data);
-  throw new Error("Chưa được cấp quyền CRM. Admin cần vào Firestore > users và bật active=true cho tài khoản này.");
+  throw new Error("Chưa được cấp quyền CRM. Admin cần vào Supabase > app_users và bật active=true cho tài khoản này.");
 }
 
 async function loadSettings() {
@@ -442,7 +442,7 @@ async function seedSettings() {
   if (!isAdmin()) return notice("Chỉ admin được tạo SETTINGS.", true);
   await setDoc(doc(db, "settings", "crm"), DEFAULT_SETTINGS, {merge:true});
   await loadSettings();
-  notice("Đã tạo/cập nhật SETTINGS trên Firestore.");
+  notice("Đã tạo/cập nhật SETTINGS trên Supabase.");
 }
 
 async function saveCareSettings() {
@@ -3050,7 +3050,7 @@ async function deleteCustomer() {
     ...relatedDeals.map(d => doc(db, "deals", d.id))
   ];
   if (refs.length > 440) {
-    return notice("Khách này có quá nhiều lịch sử. Hãy xử lý bằng admin/backoffice để tránh vượt giới hạn batch Firestore.", true);
+    return notice("Khách này có quá nhiều lịch sử. Hãy xử lý bằng admin/backoffice để tránh vượt giới hạn batch.", true);
   }
   try {
     const batch = writeBatch(db);
