@@ -447,10 +447,20 @@ export function deleteField() {
   return DELETE_FIELD;
 }
 
+function withFirebaseUserCompat(user) {
+  if (!user) return null;
+  return {
+    ...user,
+    uid: user.uid || user.id,
+    displayName: user.user_metadata?.name || user.user_metadata?.full_name || user.email || "",
+    photoURL: user.user_metadata?.avatar_url || user.user_metadata?.picture || ""
+  };
+}
+
 export async function signInWithEmailAndPassword(_auth, email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
-  return { user: data.user };
+  return { user: withFirebaseUserCompat(data.user) };
 }
 
 export class GoogleAuthProvider {}
@@ -472,8 +482,8 @@ export async function signInWithPopup() {
 }
 
 export function onAuthStateChanged(_auth, callback) {
-  supabase.auth.getUser().then(({ data }) => callback(data.user || null));
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(session?.user || null));
+  supabase.auth.getUser().then(({ data }) => callback(withFirebaseUserCompat(data.user)));
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(withFirebaseUserCompat(session?.user)));
   return () => data.subscription.unsubscribe();
 }
 
