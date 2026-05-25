@@ -1,0 +1,523 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRM Công Ty - Supabase</title>
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+  <section id="loginView" class="login">
+    <div class="login-card">
+      <h1>Kolorceramic THT</h1>
+      <p>Đăng nhập để sử dụng dữ liệu Supabase của công ty.</p>
+      <div id="localWarning" class="error hide">Bạn đang mở bằng file:// nên Auth có thể bị chặn. Hãy mở qua localhost hoặc hosting.</div>
+      <div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="email"></div>
+      <div class="field"><label>Mật khẩu</label><input id="loginPassword" type="password" autocomplete="current-password"></div>
+      <div class="actions">
+        <button id="loginBtn" class="primary">Đăng nhập</button>
+        <button id="googleBtn">Google</button>
+      </div>
+      <div id="loginError" class="error"></div>
+    </div>
+  </section>
+
+  <section id="appView" class="hide">
+    <header class="topbar">
+      <div>
+        <div class="brand">Kolorceraic THT</div>
+        <div class="muted" id="roleText"></div>
+      </div>
+      <div class="userbar">
+        <span id="userText"></span>
+        <button id="reloadBtn" class="small">Reload</button>
+        <button id="seedBtn" class="small">Tạo SETTINGS</button>
+        <button id="syncPhoneBtn" class="small">Đồng bộ SĐT</button>
+        <button id="syncOwnerBtn" class="small">Đồng bộ NV</button>
+        <button id="importBtn" class="small">Import CSV</button>
+        <input id="importFile" class="hide" type="file" accept=".csv,text/csv">
+        <button id="logoutBtn" class="small">Đăng xuất</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel">
+        <h2>Thêm khách mới</h2>
+        <div class="field"><label>Khách hàng</label><input id="name"></div>
+        <div class="field"><label>SĐT</label><input id="phone"></div>
+        <div class="field"><label>Địa chỉ</label><textarea id="address"></textarea></div>
+        <select id="source" class="hide"></select>
+        <select id="customerType" class="hide"></select>
+        <div class="field"><label>Kênh chi tiết</label><select id="channel"></select></div>
+        <div class="field"><label>Nhân viên phụ trách</label><select id="owner"></select></div>
+        <div id="partnerFields" class="grid2 hide">
+          <div class="field"><label>Tên công ty</label><input id="companyName"></div>
+          <div class="field"><label>Loại TK/XD</label><select id="partnerType"></select></div>
+          <div class="field"><label>Level quan hệ</label><select id="partnerLevel"></select></div>
+          <div class="field"><label>Hoạt động TK/XD</label><select id="partnerActivity"></select></div>
+          <div class="field"><label>Năng lực CTY</label><select id="partnerCapacity"></select></div>
+        </div>
+        <div class="field"><label>Nhu cầu / Sản phẩm</label><input id="need"></div>
+        <div class="field"><label>Ghi chú</label><textarea id="note"></textarea></div>
+        <div class="actions">
+          <button id="saveCustomerBtn" class="primary">Lưu khách</button>
+          <button id="clearBtn">Xóa form</button>
+        </div>
+        <div id="todayCarePanel" class="today-panel">
+          <div class="pro-section-title">
+            <h3>Lịch hẹn hôm nay</h3>
+            <button id="enableNotifyBtn" class="small" type="button">Bật nhắc</button>
+          </div>
+          <div id="todayCareList" class="care-empty">Không có lịch hẹn hôm nay.</div>
+        </div>
+        <div id="onlinePanel" class="online-panel hide">
+          <h3>Đang truy cập</h3>
+          <div id="onlineUsers" class="muted">Chưa có dữ liệu.</div>
+        </div>
+      </aside>
+
+      <section>
+        <div class="view-tabs">
+          <button id="crmViewBtn" class="primary" type="button">CRM</button>
+          <button id="customersViewBtn" type="button">Khách hàng</button>
+          <button id="ordersViewBtn" type="button">Đơn hàng</button>
+          <button id="productsViewBtn" type="button">Sản phẩm</button>
+          <button id="kpiViewBtn" type="button">KPI</button>
+          <button id="reportsViewBtn" class="hide" type="button">Báo cáo</button>
+          <button id="adminViewBtn" class="hide" type="button">Quản trị</button>
+        </div>
+
+        <div id="executiveDashboard" class="panel manager-only hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Dashboard quản trị</h3>
+            <button id="exportManagementReportBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
+          </div>
+          <div id="executiveGrid" class="executive-grid"></div>
+        </div>
+
+        <div id="pipelinePanel" class="panel manager-only hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Pipeline bán hàng</h3>
+            <span id="pipelineRangeText" class="muted"></span>
+          </div>
+          <div id="pipelineGrid" class="pipeline-grid"></div>
+        </div>
+
+        <div id="ordersPanel" class="panel hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Đơn hàng</h3>
+            <button id="exportOrdersBtn" class="small primary" type="button">Xuất đơn hàng</button>
+          </div>
+          <div class="grid4">
+            <div class="field"><label>Năm</label><select id="orderFilterYear"></select></div>
+            <div class="field"><label>Tháng</label><select id="orderFilterMonth"></select></div>
+            <div class="field"><label>Nhân viên</label><select id="orderFilterOwner"></select></div>
+            <div class="field"><label>Trạng thái</label><select id="orderFilterStatus"></select></div>
+          </div>
+          <div id="orderSummaryGrid" class="executive-grid order-summary-grid"></div>
+          <div class="table-title">Khách hàng đã giao dịch</div>
+          <div class="table-wrap order-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Khách hàng</th><th>SĐT</th><th>Nhân viên</th><th>Trạng thái</th><th>Ngày đơn</th><th>Ngày mua</th><th>Hẹn giao</th><th>Sản phẩm</th><th>Giá trị</th><th>Ghi chú</th><th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="orderRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="productsPanel" class="panel hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Sản phẩm</h3>
+            <div class="actions">
+              <button id="importProductsBtn" class="small primary hide" type="button">Import sản phẩm CSV</button>
+              <input id="importProductsFile" class="hide" type="file" accept=".csv,text/csv">
+            </div>
+          </div>
+          <div class="toolbar product-toolbar">
+            <div class="toolbar-search"><label>Tìm sản phẩm</label><input id="productSearchBox" placeholder="Tên, mã, size, bề mặt, xuất xứ..."></div>
+            <div><label>Size</label><select id="productFilterSize"></select></div>
+            <div><label>Bề mặt</label><select id="productFilterSurface"></select></div>
+            <div><label>Xuất xứ</label><select id="productFilterOrigin"></select></div>
+            <div class="toolbar-actions"><button id="resetProductFilterBtn" type="button">Xóa lọc</button></div>
+          </div>
+          <div class="table-title">Danh mục sản phẩm</div>
+          <div class="table-wrap product-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Code</th><th>Tên sản phẩm</th><th>Size</th><th>Bề mặt</th><th>Xuất xứ</th><th>Màu</th><th>Giá</th><th>Mô tả</th><th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="productRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="reportsPanel" class="panel hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Báo cáo</h3>
+            <span id="reportCenterTime" class="muted"></span>
+          </div>
+          <div id="reportCenterGrid" class="executive-grid order-summary-grid"></div>
+          <div class="actions">
+            <button id="reportExportManagementBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
+            <button id="reportExportKpiBtn" class="small primary" type="button">Xuất KPI</button>
+            <button id="reportExportOrdersBtn" class="small primary" type="button">Xuất đơn hàng</button>
+          </div>
+        </div>
+
+        <div class="chart-grid">
+          <div class="panel">
+            <h3>Tăng trưởng khách hàng</h3>
+            <div class="chart-wrap"><canvas id="growthChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="pro-section-title">
+              <h3>Báo cáo theo kênh chi tiết</h3>
+              <select id="channelReportRange" style="max-width:150px">
+                <option value="week">Tuần này</option>
+                <option value="month" selected>Tháng này</option>
+                <option value="year">Năm nay</option>
+              </select>
+            </div>
+            <div class="chart-wrap channel-chart-wrap"><canvas id="channelReportChart"></canvas></div>
+          </div>
+        </div>
+
+        <div id="needCarePanel" class="panel" style="margin-top:14px">
+          <h3>Cần chăm</h3>
+        <div id="needCareList" class="care-empty">Không có khách cần chăm.</div>
+        </div>
+
+        <div id="careSettingsPanel" class="panel hide" style="margin-top:14px">
+          <h3>Thiết lập chăm sóc</h3>
+          <div class="grid2">
+            <div class="field"><label>Số ngày cảnh báo chăm</label><input id="careDueDays" type="number" min="0" step="1"></div>
+            <div class="field"><label>&nbsp;</label><button id="saveCareSettingsBtn" class="primary" type="button">Lưu thiết lập</button></div>
+          </div>
+          <div class="muted">Ví dụ đặt 3 ngày: khách có lịch hẹn quá 3 ngày sẽ tự vào nhóm cần chăm/lâu chưa chăm.</div>
+        </div>
+
+        <div id="dropdownSettingsPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>Cấu hình dropdown</h3>
+            <button id="saveDropdownSettingsBtn" class="primary small" type="button">Lưu dropdown</button>
+          </div>
+          <div class="settings-grid">
+            <textarea id="settingsSources" class="hide"></textarea>
+            <textarea id="settingsCustomerTypes" class="hide"></textarea>
+            <div class="field settings-wide"><label>Kênh chi tiết</label><textarea id="settingsSourceChannels" placeholder="Mỗi dòng một kênh chi tiết"></textarea></div>
+            <div class="field"><label>Trạng thái</label><textarea id="settingsStatuses"></textarea></div>
+            <div class="field"><label>Tình trạng chăm</label><textarea id="settingsFollows"></textarea></div>
+            <div class="field"><label>Hình thức chăm</label><textarea id="settingsCareChannels"></textarea></div>
+            <div class="field"><label>Kết quả chăm</label><textarea id="settingsCareResults"></textarea></div>
+            <textarea id="settingsPartnerTypes" class="hide"></textarea>
+            <textarea id="settingsPartnerActivities" class="hide"></textarea>
+            <textarea id="settingsPartnerLevels" class="hide"></textarea>
+            <textarea id="settingsPartnerCapacity" class="hide"></textarea>
+            <div class="field"><label>Trạng thái đơn hàng</label><textarea id="settingsDealStatuses"></textarea></div>
+            <div class="field settings-wide"><label>Nhãn hệ thống</label><textarea id="settingsSystemLabels"></textarea></div>
+            <div class="field settings-wide"><label>Link báo giá / đề xuất</label><input id="settingsQuoteTemplateUrl"></div>
+          </div>
+          <div class="muted">Mỗi dòng là một giá trị. Kênh chi tiết không còn phụ thuộc Nguồn hay Phân loại KH.</div>
+        </div>
+
+        <div id="customerSearchPanel" class="panel" style="margin-top:14px">
+          <h3>Tìm kiếm</h3>
+          <div class="toolbar">
+            <div class="toolbar-search"><label>Tìm kiếm</label><input id="searchBox" placeholder="Tên, SĐT, địa chỉ, ghi chú..."></div>
+            <div><label>Nhân viên</label><select id="filterOwner"></select></div>
+            <div><label>Trạng thái</label><select id="filterStatus"></select></div>
+            <div><label>Đơn hàng</label><select id="filterDealStatus"></select></div>
+            <div><label>Tình trạng chăm</label><select id="filterFollow"></select></div>
+            <select id="filterSource" class="hide"></select>
+            <div><label>Kênh chi tiết</label><select id="filterChannel"></select></div>
+            <select id="filterCustomerType" class="hide"></select>
+            <div><label>Tuần</label><input id="filterWeek" type="week" autocomplete="off"></div>
+            <div><label>Tháng</label><input id="filterMonth" type="month" autocomplete="off"></div>
+            <div class="toolbar-actions">
+              <button id="resetFilterBtn">Xóa lọc</button>
+              <button id="exportBtn">Xuất Excel</button>
+              <button id="openKpiProposalBtn" class="primary hide" type="button">Đề xuất KPI</button>
+            </div>
+          </div>
+          <div class="table-title">Thông tin khách hàng</div>
+          <div class="table-wrap customer-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Khách hàng</th><th>SĐT</th><th>Ngày tạo</th><th class="source-col">Kênh chi tiết</th><th>Phụ trách</th>
+                  <th>Trạng thái</th><th>Tình trạng chăm</th><th>Đơn hàng</th><th>Hẹn chăm</th><th class="note-col">Ghi chú</th><th class="action-col">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="customerRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="kpiApprovalPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>Duyệt KPI</h3>
+            <span class="muted">KPI phụ chỉ tính sau khi admin/manager duyệt</span>
+          </div>
+          <div id="kpiApprovalList" class="rule-list muted">Chưa có KPI chờ duyệt.</div>
+        </div>
+
+        <div id="kpiSummaryPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>KPI nhân viên</h3>
+            <div class="actions">
+              <button id="openKpiProposalBtnTop" class="small primary" type="button">Đề xuất KPI</button>
+              <button id="exportKpiBtn" class="small primary hide" type="button">Xuất KPI</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead id="kpiHead"></thead>
+              <tbody id="kpiRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="kpiRulePanel" class="panel hide" style="margin-top:14px">
+          <h3>KPI tháng</h3>
+          <div class="kpi-rule-grid">
+            <div class="field"><label>Tháng</label><input id="kpiRuleMonth" type="month"></div>
+            <div class="field"><label>Tên KPI</label><input id="kpiRuleName" placeholder="Gửi kệ trưng bày"></div>
+            <div class="field"><label>Chỉ tiêu / Sale</label><input id="kpiRuleTarget" type="number" min="0" step="1"></div>
+            <div class="field"><label>Cách tính</label><select id="kpiRuleCountMode"><option value="approvedProposals">Số đề xuất được duyệt</option></select></div>
+          </div>
+          <div class="field">
+            <label>Diễn giải</label>
+            <textarea id="kpiRuleDescription" placeholder="Mô tả rõ hoạt động KPI, điều kiện được tính, minh chứng cần gửi..."></textarea>
+          </div>
+          <div class="kpi-assignment-box">
+            <div class="pro-section-title">
+              <h3>Gán KPI cho nhân viên</h3>
+              <span class="muted">Có thể đặt chỉ tiêu riêng từng người</span>
+            </div>
+            <div id="kpiAssignRows" class="kpi-assign-list muted">Chưa có danh sách nhân viên.</div>
+          </div>
+          <div class="actions">
+            <button id="saveKpiRuleBtn" class="primary">Tạo KPI</button>
+            <button id="cancelEditKpiRuleBtn" class="hide" type="button">Hủy sửa</button>
+          </div>
+          <div class="table-title">Bảng kiểm soát KPI tháng</div>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>KPI</th><th>Nhân viên được gán</th><th>Tiến độ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+              <tbody id="kpiControlRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="proHealthPanel" class="panel" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>Kiểm tra sức khỏe dữ liệu</h3>
+            <button id="healthReloadBtn" class="small" type="button">Kiểm tra lại</button>
+          </div>
+          <div id="healthGrid" class="health-grid"></div>
+        </div>
+
+        <div id="userAdminPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>Quản lý nhân viên</h3>
+            <span class="muted">Chỉ admin được sửa role/trạng thái</span>
+          </div>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Nhân viên</th><th>Role</th><th>Active</th><th>Team</th><th>Can Export</th><th>Thao tác</th></tr></thead>
+              <tbody id="userRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="trashPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>Thùng rác & dọn dữ liệu</h3>
+            <div class="actions">
+              <button id="cleanupPhoneIndexBtn" class="small" type="button">Cleanup phoneIndex</button>
+              <button id="cleanupOrphansBtn" class="small" type="button">Cleanup orphan</button>
+              <button id="cleanupDataBtn" class="small danger" type="button">Dọn dữ liệu</button>
+            </div>
+          </div>
+          <div id="trashList" class="rule-list muted">Chưa có khách trong thùng rác.</div>
+        </div>
+
+        <div id="auditPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>Audit log gần đây</h3>
+            <span class="muted">Theo dõi ai đã thêm/sửa/xóa dữ liệu</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Thời gian</th><th>Người thao tác</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead>
+              <tbody id="auditRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </section>
+
+  <div id="drawerBackdrop" class="drawer-backdrop hide"></div>
+  <aside id="drawer" class="drawer hide">
+    <div class="drawer-head">
+      <div>
+        <h2 id="drawerTitle" style="margin:0"></h2>
+        <div id="drawerInfo" class="muted"></div>
+      </div>
+      <div class="actions">
+        <button id="deleteCustomerBtn" class="danger small">Xóa khách</button>
+        <button id="closeDrawerBtn" class="small">Đóng</button>
+      </div>
+    </div>
+
+    <section id="customerInfoSection" class="section">
+      <div class="actions" style="justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0">Thông tin KH</h3>
+        <button id="editCustomerInfoBtn" class="small">Sửa thông tin</button>
+      </div>
+      <div class="field"><label>Trạng thái</label><select id="careStatus" class="status-select"></select></div>
+      <div id="customerInfoView" class="info-grid"></div>
+      <div id="customerInfoEdit" class="hide">
+        <div class="grid2">
+          <div class="field"><label>Khách hàng</label><input id="editName"></div>
+          <div class="field"><label>SĐT</label><input id="editPhone"></div>
+        </div>
+        <div id="editCreatedAtField" class="field hide"><label>Ngày tạo</label><input id="editCreatedAt" type="date"></div>
+        <div class="field"><label>Địa chỉ</label><textarea id="editAddress"></textarea></div>
+        <select id="editSource" class="hide"></select>
+        <select id="editCustomerType" class="hide"></select>
+        <div class="grid2">
+          <div class="field"><label>Kênh chi tiết</label><select id="editChannel"></select></div>
+          <div class="field"><label>Nhân viên phụ trách</label><select id="editOwner"></select></div>
+        </div>
+        <div id="editPartnerFields" class="grid2 hide">
+          <div class="field"><label>Tên công ty</label><input id="editCompanyName"></div>
+          <div class="field"><label>Loại TK/XD</label><select id="editPartnerType"></select></div>
+          <div class="field"><label>Level quan hệ</label><select id="editPartnerLevel"></select></div>
+          <div class="field"><label>Hoạt động TK/XD</label><select id="editPartnerActivity"></select></div>
+          <div class="field"><label>Năng lực CTY</label><select id="editPartnerCapacity"></select></div>
+        </div>
+        <div class="field"><label>Nhu cầu / Sản phẩm</label><input id="editNeed"></div>
+        <div class="field"><label>Ghi chú</label><textarea id="editNote"></textarea></div>
+        <div class="actions">
+          <button id="saveCustomerInfoBtn" class="primary">Lưu thông tin</button>
+          <button id="cancelCustomerInfoBtn">Hủy</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="careSection" class="section">
+      <h3>Chăm sóc KH</h3>
+      <div class="grid2">
+        <div class="field"><label>Hình thức</label><select id="careChannel"></select></div>
+        <div class="field"><label>Kết quả chăm</label><select id="careResult"></select></div>
+      </div>
+      <div id="carePartnerFields" class="grid2 hide">
+        <div class="field"><label>Tên công ty</label><input id="careCompanyName"></div>
+        <div class="field"><label>Loại TK/XD</label><select id="carePartnerType"></select></div>
+        <div class="field"><label>Level quan hệ</label><select id="carePartnerLevel"></select></div>
+        <div class="field"><label>Hoạt động TK/XD</label><select id="carePartnerActivity"></select></div>
+        <div class="field"><label>Năng lực CTY</label><select id="carePartnerCapacity"></select></div>
+      </div>
+      <div class="field"><label>Nhu cầu / Sản phẩm</label><input id="careNeed"></div>
+      <div class="field"><label>Hẹn chăm tiếp</label><input id="careNextDate" type="date"></div>
+      <div class="field"><label>Ghi chú chăm sóc</label><textarea id="careNote"></textarea></div>
+      <div class="care-actions">
+        <button id="saveCareBtn" class="primary">Lưu chăm sóc</button>
+        <button id="toggleCareHistoryBtn" type="button">Lịch sử chăm sóc</button>
+      </div>
+    </section>
+
+    <section id="dealSection" class="section">
+      <h3>Đơn hàng</h3>
+      <div class="grid2">
+        <div class="field"><label>Tên KH</label><input id="dealCustomerName"></div>
+        <div class="field"><label>SĐT</label><input id="dealCustomerPhone"></div>
+      </div>
+      <div class="field"><label>Địa chỉ giao hàng</label><textarea id="dealDeliveryAddress"></textarea></div>
+      <div class="field"><label>Mã số thuế</label><input id="dealTaxCode"></div>
+      <div class="grid2">
+        <select id="dealStatus" class="hide"></select>
+        <div class="field"><label>Đã cọc (%)</label><input id="dealDepositPercent" type="number" min="0" max="100" step="0.1"></div>
+        <div class="field"><label>Giá trị đơn (VNĐ)</label><input id="dealAmount" type="number" min="0" step="1000" placeholder="VD: 25000000"></div>
+        <div class="field"><label>Ngày cọc</label><input id="dealDate" type="date"></div>
+        <div class="field"><label>Ngày giao</label><input id="dealDeliveryDate" type="date"></div>
+      </div>
+      <div class="actions" style="justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0">Sản phẩm</label>
+        <button id="addDealItemBtn" class="small" type="button">Add SP</button>
+      </div>
+      <datalist id="productOptions"></datalist>
+      <div id="dealItems"></div>
+      <div class="field"><label>Ghi chú</label><textarea id="dealNote"></textarea></div>
+      <div class="grid3">
+        <button id="saveDealBtn" class="primary">Tạo đơn</button>
+        <button id="showPendingDealsBtn" type="button">Đang xử lý</button>
+        <button id="showCompletedDealsBtn" type="button">Đã hoàn thành</button>
+      </div>
+    </section>
+
+    <section id="dealListSection" class="section hide">
+      <div class="actions" style="justify-content:space-between;margin-bottom:10px">
+        <h3 id="dealListTitle" style="margin:0">Đơn hàng</h3>
+        <button id="closeDealListBtn" class="small" type="button">Đóng</button>
+      </div>
+      <div id="dealListContent" class="muted">Chưa có đơn hàng.</div>
+    </section>
+
+    <section id="logHistorySection" class="section hide">
+      <h3>Timeline hoạt động</h3>
+      <div id="logHistory" class="muted">Chưa có timeline hoạt động.</div>
+    </section>
+  </aside>
+
+  <div id="detailModalBackdrop" class="drawer-backdrop hide"></div>
+  <aside id="detailModal" class="drawer detail-modal hide">
+    <div class="drawer-head">
+      <div>
+        <h2 id="detailModalTitle" style="margin:0">Chi tiết</h2>
+        <div id="detailModalSubtitle" class="muted"></div>
+      </div>
+      <button id="closeDetailModalBtn" class="small" type="button">Đóng</button>
+    </div>
+    <div id="detailModalContent" class="detail-content muted"></div>
+  </aside>
+
+  <div id="kpiProposalBackdrop" class="drawer-backdrop hide"></div>
+  <aside id="kpiProposalModal" class="drawer hide">
+    <div class="drawer-head">
+      <div>
+        <h2 style="margin:0">Đề Xuất KPI</h2>
+        <div class="muted">Gửi nội dung công việc để manager/admin xem xét</div>
+      </div>
+      <button id="closeKpiProposalBtn" class="small" type="button">Đóng</button>
+    </div>
+    <div id="proposalCustomerContext" class="detail-row hide"></div>
+    <div class="grid2">
+      <div class="field"><label>Tên</label><input id="proposalName" readonly></div>
+      <div class="field"><label>Email</label><input id="proposalEmail" readonly></div>
+      <div class="field"><label>SĐT</label><input id="proposalPhone" placeholder="SĐT nhân viên"></div>
+      <div class="field"><label>Bộ phận</label><input id="proposalDepartment" placeholder="Bộ phận / team"></div>
+    </div>
+    <div class="field"><label>KPI đề xuất</label><select id="proposalKpiRule"></select></div>
+    <div class="field"><label>Nội dung công việc đạt KPI</label><textarea id="proposalContent" placeholder="VD: Đã giới thiệu kệ trưng bày cho công ty xây dựng..., khách phản hồi..., bước tiếp theo..."></textarea></div>
+    <div class="field"><label>Link Google Drive / minh chứng</label><textarea id="proposalEvidenceUrl" placeholder="Dán 1 hoặc nhiều link Google Drive, mỗi dòng một ảnh minh chứng..."></textarea></div>
+    <div class="actions">
+      <button id="submitKpiProposalBtn" class="primary" type="button">Gửi đề xuất</button>
+    </div>
+  </aside>
+
+  <div id="savingMask" class="saving-mask hide">Đang xử lý...</div>
+  <div id="notice" class="notice hide"></div>
+
+<script src="./js/supabase-config.js"></script>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
