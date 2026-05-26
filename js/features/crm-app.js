@@ -1007,19 +1007,19 @@ function watchData() {
     const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
     if (scopeKey) setScopedDocs(targetName, scopeKey, docs);
     else replaceDocs(targetName, docs);
-    renderAll();
+    scheduleRenderAll();
   };
 
   unsubscribers.push(onSnapshot(doc(db, "settings", "crm"), snap => {
     applySettings(snap.exists() ? snap.data() : {});
     hydrateSelects();
-    renderAll();
+    scheduleRenderAll();
   }, err => notice("Lỗi tải SETTINGS: " + authMessage(err), true)));
 
   unsubscribers.push(onSnapshot(collection(db, "kpiRules"), snap => {
     kpiRules = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(r => r.active !== false).sort((a,b) => clean(a.name).localeCompare(clean(b.name)));
     hydrateProposalKpiOptions();
-    renderAll();
+    scheduleRenderAll();
   }, err => notice("Lỗi tải KPI tháng: " + authMessage(err), true)));
 
   unsubscribers.push(onSnapshot(collection(db, "products"), snap => {
@@ -1036,7 +1036,7 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "users"), snap => {
       users = snap.docs.map(d => ({uid:d.id, ...d.data()})).sort((a,b) => clean(a.email).localeCompare(clean(b.email)));
       hydrateSelects();
-      renderAll();
+      scheduleRenderAll();
     }, err => notice("Lỗi tải tài khoản nhân viên: " + authMessage(err), true)));
     if (isAdmin()) {
       unsubscribers.push(onSnapshot(collection(db, "userSessions"), snap => {
@@ -1162,6 +1162,14 @@ const ordersViewIds = ["ordersPanel"];
 const productsViewIds = ["productsPanel"];
 const reportsViewIds = ["reportsPanel"];
 
+function renderCrmView() {
+  renderKpis();
+  renderExecutiveDashboard();
+  renderPipelineReport();
+  requestChartRender();
+  renderNeedCare();
+}
+
 function setMainView(view) {
   activeMainView = ["customers","kpi","orders","products","reports","admin"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
@@ -1206,6 +1214,7 @@ function setMainView(view) {
   $("kpiViewBtn")?.classList.toggle("primary", isKpiView);
   $("reportsViewBtn")?.classList.toggle("primary", isReportsView);
   $("adminViewBtn")?.classList.toggle("primary", isAdminView);
+  if (!isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isReportsView && !isAdminView) renderCrmView();
   if (isCustomerView) renderCustomers();
   if (isKpiView) {
     renderKpiTable();
@@ -2906,24 +2915,8 @@ async function saveUserAdmin(uid) {
 
 function renderAll() {
   if (!$("appView") || $("appView").classList.contains("hide")) return;
-  renderKpis();
-  renderExecutiveDashboard();
-  renderPipelineReport();
-  requestChartRender();
-  renderNeedCare();
   renderTodayCare();
-  renderCustomers();
-  renderOrders();
-  renderProducts();
-  renderReportCenter();
-  renderKpiTable();
-  renderKpiRuleList();
-  renderKpiApprovalPanel();
   renderOnlineUsers();
-  renderHealthCheck();
-  renderUserAdmin();
-  renderTrash();
-  renderAuditTrail();
   if (selectedCustomerId) {
     renderCustomerInfo(customers.find(c => c.id === selectedCustomerId));
     renderHistories(selectedCustomerId);
@@ -4396,7 +4389,7 @@ $("careStatus").addEventListener("change", updateCareStatusVisual);
 $("source").addEventListener("change", () => { hydrateChannelOptions(); togglePartnerFields(); });
 $("channel").addEventListener("change", togglePartnerFields);
 $("customerType").addEventListener("change", togglePartnerFields);
-$("filterSource").addEventListener("change", () => { hydrateFilterChannelOptions(); renderAll(); });
+$("filterSource").addEventListener("change", () => { hydrateFilterChannelOptions(); scheduleRenderAll(); });
 $("editSource").addEventListener("change", () => { hydrateEditChannelOptions(); toggleEditPartnerFields(); });
 $("editChannel").addEventListener("change", toggleEditPartnerFields);
 $("editCustomerType").addEventListener("change", toggleEditPartnerFields);
