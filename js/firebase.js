@@ -25,6 +25,7 @@ const tableMap = {
 
 const reverseTableMap = Object.fromEntries(Object.entries(tableMap).map(([k, v]) => [v, k]));
 const listeners = new Set();
+const realtimeTables = new Map();
 const DELETE_FIELD = Symbol("deleteField");
 
 function clean(value) {
@@ -341,11 +342,44 @@ async function deleteRef(ref) {
 }
 
 let refreshTimer = null;
-function refreshListeners() {
+function refreshListeners(table = "") {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
-    listeners.forEach(listener => listener.fetch().catch(err => listener.error?.(err)));
+    listeners.forEach(listener => {
+      if (table && listener.table !== table) return;
+      listener.fetch().catch(err => listener.error?.(err));
+    });
   }, 120);
+}
+
+function realtimeTableFor(target) {
+  return target?.collection ? tableName(target.collection) : "";
+}
+
+function subscribeRealtime(table) {
+  if (!table) return () => {};
+  const existing = realtimeTables.get(table);
+  if (existing) {
+    existing.count += 1;
+    return () => unsubscribeRealtime(table);
+  }
+
+  const channel = supabase
+    .channel(`crm-realtime-${table}`)
+    .on("postgres_changes", { event: "*", schema: "public", table }, () => refreshListeners(table))
+    .subscribe();
+
+  realtimeTables.set(table, { channel, count: 1 });
+  return () => unsubscribeRealtime(table);
+}
+
+function unsubscribeRealtime(table) {
+  const existing = realtimeTables.get(table);
+  if (!existing) return;
+  existing.count -= 1;
+  if (existing.count > 0) return;
+  realtimeTables.delete(table);
+  supabase.removeChannel(existing.channel);
 }
 
 export function collection(_dbOrRef, name) {
@@ -396,6 +430,7 @@ export async function setDoc(ref, data, options) {
 export function onSnapshot(target, next, error) {
   const listener = {
     target,
+    table: realtimeTableFor(target),
     error,
     fetch: async () => {
       if (target.type === "doc") {
@@ -412,8 +447,12 @@ export function onSnapshot(target, next, error) {
     }
   };
   listeners.add(listener);
+  const unsubscribeRealtimeTable = subscribeRealtime(listener.table);
   listener.fetch().catch(err => error?.(err));
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+    unsubscribeRealtimeTable();
+  };
 }
 
 export function writeBatch() {

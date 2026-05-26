@@ -1,0 +1,11 @@
+alter publication supabase_realtime add table public.app_users;
+alter publication supabase_realtime add table public.settings;
+alter publication supabase_realtime add table public.customers;
+alter publication supabase_realtime add table public.care_logs;
+alter publication supabase_realtime add table public.deals;
+alter publication supabase_realtime add table public.products;
+alter publication supabase_realtime add table public.kpi_rules;
+alter publication supabase_realtime add table public.kpi_proposals;
+alter publication supabase_realtime add table public.phone_index;
+alter publication supabase_realtime add table public.audit_logs;
+alter publication supabase_realtime add table public.user_sessions;
