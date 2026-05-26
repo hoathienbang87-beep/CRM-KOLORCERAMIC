@@ -179,7 +179,7 @@ function withActionTimeout(promise, label, ms=45000) {
 }
 
 const scheduleRenderAll = debounce(() => renderAll(), 180);
-const scheduleRenderChart = debounce(() => { renderChart(); renderChannelReportChart(); }, 180);
+const scheduleRenderChart = debounce(() => requestChartRender(), 180);
 
 function authMessage(err) {
   const code = err?.code || "";
@@ -1353,15 +1353,37 @@ function openPipelineDetail(label) {
   );
 }
 
+function chartBox(canvas) {
+  if (!canvas || !canvas.isConnected) return null;
+  const wrap = canvas.parentElement;
+  const rect = (wrap || canvas).getBoundingClientRect();
+  const width = Math.floor(rect.width || canvas.clientWidth || 0);
+  const height = Math.floor(rect.height || canvas.clientHeight || 0);
+  if (width < 80 || height < 80) return null;
+  return {width, height};
+}
+
+let chartRetryTimer = null;
+function requestChartRender(retry=0) {
+  clearTimeout(chartRetryTimer);
+  const okGrowth = renderChart();
+  const okChannel = renderChannelReportChart();
+  if ((!okGrowth || !okChannel) && retry < 8) {
+    chartRetryTimer = setTimeout(() => requestChartRender(retry + 1), 120);
+  }
+}
+
 function renderChart() {
   const canvas = $("growthChart");
+  if (!canvas) return false;
+  const box = chartBox(canvas);
+  if (!box) return false;
   const ctx = canvas.getContext("2d");
   const ratio = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.max(320, rect.width * ratio);
-  canvas.height = Math.max(180, rect.height * ratio);
+  canvas.width = Math.max(320, box.width * ratio);
+  canvas.height = Math.max(180, box.height * ratio);
   ctx.setTransform(ratio,0,0,ratio,0,0);
-  const w = rect.width, h = rect.height;
+  const w = box.width, h = box.height;
   ctx.clearRect(0,0,w,h);
   const year = new Date().getFullYear();
   const counts = Array(12).fill(0);
@@ -1389,6 +1411,7 @@ function renderChart() {
     ctx.fillText(String(v), x-4, y-10);
     ctx.fillStyle = "#147a68";
   });
+  return true;
 }
 
 function inReportRange(c, range) {
@@ -1409,15 +1432,16 @@ function inReportRange(c, range) {
 
 function renderChannelReportChart() {
   const canvas = $("channelReportChart");
-  if (!canvas) return;
+  if (!canvas) return false;
+  const box = chartBox(canvas);
+  if (!box) return false;
   channelReportHitAreas = [];
   const ctx = canvas.getContext("2d");
   const ratio = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.max(320, rect.width * ratio);
-  canvas.height = Math.max(300, rect.height * ratio);
+  canvas.width = Math.max(320, box.width * ratio);
+  canvas.height = Math.max(300, box.height * ratio);
   ctx.setTransform(ratio,0,0,ratio,0,0);
-  const w = rect.width, h = rect.height;
+  const w = box.width, h = box.height;
   ctx.clearRect(0,0,w,h);
   const range = clean($("channelReportRange")?.value) || "month";
   const labels = uniq([...(settings.channels || []), "Khác"]).filter(Boolean);
@@ -1488,6 +1512,7 @@ function renderChannelReportChart() {
     ctx.fillText(String(value), padL + bw + 6, centerY + 4);
   });
   ctx.textAlign = "left";
+  return true;
 }
 
 function closeDetailModal() {
@@ -2884,8 +2909,7 @@ function renderAll() {
   renderKpis();
   renderExecutiveDashboard();
   renderPipelineReport();
-  renderChart();
-  renderChannelReportChart();
+  requestChartRender();
   renderNeedCare();
   renderTodayCare();
   renderCustomers();
