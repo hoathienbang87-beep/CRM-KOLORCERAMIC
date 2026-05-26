@@ -272,6 +272,13 @@ function stripUndefined(row) {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined));
 }
 
+function isAuditWritePolicyError(ref, error) {
+  return ref?.collection === "auditLogs" && (
+    error?.code === "42501" ||
+    /row-level security|permission denied/i.test(error?.message || "")
+  );
+}
+
 function snapFromRows(rows, collectionName) {
   return {
     docs: (rows || []).map(row => ({
@@ -322,7 +329,13 @@ async function writeRef(ref, data, options = {}) {
   }
   const onConflict = ref.collection === "phoneIndex" ? "phone" : "id";
   const { error } = await supabase.from(table).upsert(row, { onConflict });
-  if (error) throw error;
+  if (error) {
+    if (isAuditWritePolicyError(ref, error)) {
+      console.warn("Audit log was not written because Supabase RLS blocked it.", error);
+      return;
+    }
+    throw error;
+  }
   refreshListeners();
 }
 
