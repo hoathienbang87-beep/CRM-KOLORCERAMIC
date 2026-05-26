@@ -6,7 +6,12 @@ export const db = {};
 export const auth = {};
 
 export const supabase = createClient(config.url || "https://example.supabase.co", config.anonKey || "anon-key", {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: "crm-kolor-supabase-auth"
+  }
 });
 
 const tableMap = {
@@ -521,8 +526,26 @@ export async function signInWithPopup() {
 }
 
 export function onAuthStateChanged(_auth, callback) {
-  supabase.auth.getUser().then(({ data }) => callback(withFirebaseUserCompat(data.user)));
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(withFirebaseUserCompat(session?.user)));
+  let initialized = false;
+
+  supabase.auth.getSession().then(async ({ data }) => {
+    const sessionUser = data?.session?.user || null;
+    if (sessionUser) {
+      initialized = true;
+      callback(withFirebaseUserCompat(sessionUser));
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    initialized = true;
+    callback(withFirebaseUserCompat(userData?.user));
+  });
+
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "INITIAL_SESSION" && !initialized) return;
+    initialized = true;
+    callback(withFirebaseUserCompat(session?.user));
+  });
   return () => data.subscription.unsubscribe();
 }
 
