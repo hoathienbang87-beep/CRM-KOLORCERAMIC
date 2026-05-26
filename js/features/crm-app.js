@@ -156,7 +156,9 @@ async function runAction(buttonId, key, label, fn) {
   }
   $("savingMask")?.classList.remove("hide");
   try {
-    return await fn();
+    return await withActionTimeout(fn(), label || "Đang xử lý");
+  } catch (err) {
+    notice(authMessage(err), true);
   } finally {
     busyKeys.delete(key);
     if (btn) {
@@ -166,6 +168,14 @@ async function runAction(buttonId, key, label, fn) {
     }
     $("savingMask")?.classList.add("hide");
   }
+}
+
+function withActionTimeout(promise, label, ms=45000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} quá lâu, vui lòng kiểm tra mạng rồi thử lại.`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 const scheduleRenderAll = debounce(() => renderAll(), 180);
@@ -1271,15 +1281,17 @@ function renderExecutiveDashboard() {
   const pendingKpi = kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length;
   const dueCare = rows.filter(isCareDue);
   const overdueCare = rows.filter(isCareOverdue);
+  const depositDeals = reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
+  const canceledDeals = reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus"));
   const cards = [
-    ["Khách đang quản lý", rows.length, ""],
-    ["Khách mới tháng này", monthCustomers.length, ""],
-    ["Doanh số tháng", money(completedMonth.reduce((sum,d) => sum + dealAmount(d), 0)), ""],
-    ["Deal đang xử lý", pendingDeals.length, pendingDeals.length ? "warn" : ""],
-    ["Giá trị đang xử lý", money(pendingValue), pendingValue ? "warn" : ""],
-    ["Đơn hoàn thành", completedDeals.length, ""],
-    [systemLabel("depositStatus"), reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")).length, ""],
-    [systemLabel("canceledStatus"), reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus")).length, ""],
+    ["Khách đang quản lý", rows.length, "", "managed-customers"],
+    ["Khách mới tháng này", monthCustomers.length, "", "month-customers"],
+    ["Doanh số tháng", money(completedMonth.reduce((sum,d) => sum + dealAmount(d), 0)), "", "month-revenue"],
+    ["Deal đang xử lý", pendingDeals.length, pendingDeals.length ? "warn" : "", "pending-deals"],
+    ["Giá trị đang xử lý", money(pendingValue), pendingValue ? "warn" : "", "pending-deals"],
+    ["Đơn hoàn thành", completedDeals.length, "", "completed-deals"],
+    [systemLabel("depositStatus"), depositDeals.length, "", "deposit-deals"],
+    [systemLabel("canceledStatus"), canceledDeals.length, "", "canceled-deals"],
     ["Cần chăm", dueCare.length, dueCare.length ? "warn" : "", "due-care"],
     ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "bad" : "", "overdue-care"],
     ["KPI chờ duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
@@ -1516,6 +1528,37 @@ function customerDetailRows(rows) {
   `).join("")}</div>` : `<div class="muted">Không có khách trong nhóm này.</div>`;
 }
 
+function dealDetailRows(rows) {
+  return rows.length ? `<div class="detail-list">${rows.map(d => {
+    const c = customerById(d.customerId);
+    const statusClass = isCompletedDeal(d) ? "green" : (isCanceledDeal(d.dealStatus) || isFailStatus(d.dealStatus) ? "red" : "orange");
+    const statusText = isCompletedDeal(d) ? systemLabel("boughtStatus") : (isCanceledDeal(d.dealStatus) || isFailStatus(d.dealStatus) ? normalizeDealStatus(d.dealStatus) : normalizeDealStatus(d.dealStatus) || "Đang xử lý");
+    return `
+      <div class="detail-row">
+        <div class="detail-row-head">
+          <div>
+            <b>${esc(orderCustomerName(d) || "Khách hàng")}</b>
+            ${c.companyName ? `<div class="muted">${esc(c.companyName)}</div>` : ""}
+            <div class="detail-meta">
+              <span>${esc(orderCustomerPhone(d) || "Không SĐT")}</span>
+              <span>${esc(orderOwnerName(d) || "Chưa phụ trách")}</span>
+              <span>${esc(fmtDate(d.dealDate || d.createdAt) || "")}</span>
+            </div>
+          </div>
+          <button class="small primary" data-open-care="${esc(d.customerId)}">Mở khách</button>
+        </div>
+        <div class="detail-meta">
+          <span class="pill ${statusClass}">${esc(statusText)}</span>
+          ${d.completedAt ? `<span>Ngày mua: ${esc(fmtDate(d.completedAt))}</span>` : ""}
+          ${d.deliveryDate ? `<span>Hẹn giao: ${esc(fmtDate(d.deliveryDate))}</span>` : ""}
+        </div>
+        <div><b>${esc(money(dealAmount(d)))}</b>${orderProductText(d) ? ` · ${esc(orderProductText(d))}` : ""}</div>
+        ${d.note ? `<div class="detail-note">${esc(d.note)}</div>` : ""}
+      </div>
+    `;
+  }).join("")}</div>` : `<div class="muted">Không có đơn hàng trong nhóm này.</div>`;
+}
+
 function openCareDashboardDetail(type) {
   if (!isManager()) return;
   const isOverdue = type === "overdue-care";
@@ -1529,6 +1572,44 @@ function openCareDashboardDetail(type) {
     isOverdue ? "Quá hạn chăm" : "Cần chăm",
     `${rows.length} khách ${isOverdue ? "đã quá hạn chăm" : "đang cần chăm"}`,
     customerDetailRows(rows)
+  );
+}
+
+function openDashboardCustomerDetail(type) {
+  if (!isManager()) return;
+  const rows = currentReportCustomers();
+  const month = currentMonth();
+  const matched = type === "month-customers" ? rows.filter(c => monthOf(c.createdAt) === month) : rows;
+  openDetailModal(
+    type === "month-customers" ? "Khách mới tháng này" : "Khách đang quản lý",
+    `${matched.length} khách`,
+    customerDetailRows([...matched].sort(byDateDesc))
+  );
+}
+
+function openDashboardDealDetail(type) {
+  if (!isManager()) return;
+  const reportDeals = currentReportDeals();
+  const month = currentMonth();
+  const pendingDeals = reportDeals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const completedDeals = reportDeals.filter(isCompletedDeal);
+  const monthCompleted = completedDeals.filter(d => monthOf(d.completedAt || d.dealDate || d.createdAt) === month);
+  const depositDeals = reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
+  const canceledDeals = reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus"));
+  const config = {
+    "pending-deals": ["Deal đang xử lý", pendingDeals],
+    "completed-deals": ["Đơn hoàn thành", completedDeals],
+    "month-revenue": ["Doanh số tháng", monthCompleted],
+    "deposit-deals": [systemLabel("depositStatus"), depositDeals],
+    "canceled-deals": [systemLabel("canceledStatus"), canceledDeals]
+  }[type];
+  if (!config) return;
+  const [title, rows] = config;
+  const total = rows.reduce((sum,d) => sum + dealAmount(d), 0);
+  openDetailModal(
+    title,
+    `${rows.length} đơn · Tổng giá trị ${money(total)}`,
+    dealDetailRows([...rows].sort((a,b) => String(orderDate(b)).localeCompare(String(orderDate(a))) || byDateDesc(a,b)))
   );
 }
 
@@ -4212,6 +4293,8 @@ document.addEventListener("click", e => {
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
+  if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
+  if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
   if (dashboardAction === "pending-kpi") jumpToPendingKpi();
   if (careId) {
     closeDetailModal();
@@ -4259,6 +4342,8 @@ document.addEventListener("keydown", e => {
   if (!dashboardAction) return;
   e.preventDefault();
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
+  if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
+  if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
   if (dashboardAction === "pending-kpi") jumpToPendingKpi();
 });
 
