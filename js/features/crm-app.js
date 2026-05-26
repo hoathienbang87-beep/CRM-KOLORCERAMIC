@@ -1903,6 +1903,26 @@ function personExportCell(name, email) {
   return n || e;
 }
 
+function exportXlsx(sheets, fileBaseName) {
+  const XLSX = window.XLSX;
+  if (!XLSX?.utils?.aoa_to_sheet || !XLSX?.writeFile) {
+    notice("Chưa tải được thư viện xuất XLSX. Hãy tải lại trang rồi thử lại.", true);
+    return false;
+  }
+  const workbook = XLSX.utils.book_new();
+  sheets.forEach((sheet, index) => {
+    const rows = (sheet.rows || []).map(row => row.map(value => value == null ? "" : value));
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet["!cols"] = rows[0]?.map((_, colIndex) => ({
+      wch: Math.min(42, Math.max(12, ...rows.map(row => clean(row[colIndex]).length + 2)))
+    })) || [];
+    const rawName = clean(sheet.name) || `Sheet ${index + 1}`;
+    XLSX.utils.book_append_sheet(workbook, worksheet, rawName.slice(0, 31));
+  });
+  XLSX.writeFile(workbook, `${fileBaseName}.xlsx`, { compression: true });
+  return true;
+}
+
 async function logKpiExport({month, week, summaryRows, proposalRows, monthRules}) {
   await setDoc(doc(collection(db, "auditLogs")), {
     action: "exportKpiReport",
@@ -1955,23 +1975,6 @@ async function exportKpiReport() {
       p.content || "", p.evidenceUrl || "", fmtDate(p.createdAt), p.reviewedByEmail || "", fmtDate(p.reviewedAt), p.reviewNote || ""
     ])
   ];
-  const renderTable = rows => `<table>${rows.map((r, idx) => `<tr>${r.map((v, colIdx) => {
-    const isTitle = idx === 0;
-    const firstCol = colIdx === 0 ? "white-space:nowrap;min-width:220px;" : "";
-    return excelCell(v, idx <= 1 ? "th" : "td", `${firstCol}${isTitle ? "font-size:15pt;text-align:left;background:#d9ead3;" : ""}`);
-  }).join("")}</tr>`).join("")}</table>`;
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body, table { font-family: "Times New Roman", Times, serif; font-size: 12pt; }
-    table { border-collapse: collapse; margin-bottom: 22px; }
-    th { background: #eaf2f8; font-weight: bold; }
-  </style>
-</head>
-<body>${renderTable(summaryTable)}${renderTable(proposalTable)}</body>
-</html>`;
   let logged = true;
   try {
     await logKpiExport(report);
@@ -1979,13 +1982,10 @@ async function exportKpiReport() {
     logged = false;
     notice("File vẫn được xuất, nhưng chưa ghi được log KPI: " + authMessage(err), true);
   }
-  const blob = new Blob(["\ufeff" + html], {type:"application/vnd.ms-excel;charset=utf-8"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `crm-kpi-report-${month}.xls`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  if (logged) notice("Đã xuất báo cáo KPI và ghi log thao tác.");
+  if (exportXlsx([
+    { name: "Tong hop KPI", rows: summaryTable },
+    { name: "De xuat KPI", rows: proposalTable }
+  ], `crm-kpi-report-${month}`) && logged) notice("Đã xuất báo cáo KPI và ghi log thao tác.");
 }
 
 async function logManagementExport(report) {
@@ -2049,19 +2049,6 @@ async function exportManagementReport() {
         c.note || ""
       ])
   ];
-  const renderSimpleTable = rows => `<table>${rows.map((r, idx) => `<tr>${r.map(v => excelCell(v, idx === 0 ? "th" : "td", idx === 0 ? "background:#eaf2f8;font-weight:bold;" : "")).join("")}</tr>`).join("")}</table>`;
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body, table { font-family: "Times New Roman", Times, serif; font-size: 12pt; }
-    table { border-collapse: collapse; margin-bottom: 22px; }
-    th { background: #eaf2f8; font-weight: bold; }
-  </style>
-</head>
-<body>${renderSimpleTable(summaryRows)}${renderSimpleTable(pipelineRows)}${renderSimpleTable(riskRows)}</body>
-</html>`;
   let logged = true;
   try {
     await logManagementExport(report);
@@ -2069,13 +2056,11 @@ async function exportManagementReport() {
     logged = false;
     notice("File vẫn được xuất, nhưng chưa ghi được log quản trị: " + authMessage(err), true);
   }
-  const blob = new Blob(["\ufeff" + html], {type:"application/vnd.ms-excel;charset=utf-8"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `crm-management-report-${todayIso()}.xls`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  if (logged) notice("Đã xuất báo cáo quản trị và ghi log thao tác.");
+  if (exportXlsx([
+    { name: "Tong hop", rows: summaryRows },
+    { name: "Pipeline", rows: pipelineRows },
+    { name: "Can chu y", rows: riskRows }
+  ], `crm-management-report-${todayIso()}`) && logged) notice("Đã xuất báo cáo quản trị và ghi log thao tác.");
 }
 
 function renderOnlineUsers() {
@@ -4046,29 +4031,7 @@ function exportOrders() {
       ];
     })
   ];
-  const tableRows = dataRows.map((r, idx) => `<tr>${r.map(v => {
-    const tag = idx <= 1 ? "th" : "td";
-    const extra = idx === 0 ? "font-size:15pt;text-align:left;background:#d9ead3;" : "";
-    return `<${tag} style="mso-number-format:'\\@';border:1px solid #d9d9d9;padding:6px;${extra}">${esc(v ?? "")}</${tag}>`;
-  }).join("")}</tr>`).join("");
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body, table { font-family: "Times New Roman", Times, serif; font-size: 12pt; }
-    table { border-collapse: collapse; }
-    th { background: #eaf2f8; font-weight: bold; }
-  </style>
-</head>
-<body><table>${tableRows}</table></body>
-</html>`;
-  const blob = new Blob(["\ufeff" + html], {type:"application/vnd.ms-excel;charset=utf-8"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `crm-don-hang-${new Date().toISOString().slice(0,10)}.xls`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  exportXlsx([{ name: "Don hang", rows: dataRows }], `crm-don-hang-${new Date().toISOString().slice(0,10)}`);
 }
 
 function activityRowsForExport() {
@@ -4195,29 +4158,7 @@ function exportCsv() {
       ];
     })
   ];
-  const tableRows = dataRows.map((r, idx) => `<tr>${r.map(v => {
-    const tag = idx <= 1 ? "th" : "td";
-    const extra = idx === 0 ? "font-size:15pt;text-align:left;background:#d9ead3;" : "";
-    return `<${tag} style="mso-number-format:'\\@';border:1px solid #d9d9d9;padding:6px;${extra}">${esc(v ?? "")}</${tag}>`;
-  }).join("")}</tr>`).join("");
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body, table { font-family: "Times New Roman", Times, serif; font-size: 12pt; }
-    table { border-collapse: collapse; }
-    th { background: #eaf2f8; font-weight: bold; }
-  </style>
-</head>
-<body><table>${tableRows}</table></body>
-</html>`;
-  const blob = new Blob(["\ufeff" + html], {type:"application/vnd.ms-excel;charset=utf-8"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `crm-khach-hang-theo-bo-loc-${new Date().toISOString().slice(0,10)}.xls`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  exportXlsx([{ name: "Khach hang", rows: dataRows }], `crm-khach-hang-theo-bo-loc-${new Date().toISOString().slice(0,10)}`);
 }
 
 function showLogin() {
