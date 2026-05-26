@@ -81,6 +81,7 @@ let channelReportHitAreas = [];
 let activeMainView = "crm";
 let editingKpiRuleId = "";
 let kpiProposalCustomerContext = null;
+let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI_EVIDENCE_MAX_FILES = 6;
 const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
@@ -4245,8 +4246,10 @@ function showApp() {
 async function loginEmailPassword() {
   try {
     $("loginError").textContent = "";
+    pendingLoginSuccessNotice = true;
     await signInWithEmailAndPassword(auth, clean($("loginEmail").value), $("loginPassword").value);
   } catch (err) {
+    pendingLoginSuccessNotice = false;
     $("loginError").textContent = authMessage(err);
   }
 }
@@ -4255,8 +4258,10 @@ async function loginGoogle() {
   try {
     $("loginError").textContent = "";
     if (location.protocol === "file:") throw {code:"auth/unauthorized-domain"};
+    pendingLoginSuccessNotice = true;
     await signInWithPopup(auth, new GoogleAuthProvider());
   } catch (err) {
+    pendingLoginSuccessNotice = false;
     $("loginError").textContent = authMessage(err);
   }
 }
@@ -4470,8 +4475,10 @@ onAuthStateChanged(auth, async user => {
     startPresence();
     showApp();
     watchData();
-    notice("Đăng nhập thành công.");
+    if (pendingLoginSuccessNotice) notice("Đăng nhập thành công.");
+    pendingLoginSuccessNotice = false;
   } catch (err) {
+    pendingLoginSuccessNotice = false;
     $("loginError").textContent = authMessage(err);
     await signOut(auth);
   }
