@@ -272,6 +272,13 @@
               <tbody id="kpiRows"></tbody>
             </table>
           </div>
+          <div id="kpiMyProposalPanel" class="section" style="margin-top:14px">
+            <div class="pro-section-title">
+              <h3>Đề xuất KPI của tôi</h3>
+              <span class="muted">Chờ duyệt được sửa/xóa; đã duyệt hoặc từ chối sẽ khóa để giữ log</span>
+            </div>
+            <div id="kpiMyProposalList" class="detail-list muted">Chưa có đề xuất KPI.</div>
+          </div>
         </div>
 
         <div id="kpiRulePanel" class="panel hide" style="margin-top:14px">
@@ -486,7 +493,7 @@
   <aside id="kpiProposalModal" class="drawer hide">
     <div class="drawer-head">
       <div>
-        <h2 style="margin:0">Đề Xuất KPI</h2>
+        <h2 id="proposalModalTitle" style="margin:0">Đề Xuất KPI</h2>
         <div class="muted">Gửi nội dung công việc để manager/admin xem xét</div>
       </div>
       <button id="closeKpiProposalBtn" class="small" type="button">Đóng</button>

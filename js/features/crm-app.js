@@ -80,6 +80,7 @@ let presenceTimer = null;
 let channelReportHitAreas = [];
 let activeMainView = "crm";
 let editingKpiRuleId = "";
+let editingKpiProposalId = "";
 let kpiProposalCustomerContext = null;
 let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
@@ -1219,6 +1220,7 @@ function setMainView(view) {
   if (isCustomerView) renderCustomers();
   if (isKpiView) {
     renderKpiTable();
+    renderMyKpiProposalPanel();
     renderKpiRuleList();
     renderKpiApprovalPanel();
   }
@@ -1846,6 +1848,41 @@ function renderKpiTable() {
   }).join("") || `<tr><td colspan="${9 + monthRules.length}" class="muted">Chưa có KPI.</td></tr>`;
 }
 
+function kpiProposalStatusLabel(p) {
+  if (isApprovedKpiProposal(p)) return "Đã duyệt";
+  if (isRejectedKpiProposal(p)) return "Từ chối";
+  return "Chờ duyệt";
+}
+
+function kpiProposalStatusClass(p) {
+  if (isApprovedKpiProposal(p)) return "green";
+  if (isRejectedKpiProposal(p)) return "red";
+  return "orange";
+}
+
+function ownKpiProposals() {
+  return kpiProposals
+    .filter(p => !p.isDeleted)
+    .filter(p => [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(p, key)))
+    .sort(byDateDesc);
+}
+
+function renderMyKpiProposalPanel() {
+  if (!$("kpiMyProposalList")) return;
+  const rows = ownKpiProposals();
+  const pending = rows.filter(isPendingKpiProposal).length;
+  const approved = rows.filter(isApprovedKpiProposal).length;
+  const rejected = rows.filter(isRejectedKpiProposal).length;
+  $("kpiMyProposalList").innerHTML = rows.length ? `
+    <div class="detail-meta" style="margin-bottom:8px">
+      <span>Chờ duyệt: ${esc(pending)}</span>
+      <span>Đã duyệt: ${esc(approved)}</span>
+      <span>Từ chối: ${esc(rejected)}</span>
+    </div>
+    ${rows.map(kpiProposalCard).join("")}
+  ` : `<div class="muted">Bạn chưa gửi đề xuất KPI nào.</div>`;
+}
+
 function kpiReportData() {
   const week = clean($("filterWeek").value);
   const month = clean($("kpiRuleMonth").value) || currentMonth();
@@ -2305,7 +2342,7 @@ function evidencePreviewHtml(value) {
 
 function kpiProposalDetailHtml(p) {
   const rule = kpiRules.find(r => r.id === p.kpiRuleId);
-  const statusLabel = isApprovedKpiProposal(p) ? "Đã duyệt" : (isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt");
+  const statusLabel = kpiProposalStatusLabel(p);
   return `
     <div class="detail-list">
       <div class="detail-row">
@@ -2346,6 +2383,7 @@ function kpiProposalDetailHtml(p) {
         ${p.reviewNote ? `<div><b>Ghi chú duyệt/từ chối</b><div class="detail-note">${esc(p.reviewNote)}</div></div>` : ""}
         ${(isAdmin() || canSoftDeleteKpiProposal(p)) ? `
           <div class="actions">
+            ${canEditKpiProposal(p) ? `<button class="small primary" data-edit-kpi-proposal="${esc(p.id)}">Sửa đề xuất</button>` : ""}
             ${canSoftDeleteKpiProposal(p) ? `<button class="small danger" data-soft-delete-kpi-proposal="${esc(p.id)}">Xóa đề xuất</button>` : ""}
             ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Xóa KPI test</button>` : ""}
           </div>
@@ -2356,14 +2394,14 @@ function kpiProposalDetailHtml(p) {
 }
 
 function kpiProposalCard(p) {
-  const statusLabel = isApprovedKpiProposal(p) ? "Đã duyệt" : (isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt");
+  const statusLabel = kpiProposalStatusLabel(p);
   return `
     <div class="detail-row">
       <div class="detail-row-head">
         <div>
           <b>${esc(p.kpiName || "KPI")}</b>
           <div class="detail-meta">
-            <span>${esc(statusLabel)}</span>
+            <span class="pill ${kpiProposalStatusClass(p)}">${esc(statusLabel)}</span>
             <span>${esc([p.owner, p.email || p.ownerEmail].filter(Boolean).join(" - "))}</span>
             ${p.customerName ? `<span>KH: ${esc(p.customerName)}</span>` : ""}
             <span>${esc(fmtDate(p.createdAt) || "")}</span>
@@ -2371,6 +2409,7 @@ function kpiProposalCard(p) {
         </div>
         <div class="actions">
           <button class="small" data-kpi-proposal-detail="${esc(p.id)}">Chi tiết</button>
+          ${canEditKpiProposal(p) ? `<button class="small primary" data-edit-kpi-proposal="${esc(p.id)}">Sửa</button>` : ""}
           ${canSoftDeleteKpiProposal(p) ? `<button class="small danger" data-soft-delete-kpi-proposal="${esc(p.id)}">Xóa đề xuất</button>` : ""}
           ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Xóa test</button>` : ""}
         </div>
@@ -2415,8 +2454,13 @@ function canViewKpiProposalDetail(proposal) {
   return isManager() || [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(proposal, key));
 }
 
+function canEditKpiProposal(proposal) {
+  if (!proposal || proposal.isDeleted || !isPendingKpiProposal(proposal)) return false;
+  return [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(proposal, key));
+}
+
 function canSoftDeleteKpiProposal(proposal) {
-  if (!proposal || proposal.isDeleted || isAdmin()) return false;
+  if (!proposal || proposal.isDeleted || isAdmin() || !isPendingKpiProposal(proposal)) return false;
   return [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(proposal, key));
 }
 
@@ -2428,15 +2472,15 @@ function openKpiOwnerDetail(ruleId, ownerKey) {
   const allRows = kpiProposalsForRule(ruleId)
     .filter(p => kpiProposalMatchesOwner(p, ownerKey))
     .sort(byDateDesc);
-  const rows = allRows.filter(isApprovedKpiProposal);
-  const approved = rows.length;
+  const rows = allRows;
+  const approved = allRows.filter(isApprovedKpiProposal).length;
   const pending = allRows.filter(isPendingKpiProposal).length;
   const rejected = allRows.filter(isRejectedKpiProposal).length;
   const target = kpiRuleTargetForOwner(rule, ownerKey);
   openDetailModal(
     `KPI: ${rule.name || "KPI"}`,
     `${profile.name || ownerKey}${profile.email && profile.email !== profile.name ? " · " + profile.email : ""} · Đã duyệt ${approved}/${target || 0} · Chờ ${pending} · Từ chối ${rejected}`,
-    `${rule.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Nhân viên này chưa có đề xuất KPI đã duyệt.</div>`}`
+    `${rule.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Nhân viên này chưa có đề xuất KPI.</div>`}`
   );
 }
 
@@ -2627,8 +2671,11 @@ async function uploadKpiEvidenceFiles(proposalId) {
 function openKpiProposalModal(source = "") {
   const customerId = typeof source === "string" ? source : "";
   const customer = customerId ? customers.find(c => c.id === customerId) : null;
+  editingKpiProposalId = "";
   kpiProposalCustomerContext = kpiProposalCustomerData(customer);
   hydrateProposalKpiOptions();
+  $("proposalModalTitle").textContent = "Đề Xuất KPI";
+  $("submitKpiProposalBtn").textContent = "Gửi đề xuất";
   $("proposalName").value = ownerName();
   $("proposalEmail").value = ownerEmail();
   $("proposalPhone").value = clean(appUser?.phone || appUser?.phoneRaw || "");
@@ -2653,10 +2700,56 @@ function openKpiProposalModal(source = "") {
   setTimeout(() => (kpiProposalCustomerContext ? $("proposalKpiRule") : $("proposalContent")).focus(), 50);
 }
 
+function openEditKpiProposal(proposalId) {
+  const proposal = kpiProposals.find(p => p.id === proposalId);
+  if (!proposal) return notice("Không tìm thấy đề xuất KPI.", true);
+  if (!canEditKpiProposal(proposal)) return notice("Chỉ đề xuất KPI đang chờ duyệt của bạn mới được sửa.", true);
+  editingKpiProposalId = proposal.id;
+  kpiProposalCustomerContext = {
+    customerId: proposal.customerId || "",
+    customerName: proposal.customerName || "",
+    customerPhone: proposal.customerPhone || "",
+    customerCompanyName: proposal.customerCompanyName || "",
+    customerChannel: proposal.customerChannel || ""
+  };
+  if (proposal.month && $("kpiRuleMonth")) $("kpiRuleMonth").value = proposal.month;
+  hydrateProposalKpiOptions();
+  $("proposalModalTitle").textContent = "Sửa đề xuất KPI";
+  $("submitKpiProposalBtn").textContent = "Lưu đề xuất";
+  $("proposalKpiRule").value = proposal.kpiRuleId || "";
+  $("proposalName").value = proposal.owner || ownerName();
+  $("proposalEmail").value = proposal.email || proposal.ownerEmail || ownerEmail();
+  $("proposalPhone").value = proposal.phone || "";
+  $("proposalDepartment").value = proposal.department || "";
+  $("proposalContent").value = proposal.content || "";
+  $("proposalEvidenceUrl").value = proposal.evidenceUrl || "";
+  if ($("proposalEvidenceFiles")) $("proposalEvidenceFiles").value = "";
+  if ($("proposalCustomerContext")) {
+    const hasCustomer = Object.values(kpiProposalCustomerContext).some(Boolean);
+    $("proposalCustomerContext").classList.toggle("hide", !hasCustomer);
+    $("proposalCustomerContext").innerHTML = hasCustomer ? `
+      <b>Thông tin khách hàng</b>
+      <div class="detail-meta">
+        <span>${esc(kpiProposalCustomerContext.customerName || "Chưa có tên")}</span>
+        <span>${esc(kpiProposalCustomerContext.customerPhone || "Không SĐT")}</span>
+        ${kpiProposalCustomerContext.customerCompanyName ? `<span>${esc(kpiProposalCustomerContext.customerCompanyName)}</span>` : ""}
+        ${kpiProposalCustomerContext.customerChannel ? `<span>${esc(kpiProposalCustomerContext.customerChannel)}</span>` : ""}
+      </div>
+    ` : "";
+  }
+  closeDetailModal();
+  $("kpiProposalBackdrop").classList.remove("hide");
+  $("kpiProposalModal").classList.remove("hide");
+  setTimeout(() => $("proposalContent").focus(), 50);
+}
+
 function closeKpiProposalModal() {
   $("kpiProposalBackdrop").classList.add("hide");
   $("kpiProposalModal").classList.add("hide");
   if ($("proposalEvidenceFiles")) $("proposalEvidenceFiles").value = "";
+  editingKpiProposalId = "";
+  $("proposalModalTitle").textContent = "Đề Xuất KPI";
+  $("submitKpiProposalBtn").textContent = "Gửi đề xuất";
   kpiProposalCustomerContext = null;
 }
 
@@ -2665,7 +2758,10 @@ async function submitKpiProposal() {
   const rule = kpiRules.find(r => r.id === clean($("proposalKpiRule").value));
   if (!rule) return notice("Vui lòng chọn KPI cần đề xuất.", true);
   if (!kpiRuleAppliesToCurrentUser(rule)) return notice("KPI này chưa được gán cho bạn.", true);
-  const proposalRef = doc(collection(db, "kpiProposals"));
+  const existingProposal = editingKpiProposalId ? kpiProposals.find(p => p.id === editingKpiProposalId) : null;
+  if (editingKpiProposalId && !canEditKpiProposal(existingProposal)) return notice("Đề xuất này đã được duyệt/từ chối hoặc bạn không còn quyền sửa.", true);
+  const isEditingProposal = Boolean(editingKpiProposalId);
+  const proposalRef = editingKpiProposalId ? doc(db, "kpiProposals", editingKpiProposalId) : doc(collection(db, "kpiProposals"));
   const manualEvidence = clean($("proposalEvidenceUrl").value);
   const content = clean($("proposalContent").value);
   if (!content) return notice("Vui lòng nhập nội dung công việc đạt KPI.", true);
@@ -2683,28 +2779,33 @@ async function submitKpiProposal() {
     ...(kpiProposalCustomerContext || {}),
     status: "pending",
     isDeleted: false,
-    createdByEmail: currentUser?.email || "",
-    createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
+  if (!isEditingProposal) {
+    data.createdByEmail = currentUser?.email || "";
+    data.createdAt = serverTimestamp();
+  } else {
+    data.updatedByEmail = currentUser?.email || "";
+  }
   try {
     const uploadedEvidence = await uploadKpiEvidenceFiles(proposalRef.id);
     data.evidenceUrl = [manualEvidence, ...uploadedEvidence].filter(Boolean).join("\n");
     const batch = writeBatch(db);
-    batch.set(proposalRef, data);
+    if (isEditingProposal) batch.update(proposalRef, data);
+    else batch.set(proposalRef, data);
     batch.set(doc(collection(db, "auditLogs")), {
-      action: "submitKpiProposal",
+      action: isEditingProposal ? "updateKpiProposal" : "submitKpiProposal",
       entity: "kpiProposals",
       entityId: proposalRef.id,
       email: currentUser?.email || "",
-      payloadJson: JSON.stringify({...data, createdAt: undefined, updatedAt: undefined}),
+      payloadJson: JSON.stringify({before: existingProposal || null, after: {...data, createdAt: undefined, updatedAt: undefined}}),
       createdAt: serverTimestamp()
     });
     await batch.commit();
     closeKpiProposalModal();
-    notice("Đã gửi đề xuất KPI cho manager/admin.");
+    notice(isEditingProposal ? "Đã cập nhật đề xuất KPI." : "Đã gửi đề xuất KPI cho manager/admin.");
   } catch (err) {
-    notice("Không gửi được đề xuất KPI: " + authMessage(err), true);
+    notice((isEditingProposal ? "Không cập nhật được đề xuất KPI: " : "Không gửi được đề xuất KPI: ") + authMessage(err), true);
   }
 }
 
@@ -2765,8 +2866,8 @@ async function deleteKpiProposal(proposalId) {
 async function softDeleteKpiProposal(proposalId) {
   const proposal = kpiProposals.find(p => p.id === proposalId);
   if (!proposal) return notice("Không tìm thấy đề xuất KPI.", true);
-  if (!canSoftDeleteKpiProposal(proposal)) return notice("Bạn chỉ xóa mềm được đề xuất KPI của chính mình.", true);
-  if (!confirm("Xóa đề xuất KPI này? Dữ liệu sẽ được ẩn khỏi KPI và manager/admin vẫn có thể kiểm tra log khi cần.")) return;
+  if (!canSoftDeleteKpiProposal(proposal)) return notice("Chỉ đề xuất KPI đang chờ duyệt của bạn mới được xóa.", true);
+  if (!confirm("Xóa đề xuất KPI đang chờ duyệt này? Dữ liệu sẽ được ẩn khỏi KPI và vẫn có log kiểm tra khi cần.")) return;
   try {
     const batch = writeBatch(db);
     batch.update(doc(db, "kpiProposals", proposalId), {
@@ -4243,6 +4344,7 @@ document.addEventListener("click", e => {
   const kpiRuleProposalId = e.target.closest("[data-kpi-rule-proposals]")?.dataset.kpiRuleProposals;
   const kpiOwnerDetailBtn = e.target.closest("[data-kpi-owner-detail]");
   const kpiProposalDetailId = e.target.closest("[data-kpi-proposal-detail]")?.dataset.kpiProposalDetail;
+  const editKpiProposalId = e.target.closest("[data-edit-kpi-proposal]")?.dataset.editKpiProposal;
   const customerKpiProposalId = e.target.closest("[data-open-kpi-proposal-customer]")?.dataset.openKpiProposalCustomer;
   const softDeleteKpiProposalId = e.target.closest("[data-soft-delete-kpi-proposal]")?.dataset.softDeleteKpiProposal;
   const deleteKpiProposalId = e.target.closest("[data-delete-kpi-proposal]")?.dataset.deleteKpiProposal;
@@ -4279,6 +4381,7 @@ document.addEventListener("click", e => {
   if (kpiRuleProposalId) openKpiRuleProposals(kpiRuleProposalId);
   if (kpiOwnerDetailBtn) openKpiOwnerDetail(kpiOwnerDetailBtn.dataset.kpiOwnerDetail, kpiOwnerDetailBtn.dataset.ownerKey);
   if (kpiProposalDetailId) openKpiProposalDetail(kpiProposalDetailId);
+  if (editKpiProposalId) openEditKpiProposal(editKpiProposalId);
   if (customerKpiProposalId) openKpiProposalModal(customerKpiProposalId);
   if (softDeleteKpiProposalId) softDeleteKpiProposal(softDeleteKpiProposalId);
   if (deleteKpiProposalId) deleteKpiProposal(deleteKpiProposalId);
