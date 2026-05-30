@@ -523,6 +523,9 @@ export async function signInWithEmailAndPassword(_auth, email, password) {
 export class GoogleAuthProvider {}
 
 export async function signInWithPopup() {
+  if (!config.url || !config.anonKey || config.url.includes("example.supabase.co")) {
+    throw new Error("Thiếu cấu hình Supabase Auth. Kiểm tra file js/supabase-config.js.");
+  }
   const redirectTo = `${window.location.origin}${window.location.pathname}`;
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
@@ -535,6 +538,7 @@ export async function signInWithPopup() {
     }
   });
   if (error) throw error;
+  if (data?.url) window.location.assign(data.url);
   return data;
 }
 

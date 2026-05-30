@@ -4298,7 +4298,7 @@ async function loginEmailPassword() {
 
 async function loginGoogle() {
   try {
-    $("loginError").textContent = "";
+    $("loginError").textContent = "Đang mở đăng nhập Google...";
     if (location.protocol === "file:") throw {code:"auth/unauthorized-domain"};
     pendingLoginSuccessNotice = true;
     await signInWithPopup(auth, new GoogleAuthProvider());
