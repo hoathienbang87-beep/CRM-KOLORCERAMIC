@@ -4271,18 +4271,30 @@ function exportCsv() {
   exportXlsx([{ name: "Khach hang", rows: dataRows }], `crm-khach-hang-theo-bo-loc-${new Date().toISOString().slice(0,10)}`);
 }
 
+function setViewHidden(id, hidden) {
+  const el = $(id);
+  if (!el) return;
+  if (hidden && el.contains(document.activeElement)) {
+    document.activeElement?.blur?.();
+  }
+  el.classList.toggle("hide", hidden);
+  el.toggleAttribute("inert", hidden);
+  if (hidden) el.setAttribute("aria-hidden", "true");
+  else el.removeAttribute("aria-hidden");
+}
+
 function showLogin() {
   stopPresence();
   stopWatchers();
-  $("loginView").classList.remove("hide");
-  $("appView").classList.add("hide");
+  setViewHidden("loginView", false);
+  setViewHidden("appView", true);
   $("onlinePanel").classList.add("hide");
   if (location.protocol === "file:") $("localWarning").classList.remove("hide");
 }
 
 function showApp() {
-  $("loginView").classList.add("hide");
-  $("appView").classList.remove("hide");
+  setViewHidden("loginView", true);
+  setViewHidden("appView", false);
   $("onlinePanel").classList.toggle("hide", !isAdmin());
   $("userText").textContent = currentUser.email || currentUser.displayName || "";
   $("roleText").textContent = `Vai trò: ${appUser.role || "sale"} · Tên hiển thị: ${ownerName()}`;
