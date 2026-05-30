@@ -194,6 +194,15 @@ function authMessage(err) {
   return err?.message || "Không đăng nhập được.";
 }
 
+function on(id, eventName, handler, options) {
+  const el = $(id);
+  if (!el) {
+    console.warn(`CRM: missing element #${id}`);
+    return;
+  }
+  el.addEventListener(eventName, handler, options);
+}
+
 function fillSelect(id, values, placeholder="-- Chọn --", allLabel="") {
   const el = $(id);
   if (!el) return;
@@ -4413,101 +4422,102 @@ document.addEventListener("keydown", e => {
   if (dashboardAction === "pending-kpi") jumpToPendingKpi();
 });
 
-["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => $(id).addEventListener("input", scheduleRenderAll));
-$("filterMonth").addEventListener("change", scheduleRenderAll);
-$("kpiRuleMonth").addEventListener("change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
-$("crmViewBtn").addEventListener("click", () => setMainView("crm"));
-$("customersViewBtn").addEventListener("click", () => setMainView("customers"));
-$("ordersViewBtn").addEventListener("click", () => setMainView("orders"));
-$("productsViewBtn").addEventListener("click", () => setMainView("products"));
-$("kpiViewBtn").addEventListener("click", () => setMainView("kpi"));
-$("reportsViewBtn").addEventListener("click", () => setMainView("reports"));
-$("adminViewBtn").addEventListener("click", () => setMainView("admin"));
-["orderFilterYear","orderFilterMonth","orderFilterOwner","orderFilterStatus"].forEach(id => $(id).addEventListener("change", renderOrders));
-["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).addEventListener("input", renderProducts));
-$("resetProductFilterBtn").addEventListener("click", () => {
+$("loginBtn")?.addEventListener("click", () => runAction("loginBtn", "login", "Đang đăng nhập...", loginEmailPassword));
+$("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLogin", "Đang mở Google...", loginGoogle));
+["loginEmail", "loginPassword"].forEach(id => on(id, "keydown", e => {
+  if (e.key === "Enter") runAction("loginBtn", "login", "Đang đăng nhập...", loginEmailPassword);
+}));
+
+["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => on(id, "input", scheduleRenderAll));
+on("filterMonth", "change", scheduleRenderAll);
+on("kpiRuleMonth", "change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
+on("crmViewBtn", "click", () => setMainView("crm"));
+on("customersViewBtn", "click", () => setMainView("customers"));
+on("ordersViewBtn", "click", () => setMainView("orders"));
+on("productsViewBtn", "click", () => setMainView("products"));
+on("kpiViewBtn", "click", () => setMainView("kpi"));
+on("reportsViewBtn", "click", () => setMainView("reports"));
+on("adminViewBtn", "click", () => setMainView("admin"));
+["orderFilterYear","orderFilterMonth","orderFilterOwner","orderFilterStatus"].forEach(id => on(id, "change", renderOrders));
+["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => on(id, "input", renderProducts));
+on("resetProductFilterBtn", "click", () => {
   ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).value = "");
   renderProducts();
 });
-$("kpiRuleTarget").addEventListener("input", () => {
+on("kpiRuleTarget", "input", () => {
   document.querySelectorAll("[data-kpi-target-email]").forEach(input => {
     if (!clean(input.value)) input.value = $("kpiRuleTarget").value;
   });
 });
-$("careStatus").addEventListener("change", updateCareStatusVisual);
-$("source").addEventListener("change", () => { hydrateChannelOptions(); togglePartnerFields(); });
-$("channel").addEventListener("change", togglePartnerFields);
-$("customerType").addEventListener("change", togglePartnerFields);
-$("filterSource").addEventListener("change", () => { hydrateFilterChannelOptions(); scheduleRenderAll(); });
-$("editSource").addEventListener("change", () => { hydrateEditChannelOptions(); toggleEditPartnerFields(); });
-$("editChannel").addEventListener("change", toggleEditPartnerFields);
-$("editCustomerType").addEventListener("change", toggleEditPartnerFields);
-$("loginBtn").addEventListener("click", () => runAction("loginBtn", "login", "Đang đăng nhập...", loginEmailPassword));
-$("googleBtn").addEventListener("click", () => runAction("googleBtn", "googleLogin", "Đang mở Google...", loginGoogle));
-$("logoutBtn").addEventListener("click", async () => {
+on("careStatus", "change", updateCareStatusVisual);
+on("source", "change", () => { hydrateChannelOptions(); togglePartnerFields(); });
+on("channel", "change", togglePartnerFields);
+on("customerType", "change", togglePartnerFields);
+on("filterSource", "change", () => { hydrateFilterChannelOptions(); scheduleRenderAll(); });
+on("editSource", "change", () => { hydrateEditChannelOptions(); toggleEditPartnerFields(); });
+on("editChannel", "change", toggleEditPartnerFields);
+on("editCustomerType", "change", toggleEditPartnerFields);
+on("logoutBtn", "click", async () => {
   try { await updatePresence(false); } catch {}
   await signOut(auth);
 });
-$("reloadBtn").addEventListener("click", () => runAction("reloadBtn", "reload", "Đang tải...", reloadApp));
-$("healthReloadBtn").addEventListener("click", renderHealthCheck);
-$("exportManagementReportBtn").addEventListener("click", () => runAction("exportManagementReportBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
-$("cleanupPhoneIndexBtn").addEventListener("click", () => runAction("cleanupPhoneIndexBtn", "cleanupPhoneIndex", "Đang dọn...", cleanupPhoneIndex));
-$("cleanupOrphansBtn").addEventListener("click", () => runAction("cleanupOrphansBtn", "cleanupOrphans", "Đang dọn...", cleanupOrphans));
-$("cleanupDataBtn").addEventListener("click", () => runAction("cleanupDataBtn", "cleanupData", "Đang dọn...", cleanupData));
-$("seedBtn").addEventListener("click", () => runAction("seedBtn", "seedSettings", "Đang tạo...", seedSettings));
-$("syncPhoneBtn").addEventListener("click", () => runAction("syncPhoneBtn", "syncPhone", "Đang đồng bộ...", syncPhoneIndex));
-$("syncOwnerBtn").addEventListener("click", () => runAction("syncOwnerBtn", "syncOwner", "Đang đồng bộ...", syncOwnerEmail));
-$("importBtn").addEventListener("click", () => $("importFile").click());
-$("importFile").addEventListener("change", handleImportFile);
-$("importProductsBtn").addEventListener("click", () => $("importProductsFile").click());
-$("importProductsFile").addEventListener("change", handleImportProductsFile);
-$("saveCustomerBtn").addEventListener("click", () => runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer));
-$("clearBtn").addEventListener("click", clearForm);
-$("enableNotifyBtn").addEventListener("click", () => runAction("enableNotifyBtn", "enableNotify", "Đang bật...", enableBrowserNotifications));
-$("resetFilterBtn").addEventListener("click", resetFilters);
-$("exportBtn").addEventListener("click", exportCsv);
-$("exportOrdersBtn").addEventListener("click", () => runAction("exportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
-$("exportKpiBtn").addEventListener("click", () => runAction("exportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
-$("reportExportManagementBtn").addEventListener("click", () => runAction("reportExportManagementBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
-$("reportExportKpiBtn").addEventListener("click", () => runAction("reportExportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
-$("reportExportOrdersBtn").addEventListener("click", () => runAction("reportExportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
-$("openKpiProposalBtn").addEventListener("click", () => openKpiProposalModal());
-$("openKpiProposalBtnTop").addEventListener("click", () => openKpiProposalModal());
-$("closeKpiProposalBtn").addEventListener("click", closeKpiProposalModal);
-$("kpiProposalBackdrop").addEventListener("click", closeKpiProposalModal);
-$("submitKpiProposalBtn").addEventListener("click", () => runAction("submitKpiProposalBtn", "submitKpiProposal", "Đang gửi...", submitKpiProposal));
-$("closeDetailModalBtn").addEventListener("click", closeDetailModal);
-$("detailModalBackdrop").addEventListener("click", closeDetailModal);
-$("closeDrawerBtn").addEventListener("click", closeDrawer);
-$("drawerBackdrop").addEventListener("click", closeDrawer);
-$("saveCareBtn").addEventListener("click", () => runAction("saveCareBtn", "saveCare", "Đang lưu...", saveCareLog));
-$("saveCareSettingsBtn").addEventListener("click", () => runAction("saveCareSettingsBtn", "saveCareSettings", "Đang lưu...", saveCareSettings));
-$("saveDropdownSettingsBtn").addEventListener("click", () => runAction("saveDropdownSettingsBtn", "saveDropdownSettings", "Đang lưu...", saveDropdownSettings));
-$("toggleCareHistoryBtn").addEventListener("click", toggleCareHistory);
-$("saveDealBtn").addEventListener("click", () => runAction("saveDealBtn", "saveDeal", "Đang lưu...", saveDeal));
-$("saveKpiRuleBtn").addEventListener("click", () => runAction("saveKpiRuleBtn", "saveKpiRule", "Đang lưu...", saveKpiRule));
-$("cancelEditKpiRuleBtn").addEventListener("click", resetKpiRuleForm);
-$("addDealItemBtn").addEventListener("click", () => addDealItem());
-$("dealItems").addEventListener("input", e => {
+on("reloadBtn", "click", () => runAction("reloadBtn", "reload", "Đang tải...", reloadApp));
+on("healthReloadBtn", "click", renderHealthCheck);
+on("exportManagementReportBtn", "click", () => runAction("exportManagementReportBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
+on("cleanupPhoneIndexBtn", "click", () => runAction("cleanupPhoneIndexBtn", "cleanupPhoneIndex", "Đang dọn...", cleanupPhoneIndex));
+on("cleanupOrphansBtn", "click", () => runAction("cleanupOrphansBtn", "cleanupOrphans", "Đang dọn...", cleanupOrphans));
+on("cleanupDataBtn", "click", () => runAction("cleanupDataBtn", "cleanupData", "Đang dọn...", cleanupData));
+on("seedBtn", "click", () => runAction("seedBtn", "seedSettings", "Đang tạo...", seedSettings));
+on("syncPhoneBtn", "click", () => runAction("syncPhoneBtn", "syncPhone", "Đang đồng bộ...", syncPhoneIndex));
+on("syncOwnerBtn", "click", () => runAction("syncOwnerBtn", "syncOwner", "Đang đồng bộ...", syncOwnerEmail));
+on("importBtn", "click", () => $("importFile").click());
+on("importFile", "change", handleImportFile);
+on("importProductsBtn", "click", () => $("importProductsFile").click());
+on("importProductsFile", "change", handleImportProductsFile);
+on("saveCustomerBtn", "click", () => runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer));
+on("clearBtn", "click", clearForm);
+on("enableNotifyBtn", "click", () => runAction("enableNotifyBtn", "enableNotify", "Đang bật...", enableBrowserNotifications));
+on("resetFilterBtn", "click", resetFilters);
+on("exportBtn", "click", exportCsv);
+on("exportOrdersBtn", "click", () => runAction("exportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
+on("exportKpiBtn", "click", () => runAction("exportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
+on("reportExportManagementBtn", "click", () => runAction("reportExportManagementBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
+on("reportExportKpiBtn", "click", () => runAction("reportExportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
+on("reportExportOrdersBtn", "click", () => runAction("reportExportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
+on("openKpiProposalBtn", "click", () => openKpiProposalModal());
+on("openKpiProposalBtnTop", "click", () => openKpiProposalModal());
+on("closeKpiProposalBtn", "click", closeKpiProposalModal);
+on("kpiProposalBackdrop", "click", closeKpiProposalModal);
+on("submitKpiProposalBtn", "click", () => runAction("submitKpiProposalBtn", "submitKpiProposal", "Đang gửi...", submitKpiProposal));
+on("closeDetailModalBtn", "click", closeDetailModal);
+on("detailModalBackdrop", "click", closeDetailModal);
+on("closeDrawerBtn", "click", closeDrawer);
+on("drawerBackdrop", "click", closeDrawer);
+on("saveCareBtn", "click", () => runAction("saveCareBtn", "saveCare", "Đang lưu...", saveCareLog));
+on("saveCareSettingsBtn", "click", () => runAction("saveCareSettingsBtn", "saveCareSettings", "Đang lưu...", saveCareSettings));
+on("saveDropdownSettingsBtn", "click", () => runAction("saveDropdownSettingsBtn", "saveDropdownSettings", "Đang lưu...", saveDropdownSettings));
+on("toggleCareHistoryBtn", "click", toggleCareHistory);
+on("saveDealBtn", "click", () => runAction("saveDealBtn", "saveDeal", "Đang lưu...", saveDeal));
+on("saveKpiRuleBtn", "click", () => runAction("saveKpiRuleBtn", "saveKpiRule", "Đang lưu...", saveKpiRule));
+on("cancelEditKpiRuleBtn", "click", resetKpiRuleForm);
+on("addDealItemBtn", "click", () => addDealItem());
+on("dealItems", "input", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
 });
-$("dealItems").addEventListener("change", e => {
+on("dealItems", "change", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
 });
-$("showPendingDealsBtn").addEventListener("click", () => showDealList("pending"));
-$("showCompletedDealsBtn").addEventListener("click", () => showDealList("completed"));
-$("closeDealListBtn").addEventListener("click", () => $("dealListSection").classList.add("hide"));
-$("editCustomerInfoBtn").addEventListener("click", () => toggleCustomerInfoEdit(true));
-$("cancelCustomerInfoBtn").addEventListener("click", () => toggleCustomerInfoEdit(false));
-$("saveCustomerInfoBtn").addEventListener("click", () => runAction("saveCustomerInfoBtn", "saveCustomerInfo", "Đang lưu...", saveCustomerInfo));
-$("deleteCustomerBtn").addEventListener("click", () => runAction("deleteCustomerBtn", "deleteCustomer", "Đang xóa...", deleteCustomer));
+on("showPendingDealsBtn", "click", () => showDealList("pending"));
+on("showCompletedDealsBtn", "click", () => showDealList("completed"));
+on("closeDealListBtn", "click", () => $("dealListSection").classList.add("hide"));
+on("editCustomerInfoBtn", "click", () => toggleCustomerInfoEdit(true));
+on("cancelCustomerInfoBtn", "click", () => toggleCustomerInfoEdit(false));
+on("saveCustomerInfoBtn", "click", () => runAction("saveCustomerInfoBtn", "saveCustomerInfo", "Đang lưu...", saveCustomerInfo));
+on("deleteCustomerBtn", "click", () => runAction("deleteCustomerBtn", "deleteCustomer", "Đang xóa...", deleteCustomer));
 window.addEventListener("resize", scheduleRenderChart);
-$("channelReportRange").addEventListener("change", scheduleRenderChart);
-$("channelReportChart").addEventListener("click", handleChannelReportClick);
-$("channelReportChart").addEventListener("mousemove", handleChannelReportPointer);
-["loginEmail", "loginPassword"].forEach(id => $(id).addEventListener("keydown", e => {
-  if (e.key === "Enter") runAction("loginBtn", "login", "Đang đăng nhập...", loginEmailPassword);
-}));
+on("channelReportRange", "change", scheduleRenderChart);
+on("channelReportChart", "click", handleChannelReportClick);
+on("channelReportChart", "mousemove", handleChannelReportPointer);
 
 onAuthStateChanged(auth, async user => {
   currentUser = user;
