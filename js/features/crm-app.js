@@ -189,7 +189,7 @@ function authMessage(err) {
   if (code.includes("invalid-credential") || code.includes("wrong-password")) return "Email hoặc mật khẩu chưa đúng.";
   if (code.includes("user-not-found")) return "Chưa có tài khoản này trong Supabase Authentication.";
   if (code.includes("popup")) return "Trình duyệt đang chặn popup đăng nhập Google.";
-  if (err?.message?.includes("permission")) return "Bạn chưa có quyền đọc/ghi Supabase. Hãy kiểm tra RLS và role/active trong bảng app_users.";
+  if (/permission|row-level security|violates row-level security|infinite recursion/i.test(err?.message || "")) return "Bạn chưa có quyền đọc/ghi Supabase. Hãy kiểm tra RLS và role/active trong bảng app_users.";
   if (err?.message?.includes("Chưa được cấp quyền")) return err.message;
   return err?.message || "Không đăng nhập được.";
 }
