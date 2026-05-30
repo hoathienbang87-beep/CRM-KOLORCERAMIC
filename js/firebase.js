@@ -1,6 +1,8 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-
 const config = window.CRM_SUPABASE_CONFIG || {};
+const createClient = window.supabase?.createClient;
+if (!createClient) {
+  throw new Error("Không tải được thư viện Supabase. Hãy kiểm tra mạng hoặc CDN jsdelivr.");
+}
 export const app = {};
 export const db = {};
 export const auth = {};
