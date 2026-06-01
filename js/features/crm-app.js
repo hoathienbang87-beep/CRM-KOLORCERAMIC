@@ -1451,6 +1451,12 @@ function inReportRange(c, range) {
   return d >= start && d <= now;
 }
 
+function channelReportRangeLabel(range) {
+  if (range === "week") return "tuần này";
+  if (range === "month") return "tháng này";
+  return "năm nay";
+}
+
 function renderChannelReportChart() {
   const canvas = $("channelReportChart");
   if (!canvas) return false;
@@ -1480,6 +1486,7 @@ function renderChannelReportChart() {
     rowsByLabel[ch].push(c);
   });
   const data = labels.map(label => [label, counts[label] || 0]);
+  const total = data.reduce((sum, [, value]) => sum + value, 0);
   const max = Math.max(1, ...data.map(([,v]) => v));
   const padL = Math.min(220, Math.max(120, w * 0.34));
   const padR = 42, padT = 20, padB = 34;
@@ -1493,6 +1500,16 @@ function renderChannelReportChart() {
   ctx.lineTo(padL, h - padB);
   ctx.lineTo(w - padR, h - padB);
   ctx.stroke();
+
+  if (!total) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#64748b";
+    ctx.font = "13px Arial";
+    ctx.fillText(`Chưa có khách trong ${channelReportRangeLabel(range)}.`, padL + innerW / 2, padT + innerH / 2 - 8);
+    ctx.fillText("Đổi bộ lọc thời gian để xem dữ liệu cũ hơn.", padL + innerW / 2, padT + innerH / 2 + 14);
+    ctx.textAlign = "left";
+    return true;
+  }
 
   const ticks = Math.min(5, max);
   ctx.textAlign = "center";
