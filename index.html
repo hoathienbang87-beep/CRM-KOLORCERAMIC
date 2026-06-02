@@ -169,11 +169,19 @@
           <div class="panel">
             <div class="pro-section-title">
               <h3>Báo cáo theo kênh chi tiết</h3>
-              <select id="channelReportRange" style="max-width:150px">
-                <option value="week">Tuần này</option>
-                <option value="month">Tháng này</option>
-                <option value="year" selected>Năm nay</option>
-              </select>
+              <div class="channel-report-controls">
+                <select id="channelReportRange">
+                  <option value="week">Tuần này</option>
+                  <option value="month">Tháng này</option>
+                  <option value="year" selected>Năm nay</option>
+                  <option value="custom">Tùy chọn</option>
+                </select>
+                <div id="channelReportCustomRange" class="channel-date-range hide">
+                  <input id="channelReportStartDate" type="date" aria-label="Ngày bắt đầu báo cáo kênh chi tiết">
+                  <span>đến</span>
+                  <input id="channelReportEndDate" type="date" aria-label="Ngày kết thúc báo cáo kênh chi tiết">
+                </div>
+              </div>
             </div>
             <div class="chart-wrap channel-chart-wrap"><canvas id="channelReportChart"></canvas></div>
           </div>

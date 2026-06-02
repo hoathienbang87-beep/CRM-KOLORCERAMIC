@@ -1436,10 +1436,42 @@ function renderChart() {
   return true;
 }
 
+function localDateFromInput(value, endOfDay = false) {
+  const raw = clean(value);
+  if (!raw) return null;
+  const d = new Date(`${raw}T${endOfDay ? "23:59:59.999" : "00:00:00"}`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function currentMonthStartIso() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function ensureChannelReportCustomDates() {
+  if (!$("channelReportStartDate")?.value) $("channelReportStartDate").value = currentMonthStartIso();
+  if (!$("channelReportEndDate")?.value) $("channelReportEndDate").value = todayIso();
+}
+
+function updateChannelReportCustomControls() {
+  const isCustom = clean($("channelReportRange")?.value) === "custom";
+  $("channelReportCustomRange")?.classList.toggle("hide", !isCustom);
+  if (isCustom) ensureChannelReportCustomDates();
+}
+
 function inReportRange(c, range) {
   const d = toDate(c.createdAt);
   if (!d) return false;
   const now = new Date();
+  if (range === "custom") {
+    let start = localDateFromInput($("channelReportStartDate")?.value);
+    let end = localDateFromInput($("channelReportEndDate")?.value, true);
+    if (!start && !end) return true;
+    if (start && end && start > end) [start, end] = [end, start];
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    return true;
+  }
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if (range === "week") {
     const day = (start.getDay() + 6) % 7;
@@ -1455,12 +1487,21 @@ function inReportRange(c, range) {
 function channelReportRangeLabel(range) {
   if (range === "week") return "tuần này";
   if (range === "month") return "tháng này";
+  if (range === "custom") {
+    const start = fmtDate($("channelReportStartDate")?.value);
+    const end = fmtDate($("channelReportEndDate")?.value);
+    if (start && end) return `${start} - ${end}`;
+    if (start) return `từ ${start}`;
+    if (end) return `đến ${end}`;
+    return "khoảng thời gian đã chọn";
+  }
   return "năm nay";
 }
 
 function renderChannelReportChart() {
   const canvas = $("channelReportChart");
   if (!canvas) return false;
+  updateChannelReportCustomControls();
   const box = chartBox(canvas);
   if (!box) return false;
   channelReportHitAreas = [];
@@ -4545,7 +4586,12 @@ on("cancelCustomerInfoBtn", "click", () => toggleCustomerInfoEdit(false));
 on("saveCustomerInfoBtn", "click", () => runAction("saveCustomerInfoBtn", "saveCustomerInfo", "Đang lưu...", saveCustomerInfo));
 on("deleteCustomerBtn", "click", () => runAction("deleteCustomerBtn", "deleteCustomer", "Đang xóa...", deleteCustomer));
 window.addEventListener("resize", scheduleRenderChart);
-on("channelReportRange", "change", scheduleRenderChart);
+on("channelReportRange", "change", () => {
+  updateChannelReportCustomControls();
+  scheduleRenderChart();
+});
+on("channelReportStartDate", "change", scheduleRenderChart);
+on("channelReportEndDate", "change", scheduleRenderChart);
 on("channelReportChart", "click", handleChannelReportClick);
 on("channelReportChart", "mousemove", handleChannelReportPointer);
 
