@@ -1992,7 +1992,7 @@ function kpiReportData() {
     return row;
   }).filter(row => row.totalCustomers || isManager());
   const proposalRows = kpiProposals
-    .filter(p => clean(p.month) === month && !p.isDeleted)
+    .filter(p => kpiProposalMonth(p) === month && !p.isDeleted)
     .sort(byDateDesc);
   return {month, week, monthRules, summaryRows, proposalRows};
 }
@@ -2074,7 +2074,7 @@ async function exportKpiReport() {
     [`Chi tiết đề xuất KPI tháng ${month}`, ...Array(proposalHeader.length - 1).fill("")],
     proposalHeader,
     ...proposalRows.map(p => [
-      personExportCell(p.owner, p.email || p.ownerEmail), p.kpiName || "", p.month || "", p.phone || "", p.department || "",
+      personExportCell(p.owner, p.email || p.ownerEmail), p.kpiName || "", kpiProposalMonth(p), p.phone || "", p.department || "",
       p.customerName || "", p.customerPhone || "", p.customerCompanyName || "", p.customerChannel || "",
       isApprovedKpiProposal(p) ? "Đã duyệt" : isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt",
       p.content || "", p.evidenceUrl || "", fmtDate(p.createdAt), p.reviewedByEmail || "", fmtDate(p.reviewedAt), p.reviewNote || ""
@@ -2273,7 +2273,7 @@ function kpiRuleValue(rule, ownerKey, month = clean($("kpiRuleMonth")?.value) ||
     if (p.isDeleted) return false;
     if (!isApprovedKpiProposal(p)) return false;
     if (clean(p.kpiRuleId) !== clean(rule.id)) return false;
-    if (month && clean(p.month) !== month) return false;
+    if (month && kpiProposalMonth(p) !== month) return false;
     if (!kpiRuleAppliesToOwner(rule, ownerKey)) return false;
     const proposalKeys = [p.ownerEmail, p.email, p.owner].map(clean).filter(Boolean);
     const ownerProfile = ownerProfileByValue(ownerKey);
@@ -2283,9 +2283,22 @@ function kpiRuleValue(rule, ownerKey, month = clean($("kpiRuleMonth")?.value) ||
   }).length;
 }
 
-const isApprovedKpiProposal = p => clean(p?.status).toLowerCase() === "approved";
-const isPendingKpiProposal = p => clean(p?.status).toLowerCase() === "pending";
-const isRejectedKpiProposal = p => clean(p?.status).toLowerCase() === "rejected";
+function kpiProposalMonth(p) {
+  return clean(p?.month) || monthOf(p?.createdAt) || monthOf(p?.updatedAt) || "";
+}
+
+function kpiProposalStatusKey(p) {
+  const raw = clean(p?.status);
+  const key = normalizeKey(raw);
+  if (!key || ["pending", "choduyet", "dangchoduyet", "submitted", "proposed", "reviewing", "wait", "waiting"].includes(key)) return "pending";
+  if (["approved", "duyet", "daduyet", "accepted", "approve"].includes(key)) return "approved";
+  if (["rejected", "tuchoi", "datuchoi", "reject", "denied"].includes(key)) return "rejected";
+  return key;
+}
+
+const isApprovedKpiProposal = p => kpiProposalStatusKey(p) === "approved";
+const isPendingKpiProposal = p => kpiProposalStatusKey(p) === "pending";
+const isRejectedKpiProposal = p => kpiProposalStatusKey(p) === "rejected";
 
 function kpiProposalsForRule(ruleId) {
   return kpiProposals.filter(p => clean(p.kpiRuleId) === clean(ruleId) && !p.isDeleted);
@@ -2333,14 +2346,17 @@ function renderKpiRuleList() {
 
 function renderKpiApprovalPanel() {
   if (!isManager()) return;
+  const reportMonth = clean($("kpiRuleMonth")?.value) || currentMonth();
   const proposalPending = kpiProposals
     .filter(p => isPendingKpiProposal(p) && !p.isDeleted)
     .sort(byDateDesc);
+  const oldPendingCount = proposalPending.filter(p => kpiProposalMonth(p) && kpiProposalMonth(p) !== reportMonth).length;
   const proposalHtml = proposalPending.length ? proposalPending.map(p => `
     <div class="rule-item">
       <div class="actions" style="justify-content:space-between;align-items:flex-start">
         <div>
-          <b>${esc(p.kpiName || "KPI")}</b> <span class="muted">· ${esc(p.month || "")}</span>
+          <b>${esc(p.kpiName || "KPI")}</b> <span class="muted">· ${esc(kpiProposalMonth(p) || "Chưa có tháng")}</span>
+          ${kpiProposalMonth(p) && kpiProposalMonth(p) !== reportMonth ? `<span class="pill orange">Tồn từ tháng cũ</span>` : ""}
           <div>${esc(p.owner || p.ownerEmail || "Nhân viên")} ${p.department ? "· " + esc(p.department) : ""}</div>
           ${p.customerName || p.customerPhone || p.customerCompanyName ? `<div class="muted">KH: ${esc([p.customerName, p.customerPhone, p.customerCompanyName].filter(Boolean).join(" · "))}</div>` : ""}
           <div class="muted">${esc([p.email, p.phone].filter(Boolean).join(" · "))}</div>
@@ -2356,7 +2372,14 @@ function renderKpiApprovalPanel() {
       </div>
     </div>
   `).join("") : `<div class="muted">Chưa có đề xuất thủ công chờ duyệt.</div>`;
-  $("kpiApprovalList").innerHTML = proposalHtml;
+  $("kpiApprovalList").innerHTML = proposalPending.length ? `
+    <div class="detail-meta" style="margin-bottom:8px">
+      <span>Tổng chờ duyệt: ${esc(proposalPending.length)}</span>
+      <span>Tháng báo cáo: ${esc(reportMonth)}</span>
+      <span>Tồn tháng cũ: ${esc(oldPendingCount)}</span>
+    </div>
+    ${proposalHtml}
+  ` : proposalHtml;
 }
 
 function evidenceLinks(value) {
@@ -2420,7 +2443,7 @@ function kpiProposalDetailHtml(p) {
           <div>
             <b>${esc(p.kpiName || rule?.name || "KPI")}</b>
             <div class="detail-meta">
-              <span>Tháng: ${esc(p.month || rule?.month || "")}</span>
+              <span>Tháng: ${esc(kpiProposalMonth(p) || rule?.month || "")}</span>
               <span>Trạng thái: ${esc(statusLabel)}</span>
               ${rule ? `<span>Chỉ tiêu: ${esc(rule.target || 0)}</span>` : ""}
             </div>
@@ -2494,7 +2517,7 @@ function openKpiRuleProposals(ruleId) {
   if (!isManager()) return notice("Chỉ admin/manager được xem chi tiết KPI.", true);
   const rule = kpiRules.find(r => r.id === ruleId);
   const month = clean($("kpiRuleMonth")?.value) || currentMonth();
-  const allRows = kpiProposalsForRule(ruleId).filter(p => clean(p.month) === month);
+  const allRows = kpiProposalsForRule(ruleId).filter(p => kpiProposalMonth(p) === month);
   const rows = allRows.filter(isApprovedKpiProposal).sort(byDateDesc);
   const pending = allRows.filter(isPendingKpiProposal).length;
   const rejected = allRows.filter(isRejectedKpiProposal).length;
@@ -2542,7 +2565,7 @@ function openKpiOwnerDetail(ruleId, ownerKey) {
   const month = clean($("kpiRuleMonth")?.value) || currentMonth();
   const profile = ownerProfileByValue(ownerKey);
   const allRows = kpiProposalsForRule(ruleId)
-    .filter(p => clean(p.month) === month)
+    .filter(p => kpiProposalMonth(p) === month)
     .filter(p => kpiProposalMatchesOwner(p, ownerKey))
     .sort(byDateDesc);
   const rows = allRows;
@@ -2587,7 +2610,7 @@ function openKpiProposalDetail(proposalId) {
   if (!canViewKpiProposalDetail(proposal)) return notice("Bạn chỉ xem được đề xuất KPI của chính mình.", true);
   openDetailModal(
     `Chi tiết KPI: ${proposal.kpiName || "KPI"}`,
-    `${proposal.owner || proposal.ownerEmail || "Nhân viên"} · ${proposal.month || ""}`,
+    `${proposal.owner || proposal.ownerEmail || "Nhân viên"} · ${kpiProposalMonth(proposal) || ""}`,
     kpiProposalDetailHtml(proposal)
   );
 }
@@ -2800,7 +2823,7 @@ function openEditKpiProposal(proposalId) {
     customerCompanyName: proposal.customerCompanyName || "",
     customerChannel: proposal.customerChannel || ""
   };
-  if (proposal.month && $("kpiRuleMonth")) $("kpiRuleMonth").value = proposal.month;
+  if (kpiProposalMonth(proposal) && $("kpiRuleMonth")) $("kpiRuleMonth").value = kpiProposalMonth(proposal);
   hydrateProposalKpiOptions();
   $("proposalModalTitle").textContent = "Sửa đề xuất KPI";
   $("submitKpiProposalBtn").textContent = "Lưu đề xuất";
