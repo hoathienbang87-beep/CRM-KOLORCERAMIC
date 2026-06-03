@@ -235,7 +235,7 @@ function reportOwnerKeys() {
   const keys = [...ownerProfiles.map(o => clean(o.email || o.name)), ...customers.map(customerOwnerKey)];
   const self = selfOwnerProfile();
   if (!isManager() && self) keys.push(self.email || self.name);
-  kpiRules.forEach(rule => kpiRuleAssignedOwners(rule).forEach(email => {
+  activeKpiRules().forEach(rule => kpiRuleAssignedOwners(rule).forEach(email => {
     if (isManager() || normalizeKey(email) === normalizeKey(self?.email)) keys.push(email);
   }));
   return uniq(keys).filter(Boolean);
@@ -1028,10 +1028,10 @@ function watchData() {
   }, err => notice("Lỗi tải SETTINGS: " + authMessage(err), true)));
 
   unsubscribers.push(onSnapshot(collection(db, "kpiRules"), snap => {
-    kpiRules = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(r => r.active !== false).sort((a,b) => clean(a.name).localeCompare(clean(b.name)));
+    kpiRules = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => clean(a.name).localeCompare(clean(b.name)));
     hydrateProposalKpiOptions();
     scheduleRenderAll();
-  }, err => notice("Lỗi tải KPI tháng: " + authMessage(err), true)));
+  }, err => notice("Lỗi tải KPI: " + authMessage(err), true)));
 
   unsubscribers.push(onSnapshot(collection(db, "products"), snap => {
     applySnap("products", snap, true);
@@ -1878,7 +1878,7 @@ function renderKpiTable() {
   const week = clean($("filterWeek").value);
   // KPI dùng tháng KPI riêng; bộ lọc Tháng của danh sách khách để trống thì không lọc khách.
   const month = clean($("kpiRuleMonth").value) || currentMonth();
-  const monthRules = kpiRulesForMonth(month);
+  const monthRules = activeKpiRules();
   $("exportKpiBtn")?.classList.toggle("hide", !isManager());
   const ownerKeys = reportOwnerKeys();
   const dynamicHeads = monthRules.map(rule => `
@@ -1954,7 +1954,7 @@ function renderMyKpiProposalPanel() {
 function kpiReportData() {
   const week = clean($("filterWeek").value);
   const month = clean($("kpiRuleMonth").value) || currentMonth();
-  const monthRules = kpiRulesForMonth(month);
+  const monthRules = activeKpiRules();
   const ownerKeys = reportOwnerKeys();
   const summaryRows = ownerKeys.map(o => {
     const profile = ownerProfileByValue(o);
@@ -2184,8 +2184,8 @@ function renderOnlineUsers() {
   `).join("") : "Chưa có ai đang truy cập.";
 }
 
-function kpiRulesForMonth(month) {
-  return kpiRules.filter(r => clean(r.month) === month);
+function activeKpiRules() {
+  return kpiRules.filter(r => r.active !== false);
 }
 
 function kpiAssignableUsers() {
@@ -2211,8 +2211,8 @@ function kpiRuleAppliesToCurrentUser(rule) {
   return [ownerEmail(), ownerName()].some(key => kpiRuleAppliesToOwner(rule, key));
 }
 
-function proposalKpiRulesForMonth(month) {
-  return kpiRulesForMonth(month).filter(kpiRuleAppliesToCurrentUser);
+function proposalKpiRules() {
+  return activeKpiRules().filter(kpiRuleAppliesToCurrentUser);
 }
 
 function kpiRuleTargetForOwner(rule, ownerKey) {
@@ -2260,20 +2260,20 @@ function hydrateProposalKpiOptions() {
   const el = $("proposalKpiRule");
   if (!el) return;
   const current = el.value;
-  const month = clean($("kpiRuleMonth")?.value) || currentMonth();
-  const rules = proposalKpiRulesForMonth(month);
+  const reportMonth = clean($("kpiRuleMonth")?.value) || currentMonth();
+  const rules = proposalKpiRules();
   el.innerHTML = `<option value="">-- Chọn KPI --</option>`;
-  rules.forEach(rule => el.insertAdjacentHTML("beforeend", `<option value="${esc(rule.id)}" data-month="${esc(rule.month || "")}">${esc(rule.name)} · ${esc(rule.month)}</option>`));
-  if (!rules.length) el.insertAdjacentHTML("beforeend", `<option value="" disabled>Chưa có KPI được gán cho bạn trong tháng này</option>`);
+  rules.forEach(rule => el.insertAdjacentHTML("beforeend", `<option value="${esc(rule.id)}" data-month="${esc(reportMonth)}">${esc(rule.name)}</option>`));
+  if (!rules.length) el.insertAdjacentHTML("beforeend", `<option value="" disabled>Chưa có KPI active được gán cho bạn</option>`);
   if (rules.some(rule => rule.id === current)) el.value = current;
 }
 
-function kpiRuleValue(rule, ownerKey) {
+function kpiRuleValue(rule, ownerKey, month = clean($("kpiRuleMonth")?.value) || currentMonth()) {
   return kpiProposals.filter(p => {
     if (p.isDeleted) return false;
     if (!isApprovedKpiProposal(p)) return false;
     if (clean(p.kpiRuleId) !== clean(rule.id)) return false;
-    if (clean(p.month) !== clean(rule.month)) return false;
+    if (month && clean(p.month) !== month) return false;
     if (!kpiRuleAppliesToOwner(rule, ownerKey)) return false;
     const proposalKeys = [p.ownerEmail, p.email, p.owner].map(clean).filter(Boolean);
     const ownerProfile = ownerProfileByValue(ownerKey);
@@ -2298,29 +2298,31 @@ function approvedKpiProposalsForRule(ruleId) {
 function renderKpiControlRows() {
   if (!isManager()) return;
   const month = clean($("kpiRuleMonth").value) || currentMonth();
-  const rules = kpiRulesForMonth(month);
+  const rules = kpiRules;
   $("kpiControlRows").innerHTML = rules.length ? rules.map(rule => {
     const assigned = kpiRuleAssignedOwners(rule);
     const ownerRows = (assigned.length ? assigned : kpiAssignableUsers().map(u => u.email)).map(email => {
       const profile = ownerProfileByValue(email);
-      const value = kpiRuleValue(rule, email);
+      const value = rule.active === false ? 0 : kpiRuleValue(rule, email, month);
       const target = kpiRuleTargetForOwner(rule, email);
       const pct = target ? Math.min(100, Math.round(value / target * 100)) : 0;
       return `<div><b>${esc(profile.name || email)}</b> <span class="muted">${esc(email)}</span> · ${esc(value)}/${esc(target || 0)} <span class="pill ${target && value >= target ? "green" : ""}">${esc(pct)}%</span></div>`;
     }).join("");
-    const totalValue = (assigned.length ? assigned : kpiAssignableUsers().map(u => u.email)).reduce((sum,email) => sum + kpiRuleValue(rule, email), 0);
+    const totalValue = rule.active === false ? 0 : (assigned.length ? assigned : kpiAssignableUsers().map(u => u.email)).reduce((sum,email) => sum + kpiRuleValue(rule, email, month), 0);
     const totalTarget = (assigned.length ? assigned : kpiAssignableUsers().map(u => u.email)).reduce((sum,email) => sum + kpiRuleTargetForOwner(rule, email), 0);
     const totalPct = totalTarget ? Math.round(totalValue / totalTarget * 100) : 0;
+    const statusLabel = rule.active === false ? "Đã tắt" : (totalTarget && totalValue >= totalTarget ? "Đạt" : "Đang chạy");
+    const statusClass = rule.active === false ? "red" : (totalTarget && totalValue >= totalTarget ? "green" : "orange");
     return `
       <tr>
-        <td><b>${esc(rule.name)}</b><div class="muted">${esc(rule.month)} · ${assigned.length ? "Gán riêng" : "Áp dụng tất cả nhân viên"}</div></td>
+        <td><b>${esc(rule.name)}</b><div class="muted">${rule.active === false ? "Đã tắt · " : ""}${assigned.length ? "Gán riêng" : "Áp dụng tất cả nhân viên"}${rule.month ? ` · Tạo từ ${esc(rule.month)}` : ""}</div></td>
         <td>${ownerRows || "<span class='muted'>Chưa gán nhân viên</span>"}</td>
         <td><b>${esc(totalValue)}/${esc(totalTarget)}</b><div class="muted">${esc(totalPct)}%</div></td>
-        <td><span class="pill ${totalTarget && totalValue >= totalTarget ? "green" : "orange"}">${totalTarget && totalValue >= totalTarget ? "Đạt" : "Đang chạy"}</span></td>
-        <td><div class="actions"><button class="small" data-edit-kpi-rule="${esc(rule.id)}">Sửa</button><button class="small" data-kpi-rule-proposals="${esc(rule.id)}">Chi tiết KPI</button><button class="small danger" data-disable-kpi-rule="${esc(rule.id)}">Tắt</button></div></td>
+        <td><span class="pill ${statusClass}">${statusLabel}</span></td>
+        <td><div class="actions"><button class="small" data-edit-kpi-rule="${esc(rule.id)}">Sửa</button><button class="small" data-kpi-rule-proposals="${esc(rule.id)}">Chi tiết KPI</button>${rule.active === false ? `<button class="small primary" data-activate-kpi-rule="${esc(rule.id)}">Bật lại</button>` : `<button class="small danger" data-disable-kpi-rule="${esc(rule.id)}">Tắt</button>`}</div></td>
       </tr>
     `;
-  }).join("") : `<tr><td colspan="5" class="muted">Chưa có KPI tháng.</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="muted">Chưa có KPI.</td></tr>`;
 }
 
 function renderKpiRuleList() {
@@ -2491,13 +2493,14 @@ function kpiProposalCard(p) {
 function openKpiRuleProposals(ruleId) {
   if (!isManager()) return notice("Chỉ admin/manager được xem chi tiết KPI.", true);
   const rule = kpiRules.find(r => r.id === ruleId);
-  const allRows = kpiProposalsForRule(ruleId);
-  const rows = approvedKpiProposalsForRule(ruleId).sort(byDateDesc);
+  const month = clean($("kpiRuleMonth")?.value) || currentMonth();
+  const allRows = kpiProposalsForRule(ruleId).filter(p => clean(p.month) === month);
+  const rows = allRows.filter(isApprovedKpiProposal).sort(byDateDesc);
   const pending = allRows.filter(isPendingKpiProposal).length;
   const rejected = allRows.filter(isRejectedKpiProposal).length;
   openDetailModal(
     `KPI đã duyệt: ${rule?.name || "KPI"}`,
-    `${rows.length} đã duyệt trong tháng ${rule?.month || ""} · Chờ duyệt ${pending} · Từ chối ${rejected}`,
+    `${rows.length} đã duyệt trong tháng ${month} · Chờ duyệt ${pending} · Từ chối ${rejected}`,
     `${rule?.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Chưa có đề xuất KPI đã duyệt.</div>`}`
   );
 }
@@ -2536,8 +2539,10 @@ function openKpiOwnerDetail(ruleId, ownerKey) {
   if (!canViewKpiOwnerDetail(ownerKey)) return notice("Bạn chỉ xem được KPI của chính mình.", true);
   const rule = kpiRules.find(r => r.id === ruleId);
   if (!rule) return notice("Không tìm thấy KPI.", true);
+  const month = clean($("kpiRuleMonth")?.value) || currentMonth();
   const profile = ownerProfileByValue(ownerKey);
   const allRows = kpiProposalsForRule(ruleId)
+    .filter(p => clean(p.month) === month)
     .filter(p => kpiProposalMatchesOwner(p, ownerKey))
     .sort(byDateDesc);
   const rows = allRows;
@@ -2547,7 +2552,7 @@ function openKpiOwnerDetail(ruleId, ownerKey) {
   const target = kpiRuleTargetForOwner(rule, ownerKey);
   openDetailModal(
     `KPI: ${rule.name || "KPI"}`,
-    `${profile.name || ownerKey}${profile.email && profile.email !== profile.name ? " · " + profile.email : ""} · Đã duyệt ${approved}/${target || 0} · Chờ ${pending} · Từ chối ${rejected}`,
+    `${profile.name || ownerKey}${profile.email && profile.email !== profile.name ? " · " + profile.email : ""} · Tháng ${month} · Đã duyệt ${approved}/${target || 0} · Chờ ${pending} · Từ chối ${rejected}`,
     `${rule.description ? `<div class="detail-row"><b>Diễn giải</b><div class="detail-note">${esc(rule.description)}</div></div>` : ""}${rows.length ? `<div class="detail-list">${rows.map(kpiProposalCard).join("")}</div>` : `<div class="muted">Nhân viên này chưa có đề xuất KPI.</div>`}`
   );
 }
@@ -2562,7 +2567,7 @@ function openKpiRuleExplanation(ruleId) {
   }).join("") : `<div class="muted">KPI cũ áp dụng cho tất cả nhân viên.</div>`;
   openDetailModal(
     `Diễn giải KPI: ${rule.name || "KPI"}`,
-    `${rule.month || ""} · Cách tính: Số đề xuất được duyệt`,
+    `Áp dụng lâu dài · Cách tính: Số đề xuất được duyệt theo tháng báo cáo`,
     `
       <div class="detail-row">
         <b>Diễn giải</b>
@@ -2588,10 +2593,11 @@ function openKpiProposalDetail(proposalId) {
 }
 
 async function saveKpiRule() {
-  if (!isManager()) return notice("Chỉ admin/manager được tạo KPI tháng.", true);
+  if (!isManager()) return notice("Chỉ admin/manager được tạo KPI.", true);
   const assignments = collectKpiAssignments();
+  const existingRule = editingKpiRuleId ? kpiRules.find(r => r.id === editingKpiRuleId) : null;
   const data = {
-    month: clean($("kpiRuleMonth").value) || clean($("filterMonth").value) || currentMonth(),
+    month: clean(existingRule?.month) || clean($("kpiRuleMonth").value) || clean($("filterMonth").value) || currentMonth(),
     name: clean($("kpiRuleName").value),
     description: clean($("kpiRuleDescription").value),
     target: Number($("kpiRuleTarget").value || 0),
@@ -2602,25 +2608,25 @@ async function saveKpiRule() {
     updatedByEmail: currentUser?.email || "",
     updatedAt: serverTimestamp()
   };
-  if (!data.month) return notice("Vui lòng chọn tháng KPI.", true);
+  if (!data.month) return notice("Vui lòng chọn tháng báo cáo.", true);
   if (!data.name) return notice("Vui lòng nhập tên KPI.", true);
   if (data.target < 0) return notice("Chỉ tiêu KPI không hợp lệ.", true);
   if (!data.assignedOwners.length) return notice("Vui lòng gán KPI cho ít nhất 1 nhân viên.", true);
   try {
     if (editingKpiRuleId) {
       await setDoc(doc(db, "kpiRules", editingKpiRuleId), data, {merge:true});
-      notice("Đã cập nhật KPI tháng.");
+      notice("Đã cập nhật KPI.");
     } else {
       await setDoc(doc(collection(db, "kpiRules")), {
         ...data,
         createdByEmail: currentUser?.email || "",
         createdAt: serverTimestamp()
       });
-      notice("Đã tạo KPI tháng.");
+      notice("Đã tạo KPI.");
     }
     resetKpiRuleForm();
   } catch (err) {
-    notice("Không lưu được KPI tháng: " + authMessage(err), true);
+    notice("Không lưu được KPI: " + authMessage(err), true);
   }
 }
 
@@ -2640,7 +2646,6 @@ function editKpiRule(ruleId) {
   const rule = kpiRules.find(r => r.id === ruleId);
   if (!rule) return notice("Không tìm thấy KPI.", true);
   editingKpiRuleId = rule.id;
-  $("kpiRuleMonth").value = clean(rule.month) || currentMonth();
   $("kpiRuleName").value = clean(rule.name);
   $("kpiRuleDescription").value = clean(rule.description);
   $("kpiRuleTarget").value = Number(rule.target || 0) || "";
@@ -2652,18 +2657,33 @@ function editKpiRule(ruleId) {
 }
 
 async function disableKpiRule(ruleId) {
-  if (!isManager()) return notice("Chỉ admin/manager được tắt KPI tháng.", true);
+  if (!isManager()) return notice("Chỉ admin/manager được tắt KPI.", true);
   if (!ruleId) return;
-  if (!confirm("Tắt KPI tháng này? Dữ liệu chăm sóc vẫn giữ nguyên, chỉ ẩn KPI khỏi bảng.")) return;
+  if (!confirm("Tắt KPI này? Dữ liệu đề xuất vẫn giữ nguyên, sale sẽ không chọn KPI này cho đến khi bật lại.")) return;
   try {
     await setDoc(doc(db, "kpiRules", ruleId), {
       active: false,
       updatedByEmail: currentUser?.email || "",
       updatedAt: serverTimestamp()
     }, {merge:true});
-    notice("Đã tắt KPI tháng.");
+    notice("Đã tắt KPI.");
   } catch (err) {
-    notice("Không tắt được KPI tháng: " + authMessage(err), true);
+    notice("Không tắt được KPI: " + authMessage(err), true);
+  }
+}
+
+async function activateKpiRule(ruleId) {
+  if (!isManager()) return notice("Chỉ admin/manager được bật lại KPI.", true);
+  if (!ruleId) return;
+  try {
+    await setDoc(doc(db, "kpiRules", ruleId), {
+      active: true,
+      updatedByEmail: currentUser?.email || "",
+      updatedAt: serverTimestamp()
+    }, {merge:true});
+    notice("Đã bật lại KPI. KPI này sẽ áp dụng cho tháng báo cáo hiện tại và các tháng sau.");
+  } catch (err) {
+    notice("Không bật lại được KPI: " + authMessage(err), true);
   }
 }
 
@@ -2825,6 +2845,7 @@ async function submitKpiProposal() {
   if (!currentUser || !appUser) return notice("Bạn cần đăng nhập để gửi đề xuất KPI.", true);
   const rule = kpiRules.find(r => r.id === clean($("proposalKpiRule").value));
   if (!rule) return notice("Vui lòng chọn KPI cần đề xuất.", true);
+  if (rule.active === false) return notice("KPI này đang tắt. Admin/manager cần bật lại trước khi gửi đề xuất.", true);
   if (!kpiRuleAppliesToCurrentUser(rule)) return notice("KPI này chưa được gán cho bạn.", true);
   const existingProposal = editingKpiProposalId ? kpiProposals.find(p => p.id === editingKpiProposalId) : null;
   if (editingKpiProposalId && !canEditKpiProposal(existingProposal)) return notice("Đề xuất này đã được duyệt/từ chối hoặc bạn không còn quyền sửa.", true);
@@ -2836,7 +2857,7 @@ async function submitKpiProposal() {
   const data = {
     kpiRuleId: rule.id,
     kpiName: rule.name || "",
-    month: rule.month || currentMonth(),
+    month: clean($("kpiRuleMonth")?.value) || currentMonth(),
     owner: ownerName(),
     ownerEmail: ownerEmail(),
     email: ownerEmail(),
@@ -4420,6 +4441,7 @@ document.addEventListener("click", e => {
   const pipelineLabel = e.target.closest("[data-pipeline-detail]")?.dataset.pipelineDetail;
   const editKpiRuleId = e.target.closest("[data-edit-kpi-rule]")?.dataset.editKpiRule;
   const disableKpiRuleId = e.target.closest("[data-disable-kpi-rule]")?.dataset.disableKpiRule;
+  const activateKpiRuleId = e.target.closest("[data-activate-kpi-rule]")?.dataset.activateKpiRule;
   const kpiRuleExplainId = e.target.closest("[data-kpi-rule-explain]")?.dataset.kpiRuleExplain;
   const kpiRuleProposalId = e.target.closest("[data-kpi-rule-proposals]")?.dataset.kpiRuleProposals;
   const kpiOwnerDetailBtn = e.target.closest("[data-kpi-owner-detail]");
@@ -4457,6 +4479,7 @@ document.addEventListener("click", e => {
   if (pipelineLabel) openPipelineDetail(pipelineLabel);
   if (editKpiRuleId) editKpiRule(editKpiRuleId);
   if (disableKpiRuleId) disableKpiRule(disableKpiRuleId);
+  if (activateKpiRuleId) activateKpiRule(activateKpiRuleId);
   if (kpiRuleExplainId) openKpiRuleExplanation(kpiRuleExplainId);
   if (kpiRuleProposalId) openKpiRuleProposals(kpiRuleProposalId);
   if (kpiOwnerDetailBtn) openKpiOwnerDetail(kpiOwnerDetailBtn.dataset.kpiOwnerDetail, kpiOwnerDetailBtn.dataset.ownerKey);
