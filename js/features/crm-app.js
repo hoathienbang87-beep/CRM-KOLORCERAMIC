@@ -81,6 +81,7 @@ let channelReportHitAreas = [];
 let activeMainView = "crm";
 let editingKpiRuleId = "";
 let editingKpiProposalId = "";
+let editingDealId = "";
 let kpiProposalCustomerContext = null;
 let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
@@ -1109,6 +1110,13 @@ const isCompletedDeal = d => d?.completed === true || sameLabel(normalizeDealSta
 const isKpiRevenueDeal = d => isCompletedDeal(d) || sameLabel(normalizeDealStatus(d?.dealStatus), "depositStatus");
 const dealAmount = d => Number(d?.amount || 0);
 const isActiveDeal = d => !!d && !d.isDeleted && !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus);
+const canEditDeal = d => {
+  if (!d || d.isDeleted) return false;
+  if (isManager()) return true;
+  const c = customerById(d.customerId);
+  const isOwner = normalizeKey(d.ownerEmail || customerOwnerKey(c)) === normalizeKey(ownerEmail()) || normalizeKey(d.owner || customerOwnerName(c)) === normalizeKey(ownerName());
+  return isOwner && isActiveDeal(d);
+};
 const purchaseCount = id => customerDeals(id).filter(isCompletedDeal).length;
 const customerHasDealStatus = (id, labelKey) => customerDeals(id).some(d => sameLabel(normalizeDealStatus(d.dealStatus), labelKey));
 const customerHasCompletedDeal = id => customerDeals(id).some(isCompletedDeal);
@@ -3228,6 +3236,91 @@ function collectDealItems() {
   }).filter(item => item.product || item.code || item.qty);
 }
 
+function dealFormDataForCustomer(c) {
+  const dealStatus = normalizeDealStatus(clean($("dealStatus").value) || systemLabel("depositStatus"));
+  const completed = sameLabel(dealStatus, "boughtStatus");
+  const canceled = isCanceledDeal(dealStatus) || isFailStatus(dealStatus);
+  const depositPercent = Number($("dealDepositPercent").value || 0);
+  const amount = Number($("dealAmount").value || 0);
+  const items = collectDealItems();
+  const productSummary = items.map(item => [item.product || item.productLabel, item.code ? `(${item.code})` : "", item.size].filter(Boolean).join(" ")).join("; ");
+  return {
+    dealStatus,
+    completed,
+    canceled,
+    depositPercent,
+    amount,
+    items,
+    productSummary,
+    deal: {
+      customerId: c.id, customerName: c.name || "", phoneNormalized: c.phoneNormalized || "",
+      phoneRaw: c.phoneRaw || "", source: c.source || "", channel: c.channel || "",
+      owner: c.owner || "", ownerEmail: c.ownerEmail || "", dealStatus,
+      orderCustomerName: clean($("dealCustomerName").value) || c.name || "",
+      orderPhone: clean($("dealCustomerPhone").value) || c.phoneRaw || c.phoneNormalized || "",
+      deliveryAddress: clean($("dealDeliveryAddress").value) || c.address || "",
+      taxCode: clean($("dealTaxCode").value),
+      dealDate: clean($("dealDate").value) || todayIso(),
+      deliveryDate: clean($("dealDeliveryDate").value),
+      items,
+      product: productSummary,
+      depositPercent,
+      amount,
+      note: clean($("dealNote").value),
+      completed,
+      completedAt: completed ? serverTimestamp() : null,
+      completedByEmail: completed ? (currentUser.email || "") : "",
+      canceled,
+      canceledAt: canceled ? serverTimestamp() : null,
+      canceledByEmail: canceled ? (currentUser.email || "") : ""
+    }
+  };
+}
+
+function setDealFormMode(dealId="") {
+  editingDealId = clean(dealId);
+  if ($("saveDealBtn")) $("saveDealBtn").textContent = editingDealId ? "Cập nhật đơn" : "Tạo đơn";
+  $("cancelEditDealBtn")?.classList.toggle("hide", !editingDealId);
+}
+
+function resetDealForm(c) {
+  setDealFormMode("");
+  $("dealStatus").value = systemLabel("depositStatus");
+  $("dealCustomerName").value = clean(c.name);
+  $("dealCustomerPhone").value = clean(c.phoneRaw || c.phoneNormalized);
+  $("dealDeliveryAddress").value = clean(c.address);
+  $("dealTaxCode").value = "";
+  $("dealDate").value = todayIso();
+  $("dealDeliveryDate").value = "";
+  $("dealDepositPercent").value = "";
+  $("dealAmount").value = "";
+  resetDealItems(clean(c.need));
+  $("dealNote").value = "";
+}
+
+function populateDealForm(d) {
+  setDealFormMode(d.id);
+  $("dealStatus").value = normalizeDealStatus(d.dealStatus) || systemLabel("depositStatus");
+  $("dealCustomerName").value = clean(d.orderCustomerName || d.customerName);
+  $("dealCustomerPhone").value = clean(d.orderPhone || d.phoneRaw || d.phoneNormalized);
+  $("dealDeliveryAddress").value = clean(d.deliveryAddress);
+  $("dealTaxCode").value = clean(d.taxCode);
+  $("dealDate").value = dateInputValue(d.dealDate || d.createdAt);
+  $("dealDeliveryDate").value = dateInputValue(d.deliveryDate);
+  $("dealDepositPercent").value = d.depositPercent ?? "";
+  $("dealAmount").value = d.amount ?? "";
+  $("dealItems").innerHTML = "";
+  const items = Array.isArray(d.items) && d.items.length ? d.items : [{product: d.product || "", qty: d.quantity || ""}];
+  items.forEach(item => addDealItem(item));
+  $("dealNote").value = clean(d.note);
+  $("saveDealBtn").scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+function clearDealEditMode() {
+  const c = customers.find(x => x.id === selectedCustomerId);
+  if (c) resetDealForm(c);
+}
+
 function clearForm() {
   ["name","phone","address","companyName","need","note"].forEach(id => { if ($(id)) $(id).value = ""; });
   ["source","channel","customerType","partnerType","partnerActivity","partnerLevel","partnerCapacity"].forEach(id => { if ($(id)) $(id).value = ""; });
@@ -3355,40 +3448,14 @@ async function saveCareLog() {
 }
 
 async function saveDeal() {
+  if (editingDealId) return updateDeal(editingDealId);
   const c = customers.find(x => x.id === selectedCustomerId);
   if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền tạo đơn cho khách này.", true);
   if (!clean($("dealCustomerName").value)) return notice("Vui lòng nhập tên khách trong đơn hàng.", true);
-  const dealStatus = normalizeDealStatus(clean($("dealStatus").value) || systemLabel("depositStatus"));
-  const completed = sameLabel(dealStatus, "boughtStatus");
-  const canceled = isCanceledDeal(dealStatus) || isFailStatus(dealStatus);
-  const depositPercent = Number($("dealDepositPercent").value || 0);
-  const amount = Number($("dealAmount").value || 0);
+  const {dealStatus, completed, canceled, depositPercent, amount, items, deal} = dealFormDataForCustomer(c);
   if (depositPercent < 0 || depositPercent > 100) return notice("Tỷ lệ cọc phải từ 0 đến 100%.", true);
-  const items = collectDealItems();
-  const productSummary = items.map(item => [item.product || item.productLabel, item.code ? `(${item.code})` : "", item.size].filter(Boolean).join(" ")).join("; ");
-  const deal = {
-    customerId: c.id, customerName: c.name || "", phoneNormalized: c.phoneNormalized || "",
-    phoneRaw: c.phoneRaw || "", source: c.source || "", channel: c.channel || "",
-    owner: c.owner || "", ownerEmail: c.ownerEmail || "", dealStatus,
-    orderCustomerName: clean($("dealCustomerName").value) || c.name || "",
-    orderPhone: clean($("dealCustomerPhone").value) || c.phoneRaw || c.phoneNormalized || "",
-    deliveryAddress: clean($("dealDeliveryAddress").value) || c.address || "",
-    taxCode: clean($("dealTaxCode").value),
-    dealDate: clean($("dealDate").value) || todayIso(),
-    deliveryDate: clean($("dealDeliveryDate").value),
-    items,
-    product: productSummary,
-    depositPercent,
-    amount,
-    note: clean($("dealNote").value), createdByEmail: currentUser.email || "",
-    completed,
-    completedAt: completed ? serverTimestamp() : null,
-    completedByEmail: completed ? (currentUser.email || "") : "",
-    canceled,
-    canceledAt: canceled ? serverTimestamp() : null,
-    canceledByEmail: canceled ? (currentUser.email || "") : "",
-    createdAt: serverTimestamp()
-  };
+  deal.createdByEmail = currentUser.email || "";
+  deal.createdAt = serverTimestamp();
   if (!items.length) return notice("Vui lòng thêm ít nhất 1 sản phẩm.", true);
   try {
     const batch = writeBatch(db);
@@ -3411,11 +3478,53 @@ async function saveDeal() {
       email: currentUser.email || "", payloadJson: JSON.stringify(deal), createdAt: serverTimestamp()
     });
     await batch.commit();
-    ["dealDepositPercent","dealAmount","dealNote","dealDeliveryDate","dealTaxCode"].forEach(id => $(id).value = "");
-    resetDealItems();
-    $("dealStatus").value = systemLabel("depositStatus");
-    $("dealDate").value = todayIso();
+    resetDealForm(c);
     notice("Đã tạo đơn hàng.");
+  } catch (err) {
+    notice(authMessage(err), true);
+  }
+}
+
+async function updateDeal(dealId) {
+  const oldDeal = deals.find(d => d.id === dealId);
+  if (!oldDeal) return notice("Không tìm thấy đơn hàng để cập nhật.", true);
+  if (!canEditDeal(oldDeal)) return notice("Bạn không có quyền sửa đơn hàng này.", true);
+  const c = customers.find(x => x.id === oldDeal.customerId) || customers.find(x => x.id === selectedCustomerId);
+  if (!c) return notice("Không tìm thấy khách của đơn hàng.", true);
+  if (!clean($("dealCustomerName").value)) return notice("Vui lòng nhập tên khách trong đơn hàng.", true);
+  const {dealStatus, completed, canceled, depositPercent, items, deal} = dealFormDataForCustomer(c);
+  if (depositPercent < 0 || depositPercent > 100) return notice("Tỷ lệ cọc phải từ 0 đến 100%.", true);
+  if (!items.length) return notice("Vui lòng thêm ít nhất 1 sản phẩm.", true);
+  const updatedDeal = {
+    ...deal,
+    customerId: oldDeal.customerId,
+    customerName: oldDeal.customerName || c.name || "",
+    phoneNormalized: oldDeal.phoneNormalized || c.phoneNormalized || "",
+    phoneRaw: oldDeal.phoneRaw || c.phoneRaw || "",
+    owner: oldDeal.owner || c.owner || "",
+    ownerEmail: oldDeal.ownerEmail || c.ownerEmail || "",
+    completedAt: completed ? (oldDeal.completedAt || serverTimestamp()) : null,
+    completedByEmail: completed ? (oldDeal.completedByEmail || currentUser.email || "") : "",
+    canceledAt: canceled ? (oldDeal.canceledAt || serverTimestamp()) : null,
+    canceledByEmail: canceled ? (oldDeal.canceledByEmail || currentUser.email || "") : "",
+    updatedAt: serverTimestamp(),
+    updatedByEmail: currentUser.email || ""
+  };
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "deals", oldDeal.id), updatedDeal);
+    batch.update(doc(db, "customers", oldDeal.customerId), customerDealStatePatch(oldDeal.customerId, oldDeal.id, {...oldDeal, ...updatedDeal, id: oldDeal.id}));
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: "updateDeal", entity: "deals", entityId: oldDeal.id,
+      email: currentUser.email || "",
+      payloadJson: JSON.stringify({before: oldDeal, after: updatedDeal}),
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    resetDealForm(c);
+    renderHistories(c.id);
+    showDealList(isCompletedDeal(updatedDeal) ? "completed" : "pending");
+    notice("Đã cập nhật đơn hàng.");
   } catch (err) {
     notice(authMessage(err), true);
   }
@@ -3491,9 +3600,10 @@ async function cancelDeal(dealId) {
   }
 }
 
-function customerDealStatePatch(customerId, excludeDealId="") {
+function customerDealStatePatch(customerId, excludeDealId="", replacementDeal=null) {
   const otherDeals = customerDeals(customerId).filter(d => d.id !== excludeDealId && !d.isDeleted);
-  const liveDeals = otherDeals.filter(d => !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const sourceDeals = replacementDeal && !replacementDeal.isDeleted ? [replacementDeal, ...otherDeals] : otherDeals;
+  const liveDeals = sourceDeals.filter(d => !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
   const hasBought = liveDeals.some(isCompletedDeal);
   const hasDeposit = liveDeals.some(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
   const hasOpen = liveDeals.some(isActiveDeal);
@@ -3554,6 +3664,16 @@ function reviewDeal(dealId) {
     `Sản phẩm:\n${items}`,
     `Ghi chú: ${d.note || ""}`
   ].join("\n"));
+}
+
+function editDeal(dealId) {
+  const d = deals.find(x => x.id === dealId);
+  if (!d) return notice("Không tìm thấy đơn hàng.", true);
+  if (!canEditDeal(d)) return notice("Bạn không có quyền sửa đơn hàng này.", true);
+  closeDetailModal();
+  openDrawer(d.customerId, "deal");
+  populateDealForm(d);
+  $("drawerTitle").textContent = `Sửa đơn - ${orderCustomerName(d) || d.customerName || "Khách hàng"}`;
 }
 
 async function deleteCustomer() {
@@ -4007,6 +4127,7 @@ function dealCard(d) {
       <div class="muted">${esc(d.note || "")}</div>
       <div class="actions">
         <button class="small" data-review-deal="${esc(d.id)}">Xem lại</button>
+        ${canEditDeal(d) ? `<button class="small primary" data-edit-deal="${esc(d.id)}">Sửa đơn</button>` : ""}
         ${isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus") ? `<button class="small primary" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" data-cancel-deal="${esc(d.id)}">Hủy đơn</button>` : ""}
         ${isManager() ? `<button class="small danger" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
       </div>
@@ -4369,6 +4490,7 @@ function renderOrders() {
           <div class="actions">
             <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
             <button class="small" type="button" data-review-deal="${esc(d.id)}">Chi tiết</button>
+            ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa</button>` : ""}
             ${isActiveDeal(d) || statusKey === "deposit" ? `<button class="small primary" type="button" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" type="button" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
             ${isManager() ? `<button class="small danger" type="button" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
           </div>
@@ -4644,6 +4766,7 @@ document.addEventListener("click", e => {
   const completeDealId = e.target.closest("[data-complete-deal]")?.dataset.completeDeal;
   const cancelDealId = e.target.closest("[data-cancel-deal]")?.dataset.cancelDeal;
   const deleteDealId = e.target.closest("[data-delete-deal]")?.dataset.deleteDeal;
+  const editDealId = e.target.closest("[data-edit-deal]")?.dataset.editDeal;
   const reviewDealId = e.target.closest("[data-review-deal]")?.dataset.reviewDeal;
   const pipelineLabel = e.target.closest("[data-pipeline-detail]")?.dataset.pipelineDetail;
   const editKpiRuleId = e.target.closest("[data-edit-kpi-rule]")?.dataset.editKpiRule;
@@ -4685,6 +4808,7 @@ document.addEventListener("click", e => {
   if (completeDealId) completeDeal(completeDealId);
   if (cancelDealId) cancelDeal(cancelDealId);
   if (deleteDealId) softDeleteDeal(deleteDealId);
+  if (editDealId) editDeal(editDealId);
   if (reviewDealId) reviewDeal(reviewDealId);
   if (pipelineLabel) openPipelineDetail(pipelineLabel);
   if (editKpiRuleId) editKpiRule(editKpiRuleId);
@@ -4806,6 +4930,7 @@ on("saveCareSettingsBtn", "click", () => runAction("saveCareSettingsBtn", "saveC
 on("saveDropdownSettingsBtn", "click", () => runAction("saveDropdownSettingsBtn", "saveDropdownSettings", "Đang lưu...", saveDropdownSettings));
 on("toggleCareHistoryBtn", "click", toggleCareHistory);
 on("saveDealBtn", "click", () => runAction("saveDealBtn", "saveDeal", "Đang lưu...", saveDeal));
+on("cancelEditDealBtn", "click", clearDealEditMode);
 on("saveKpiRuleBtn", "click", () => runAction("saveKpiRuleBtn", "saveKpiRule", "Đang lưu...", saveKpiRule));
 on("cancelEditKpiRuleBtn", "click", resetKpiRuleForm);
 on("addDealItemBtn", "click", () => addDealItem());
