@@ -3398,13 +3398,13 @@ function renderHealthCheck() {
   const overdue = visible.filter(isCareOverdue).length;
   const missingNextDate = visible.filter(c => sameLabel(computedFollowStatus(c), "noDateFollow")).length;
   const cards = [
-    ["Trùng SĐT", duplicatePhones, duplicatePhones ? "Cần xử lý" : "Ổn"],
-    ["Thiếu phụ trách", noOwner, noOwner ? "Cần gán sale" : "Ổn"],
-    ["Quá hạn chăm", overdue, overdue ? "Cần gọi lại" : "Ổn"],
-    ["Lead chưa có ngày chăm", missingNextDate, missingNextDate ? "Cần phân công lịch" : "Ổn"]
+    ["Trùng SĐT", duplicatePhones, duplicatePhones ? "Cần xử lý" : "Ổn", duplicatePhones ? "bad" : "good"],
+    ["Thiếu phụ trách", noOwner, noOwner ? "Cần gán sale" : "Ổn", noOwner ? "warn" : "good"],
+    ["Quá hạn chăm", overdue, overdue ? "Cần gọi lại" : "Ổn", overdue ? "bad" : "good"],
+    ["Lead chưa có ngày chăm", missingNextDate, missingNextDate ? "Cần phân công lịch" : "Ổn", missingNextDate ? "warn" : "good"]
   ];
-  $("healthGrid").innerHTML = cards.map(([label,num,note]) => `
-    <div class="health-card">
+  $("healthGrid").innerHTML = cards.map(([label,num,note,cls]) => `
+    <div class="health-card ${esc(cls)}">
       <div class="muted">${esc(label)}</div>
       <b>${esc(num)}</b>
       <div class="muted">${esc(note)}</div>
@@ -3416,12 +3416,20 @@ function renderUserAdmin() {
   if (!isAdmin()) return;
   $("userRows").innerHTML = users.length ? users.map(u => {
     const role = clean(u.role || "sale").toLowerCase();
-    return `<tr>
-      <td><b>${esc(u.name || u.email || u.uid)}</b><div class="muted">${esc(u.email || "")}</div></td>
+    const active = u.active !== false;
+    return `<tr class="admin-user-row ${active ? "" : "locked"}">
+      <td>
+        <b>${esc(u.name || u.email || u.uid)}</b>
+        <div class="muted">${esc(u.email || "")}</div>
+        <div class="admin-badge-row">
+          <span class="pill ${role === "admin" ? "red" : role === "manager" ? "orange" : "green"}">${esc(role)}</span>
+          <span class="pill ${active ? "green" : "red"}">${active ? "active" : "locked"}</span>
+        </div>
+      </td>
       <td><select data-user-role="${esc(u.uid)}">
         ${["sale","manager","admin"].map(r => `<option value="${r}" ${role===r ? "selected" : ""}>${r}</option>`).join("")}
       </select></td>
-      <td><select data-user-active="${esc(u.uid)}"><option value="true" ${u.active !== false ? "selected" : ""}>active</option><option value="false" ${u.active === false ? "selected" : ""}>locked</option></select></td>
+      <td><select data-user-active="${esc(u.uid)}"><option value="true" ${active ? "selected" : ""}>active</option><option value="false" ${!active ? "selected" : ""}>locked</option></select></td>
       <td><input data-user-team="${esc(u.uid)}" value="${esc(u.team || "")}" placeholder="Team"></td>
       <td><select data-user-export="${esc(u.uid)}"><option value="false" ${u.canExport !== true ? "selected" : ""}>Không</option><option value="true" ${u.canExport === true ? "selected" : ""}>Có</option></select></td>
       <td><button class="small primary" data-save-user="${esc(u.uid)}">Lưu</button></td>
@@ -3435,7 +3443,7 @@ function renderAuditTrail() {
     <tr class="audit-row">
       <td>${esc(fmtDate(a.createdAt))}</td>
       <td><b>${esc(a.email || "")}</b></td>
-      <td>${esc(a.action || "")}</td>
+      <td><span class="audit-action">${esc(a.action || "")}</span></td>
       <td>${esc(a.entity || "")}<div class="muted">${esc(a.entityId || "")}</div></td>
       <td><div class="audit-payload">${esc(a.payloadJson || a.note || "")}</div></td>
     </tr>
@@ -3450,14 +3458,18 @@ function renderTrash() {
       const relatedCare = allCareLogs.filter(l => l.customerId === c.id).length;
       const relatedDeals = allDeals.filter(d => d.customerId === c.id).length;
       return `
-        <div class="rule-item">
-          <div class="actions" style="justify-content:space-between;align-items:flex-start">
+        <div class="rule-item trash-card">
+          <div class="trash-card-grid">
             <div>
-              <b>${esc(c.name || "Khách hàng")}</b> <span class="muted">· ${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")}</span>
-              <div class="muted">${esc(customerOwnerName(c))} · Xóa: ${esc(fmtDate(c.deletedAt || c.updatedAt))}</div>
-              <div class="muted">Care logs: ${esc(relatedCare)} · Deals: ${esc(relatedDeals)}</div>
+              <b>${esc(c.name || "Khách hàng")}</b>
+              <div class="muted">${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")} · ${esc(customerOwnerName(c))}</div>
+              <div class="detail-meta">
+                <span>Xóa: ${esc(fmtDate(c.deletedAt || c.updatedAt))}</span>
+                <span>Care logs: ${esc(relatedCare)}</span>
+                <span>Deals: ${esc(relatedDeals)}</span>
+              </div>
             </div>
-            <div class="actions">
+            <div class="trash-actions">
               <button class="small primary" data-restore-customer="${esc(c.id)}">Khôi phục</button>
               <button class="small danger" data-permanent-delete-customer="${esc(c.id)}">Xóa vĩnh viễn</button>
             </div>

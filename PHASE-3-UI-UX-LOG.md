@@ -40,6 +40,16 @@ Muc tieu: nang giao dien CRM chuyen nghiep hon nhung giu workflow quen thuoc cho
 - Card bao cao tong quan co class rieng de dong bo UI voi dashboard.
 - Task qua han trong timeline duoc nhan mau canh bao de manager de thay.
 
+## Dot 6 - Man Quan tri
+
+- Health check co mau theo muc do: on, can chu y, can xu ly.
+- Bang user hien badge role va active/locked ngay trong cot nhan vien.
+- User bi khoa co nen canh bao de admin de thay.
+- Audit action doi thanh badge de doc nhanh hanh dong.
+- Thung rac hien thanh card co thong tin SĐT, nhan vien, ngay xoa, so care logs va deals lien quan.
+- Them ghi chu ngan cho health check va thung rac de admin biet thao tac nao nhay cam.
+
 ## Cac man hinh con lai nen lam tiep
 
-1. Quan tri: gom settings/dropdown/users/audit thanh cac khoi de quan ly it roi hon.
+1. Chay test UI thuc te tren Vercel voi admin/manager/sale va ghi cac diem can tinh chinh.
+2. Neu can, tach tiep CSS theo module de bao tri de hon.

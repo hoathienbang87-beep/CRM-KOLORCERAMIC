@@ -236,11 +236,25 @@
     .channel-date-range input{width:148px;padding:9px 10px}
     .admin-table{min-width:880px}
     .admin-table input,.admin-table select{padding:8px 9px;border-radius:6px}
+    .admin-badge-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+    .admin-user-row.locked{background:#fff7f7}
     .audit-row b{display:block;margin-bottom:3px}
+    .audit-action{display:inline-flex;border:1px solid #dce8f6;background:#f5f9ff;color:#163b73;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:800}
     .audit-payload{max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:12px}
     .health-grid{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:10px}
-    .health-card{border:1px solid var(--line);background:#f8fafc;border-radius:8px;padding:11px}
+    .health-card{border:1px solid var(--line);background:#f8fafc;border-radius:8px;padding:11px;position:relative;overflow:hidden}
+    .health-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--brand)}
+    .health-card.good{background:#f4fff8;border-color:#ccefd9}
+    .health-card.good:before{background:#087443}
+    .health-card.warn{background:#fff8df;border-color:#f6c65b}
+    .health-card.warn:before{background:var(--sun)}
+    .health-card.bad{background:#fff1f0;border-color:#ffcbc7}
+    .health-card.bad:before{background:var(--rose)}
     .health-card b{font-size:20px}
+    .trash-card{background:linear-gradient(145deg,#fff,#fbfdff)}
+    .trash-card-grid{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:12px;align-items:start}
+    .trash-actions{display:grid;gap:8px}
+    .trash-actions button{width:100%}
     .executive-grid{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:10px}
     .executive-card{border:1px solid var(--line);border-radius:8px;background:linear-gradient(145deg,#ffffff,#f3f8ff);padding:12px;position:relative;overflow:hidden}
     .executive-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--brand)}
