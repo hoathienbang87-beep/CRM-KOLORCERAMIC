@@ -17,9 +17,16 @@ Muc tieu: nang giao dien CRM chuyen nghiep hon nhung giu workflow quen thuoc cho
 - Status KH thanh badge mau de nhin nhanh lead/da mua/da huy/mat.
 - Drawer chi tiet KH co meta badge cho SĐT, cong ty/kenh, nhan vien phu trach va so lan mua.
 
+## Dot 3 - Man Don hang / Deal
+
+- Bang don hang gom ngay don/ngay mua/ngay giao thanh mot cum de bot roi cot.
+- Dong deal co mau canh trai theo trang thai: da mua, da coc, da huy.
+- San pham, ghi chu va gia tri don duoc dinh dang de de scan hon.
+- Nut thao tac trong bang deal xep doc gon hon, tranh tran ngang.
+- Chi tiet don hang chuyen tu alert dai sang modal co thong tin, san pham, ghi chu va hanh dong tiep theo.
+
 ## Cac man hinh con lai nen lam tiep
 
-1. Don hang / Deal: nhom bo loc, bang deal, drawer sua deal.
-2. KPI: tach ro KPI cua toi, KPI cho duyet, rule KPI; lam trang thai pending/approved/rejected de nhin hon.
-3. Bao cao: lam report cards va timeline sale gon hon, them empty/loading state ro.
-4. Quan tri: gom settings/dropdown/users/audit thanh cac khoi de quan ly it roi hon.
+1. KPI: tach ro KPI cua toi, KPI cho duyet, rule KPI; lam trang thai pending/approved/rejected de nhin hon.
+2. Bao cao: lam report cards va timeline sale gon hon, them empty/loading state ro.
+3. Quan tri: gom settings/dropdown/users/audit thanh cac khoi de quan ly it roi hon.

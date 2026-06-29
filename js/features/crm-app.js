@@ -3947,20 +3947,49 @@ function reviewDeal(dealId) {
   const d = deals.find(x => x.id === dealId);
   if (!d) return;
   const items = Array.isArray(d.items) && d.items.length
-    ? d.items.map((item, idx) => `${idx + 1}. ${item.product || item.productLabel || ""}${item.code ? ` - ${item.code}` : ""}${item.size ? ` - ${item.size}` : ""}${item.surface ? ` - ${item.surface}` : ""}${item.origin ? ` - ${item.origin}` : ""}${item.qty ? ` - SL: ${item.qty}` : ""}`).join("\n")
-    : `${d.product || ""}${d.quantity ? ` - SL: ${d.quantity}` : ""}`;
-  alert([
-    `Khách hàng: ${d.orderCustomerName || d.customerName || ""}`,
-    `SĐT: ${d.orderPhone || d.phoneRaw || d.phoneNormalized || "Không SĐT"}`,
-    `Địa chỉ giao hàng: ${d.deliveryAddress || ""}`,
-    `Mã số thuế: ${d.taxCode || ""}`,
-    `Trạng thái đơn: ${normalizeDealStatus(d.dealStatus)}`,
-    `Đã cọc: ${d.depositPercent ?? 0}%`,
-    `Ngày cọc: ${fmtDate(d.dealDate)}`,
-    `Ngày giao: ${fmtDate(d.deliveryDate)}`,
-    `Sản phẩm:\n${items}`,
-    `Ghi chú: ${d.note || ""}`
-  ].join("\n"));
+    ? d.items.map((item, idx) => `
+      <div class="detail-row">
+        <b>${esc(idx + 1)}. ${esc(item.product || item.productLabel || "Sản phẩm")}</b>
+        <div class="detail-meta">
+          ${item.code ? `<span>Mã: ${esc(item.code)}</span>` : ""}
+          ${item.size ? `<span>Size: ${esc(item.size)}</span>` : ""}
+          ${item.surface ? `<span>Bề mặt: ${esc(item.surface)}</span>` : ""}
+          ${item.origin ? `<span>Xuất xứ: ${esc(item.origin)}</span>` : ""}
+          ${item.qty ? `<span>SL: ${esc(item.qty)}</span>` : ""}
+        </div>
+      </div>
+    `).join("")
+    : `<div class="detail-row">${esc(d.product || "Chưa có sản phẩm")}${d.quantity ? ` · SL: ${esc(d.quantity)}` : ""}</div>`;
+  openDetailModal(
+    `Chi tiết đơn - ${orderCustomerName(d) || "Khách hàng"}`,
+    `${orderCustomerPhone(d) || "Không SĐT"} · ${orderOwnerName(d) || ""}`,
+    `
+      <div class="profile-stats">
+        ${profileStat("Trạng thái", orderStatusLabel(d))}
+        ${profileStat("Giá trị", money(d.amount || 0))}
+        ${profileStat("Đã cọc", `${d.depositPercent ?? 0}%`)}
+        ${profileStat("Ngày đơn", fmtDate(d.dealDate || d.createdAt) || "-")}
+      </div>
+      <div class="info-grid">
+        ${infoCell("Địa chỉ giao hàng", d.deliveryAddress)}
+        ${infoCell("Mã số thuế", d.taxCode)}
+        ${infoCell("Ngày mua", fmtDate(d.completedAt))}
+        ${infoCell("Ngày giao", fmtDate(d.deliveryDate))}
+      </div>
+      <div class="section">
+        <h3>Sản phẩm</h3>
+        <div class="detail-list">${items}</div>
+      </div>
+      <div class="section">
+        <h3>Ghi chú</h3>
+        <div class="detail-note">${esc(d.note || "Không có ghi chú.")}</div>
+      </div>
+      <div class="actions">
+        <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
+        ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa đơn</button>` : ""}
+      </div>
+    `
+  );
 }
 
 function editDeal(dealId) {
@@ -4787,20 +4816,32 @@ function renderOrders() {
     const c = customerById(d.customerId);
     const statusKey = orderStatusKey(d);
     const statusClass = statusKey === "bought" ? "green" : statusKey === "canceled" ? "red" : statusKey === "deposit" ? "orange" : "blue";
+    const productText = orderProductText(d);
+    const dateMeta = [
+      `Đơn: ${fmtDate(d.dealDate || d.createdAt) || "-"}`,
+      d.completedAt ? `Mua: ${fmtDate(d.completedAt)}` : "",
+      d.deliveryDate ? `Giao: ${fmtDate(d.deliveryDate)}` : ""
+    ].filter(Boolean).join(" · ");
     return `
-      <tr>
-        <td><b>${esc(orderCustomerName(d) || "Không tên")}</b>${c.companyName ? `<div class="muted">${esc(c.companyName)}</div>` : ""}</td>
-        <td>${esc(orderCustomerPhone(d) || "Không SĐT")}</td>
-        <td>${esc(orderOwnerName(d))}<div class="muted">${esc(orderOwnerEmail(d))}</div></td>
-        <td><span class="pill ${statusClass}">${esc(orderStatusLabel(d))}</span></td>
-        <td>${esc(fmtDate(d.dealDate || d.createdAt))}</td>
-        <td>${esc(fmtDate(d.completedAt))}</td>
-        <td>${esc(fmtDate(d.deliveryDate))}</td>
-        <td>${esc(orderProductText(d))}</td>
-        <td><b>${esc(money(d.amount || 0))}</b></td>
-        <td>${esc(d.note || "")}</td>
+      <tr class="order-row ${statusKey === "bought" ? "order-bought" : statusKey === "canceled" ? "order-canceled" : statusKey === "deposit" ? "order-deposit" : ""}">
         <td>
-          <div class="actions">
+          <div class="customer-cell">
+            <b>${esc(orderCustomerName(d) || "Không tên")}</b>
+            ${c.companyName ? `<span>${esc(c.companyName)}</span>` : ""}
+          </div>
+        </td>
+        <td><div class="phone-cell"><b>${esc(orderCustomerPhone(d) || "Không SĐT")}</b></div></td>
+        <td>
+          <b>${esc(orderOwnerName(d))}</b>
+          <div class="muted">${esc(orderOwnerEmail(d))}</div>
+        </td>
+        <td><span class="pill ${statusClass}">${esc(orderStatusLabel(d))}</span></td>
+        <td colspan="3"><div class="order-date-stack">${esc(dateMeta)}</div></td>
+        <td><div class="order-product-text">${esc(productText || "Chưa có sản phẩm")}</div></td>
+        <td><b class="money-cell">${esc(money(d.amount || 0))}</b></td>
+        <td><div class="order-note">${esc(d.note || "")}</div></td>
+        <td>
+          <div class="order-actions">
             <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
             <button class="small" type="button" data-review-deal="${esc(d.id)}">Chi tiết</button>
             ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa</button>` : ""}

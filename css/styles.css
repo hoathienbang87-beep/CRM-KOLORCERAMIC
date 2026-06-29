@@ -79,6 +79,16 @@
     .customer-table-wrap{max-height:760px}
     .order-summary-grid{margin:12px 0 14px}
     .order-table-wrap{max-height:620px}
+    .order-row{background:#fbfdff}
+    .order-row.order-bought{box-shadow:inset 4px 0 0 #087443}
+    .order-row.order-deposit{box-shadow:inset 4px 0 0 #f59e0b}
+    .order-row.order-canceled{box-shadow:inset 4px 0 0 #e11d48}
+    .order-date-stack{min-width:180px;color:#415a7c;font-size:13px;font-weight:700;line-height:1.45}
+    .order-product-text{max-width:320px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+    .order-note{max-width:220px;line-height:1.35;color:#415a7c;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+    .money-cell{font-variant-numeric:tabular-nums;color:#062b24;font-size:15px}
+    .order-actions{display:grid;grid-template-columns:1fr;gap:7px;min-width:120px}
+    .order-actions button{width:100%;min-height:34px}
     .product-table-wrap{max-height:700px}
     .product-toolbar{grid-template-columns:2fr repeat(3,minmax(150px,1fr))}
     table{width:100%;border-collapse:separate;border-spacing:0;min-width:1180px}
