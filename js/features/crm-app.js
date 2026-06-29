@@ -4562,6 +4562,10 @@ function selectedReportRange() {
   return weekRange($("filterWeek").value) || monthRange($("filterMonth").value);
 }
 
+function selectedActivityReportRange() {
+  return weekRange($("reportActivityWeek")?.value) || monthRange($("reportActivityMonth")?.value) || monthRange(currentMonth());
+}
+
 function inDateRange(value, range) {
   const iso = isoFromAny(value);
   return !!iso && iso >= range.start && iso <= range.end;
@@ -4570,6 +4574,11 @@ function inDateRange(value, range) {
 function exportOwnerMatches(item, ownerFilter) {
   if (!ownerFilter) return true;
   return clean(item.ownerEmail) === ownerFilter || clean(item.owner) === ownerFilter;
+}
+
+function ownerMatchesKey(item, ownerFilter) {
+  if (!ownerFilter) return true;
+  return normalizeKey(item.ownerEmail || "") === normalizeKey(ownerFilter) || normalizeKey(item.owner || "") === normalizeKey(ownerFilter);
 }
 
 function customerById(id) {
@@ -4764,6 +4773,187 @@ function renderReportCenter() {
       <b>${esc(value)}</b>
     </div>
   `).join("");
+  renderSaleActivityReport();
+}
+
+function hydrateSaleActivityFilters() {
+  if (!$("reportActivityOwner")) return;
+  if (!$("reportActivityMonth").value && !$("reportActivityWeek").value) $("reportActivityMonth").value = currentMonth();
+  const currentOwner = $("reportActivityOwner").value;
+  fillSelect("reportActivityOwner", ownerOptions(), "", "Tất cả nhân viên");
+  if (ownerOptions().some(o => clean(o.email) === currentOwner || clean(o.name) === currentOwner) || currentOwner === "") $("reportActivityOwner").value = currentOwner;
+}
+
+function saleActivityRows() {
+  const range = selectedActivityReportRange();
+  const ownerFilter = clean($("reportActivityOwner")?.value);
+  const key = normalizeKey($("reportActivitySearch")?.value || "");
+  const rows = [];
+
+  customers
+    .filter(canSeeCustomer)
+    .filter(c => !isCustomerClosed(c))
+    .filter(c => ownerMatchesKey({owner:c.owner, ownerEmail:c.ownerEmail}, ownerFilter))
+    .forEach(c => {
+      const taskType = taskTypeForCustomer(c);
+      rows.push({
+        date: clean(c.nextCareDate) || "",
+        type: `Task ${taskLabel(taskType)}`,
+        owner: customerOwnerName(c),
+        ownerEmail: customerOwnerKey(c),
+        customer: c.name || "",
+        phone: c.phoneRaw || c.phoneNormalized || "",
+        companyName: c.companyName || "",
+        channel: c.channel || "",
+        status: c.status || "",
+        amount: "",
+        note: c.need || c.note || "",
+        bucket: "task",
+        taskType,
+        customerId: c.id
+      });
+    });
+
+  careLogs
+    .filter(l => !l.isDeleted && inDateRange(l.createdAt, range) && ownerMatchesKey(l, ownerFilter))
+    .forEach(l => {
+      const c = customerById(l.customerId);
+      rows.push({
+        date: isoFromAny(l.createdAt),
+        type: "Chăm sóc",
+        owner: l.owner || customerOwnerName(c) || l.ownerEmail,
+        ownerEmail: l.ownerEmail || customerOwnerKey(c),
+        customer: l.customerName || c.name || "",
+        phone: c.phoneRaw || l.phoneRaw || l.phoneNormalized || c.phoneNormalized || "",
+        companyName: l.companyName || c.companyName || "",
+        channel: c.channel || "",
+        status: l.status || c.status || "",
+        amount: "",
+        note: [l.careChannel, l.careResult, l.note].filter(Boolean).join(" · "),
+        bucket: "care",
+        customerId: l.customerId
+      });
+    });
+
+  auditLogs
+    .filter(a => inDateRange(a.createdAt, range) && ["openQuoteProposal","openQuoteTemplate","createDealFromQuote"].includes(clean(a.action)))
+    .forEach(a => {
+      const c = customerById(a.entityId);
+      if (!c.id || !canSeeCustomer(c) || !ownerMatchesKey({owner:c.owner, ownerEmail:c.ownerEmail}, ownerFilter)) return;
+      rows.push({
+        date: isoFromAny(a.createdAt),
+        type: a.action === "createDealFromQuote" ? "Tạo đơn từ báo giá" : "Báo giá/Đề xuất",
+        owner: customerOwnerName(c),
+        ownerEmail: customerOwnerKey(c),
+        customer: c.name || "",
+        phone: c.phoneRaw || c.phoneNormalized || "",
+        companyName: c.companyName || "",
+        channel: c.channel || "",
+        status: c.status || "",
+        amount: "",
+        note: a.action || "",
+        bucket: "quote",
+        customerId: c.id
+      });
+    });
+
+  deals
+    .filter(d => !d.isDeleted && inDateRange(d.dealDate || d.createdAt, range) && ownerMatchesKey(d, ownerFilter))
+    .forEach(d => {
+      const c = customerById(d.customerId);
+      rows.push({
+        date: isoFromAny(d.dealDate || d.createdAt),
+        type: "Tạo đơn/deal",
+        owner: orderOwnerName(d),
+        ownerEmail: orderOwnerEmail(d),
+        customer: orderCustomerName(d),
+        phone: orderCustomerPhone(d),
+        companyName: c.companyName || "",
+        channel: c.channel || d.channel || "",
+        status: orderStatusLabel(d),
+        amount: dealAmount(d),
+        note: orderProductText(d) || d.note || "",
+        bucket: "deal",
+        customerId: d.customerId
+      });
+    });
+
+  deals
+    .filter(d => !d.isDeleted && isCompletedDeal(d) && inDateRange(d.completedAt || d.dealDate || d.createdAt, range) && ownerMatchesKey(d, ownerFilter))
+    .forEach(d => {
+      const c = customerById(d.customerId);
+      rows.push({
+        date: isoFromAny(d.completedAt || d.dealDate || d.createdAt),
+        type: "Hoàn thành đơn",
+        owner: orderOwnerName(d),
+        ownerEmail: orderOwnerEmail(d),
+        customer: orderCustomerName(d),
+        phone: orderCustomerPhone(d),
+        companyName: c.companyName || "",
+        channel: c.channel || d.channel || "",
+        status: orderStatusLabel(d),
+        amount: dealAmount(d),
+        note: orderProductText(d) || d.note || "",
+        bucket: "completed",
+        customerId: d.customerId
+      });
+    });
+
+  const filtered = key ? rows.filter(r => normalizeKey([r.type,r.owner,r.ownerEmail,r.customer,r.phone,r.companyName,r.channel,r.status,r.note].join(" ")).includes(key)) : rows;
+  return {range, rows: filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || String(a.owner).localeCompare(String(b.owner), "vi"))};
+}
+
+function saleActivitySummary(rows) {
+  const map = new Map();
+  rows.forEach(r => {
+    const id = clean(r.ownerEmail || r.owner || "Không rõ");
+    const cur = map.get(id) || {owner: r.owner || id, ownerEmail: r.ownerEmail || "", taskOpen:0, taskOverdue:0, care:0, quote:0, deal:0, completed:0, revenue:0};
+    if (r.bucket === "task") {
+      cur.taskOpen += 1;
+      if (r.taskType === "overdue") cur.taskOverdue += 1;
+    }
+    if (r.bucket === "care") cur.care += 1;
+    if (r.bucket === "quote") cur.quote += 1;
+    if (r.bucket === "deal") cur.deal += 1;
+    if (r.bucket === "completed") {
+      cur.completed += 1;
+      cur.revenue += Number(r.amount || 0);
+    }
+    map.set(id, cur);
+  });
+  return [...map.values()].sort((a,b) => b.taskOverdue - a.taskOverdue || b.care - a.care || b.revenue - a.revenue);
+}
+
+function renderSaleActivityReport() {
+  if (!$("saleActivitySummary")) return;
+  hydrateSaleActivityFilters();
+  const {range, rows} = saleActivityRows();
+  const summary = saleActivitySummary(rows);
+  $("saleActivitySummary").innerHTML = summary.length ? `
+    <table class="admin-table">
+      <thead><tr><th>Nhân viên</th><th>Task mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Báo giá</th><th>Deal tạo</th><th>Đơn hoàn thành</th><th>Doanh số</th></tr></thead>
+      <tbody>${summary.map(s => `
+        <tr>
+          <td><b>${esc(s.owner)}</b><div class="muted">${esc(s.ownerEmail)}</div></td>
+          <td>${esc(s.taskOpen)}</td>
+          <td>${s.taskOverdue ? `<span class="pill red">${esc(s.taskOverdue)}</span>` : "0"}</td>
+          <td>${esc(s.care)}</td>
+          <td>${esc(s.quote)}</td>
+          <td>${esc(s.deal)}</td>
+          <td>${esc(s.completed)}</td>
+          <td><b>${esc(money(s.revenue))}</b></td>
+        </tr>
+      `).join("")}</tbody>
+    </table>
+  ` : `<div class="muted" style="padding:12px">Không có hoạt động trong khoảng ${esc(range.label)}.</div>`;
+  $("saleActivityTimeline").innerHTML = rows.length ? rows.slice(0, 80).map(r => `
+    <div class="activity-mini ${r.bucket === "deal" || r.bucket === "completed" ? "deal" : r.bucket === "quote" ? "kpi" : "care"}">
+      <div><span class="activity-type">${esc(r.type)}</span> · <b>${esc(r.customer || "Không tên")}</b> · ${esc(fmtDate(r.date) || "")}</div>
+      <div class="muted">${esc(r.owner || "")} · ${esc(r.phone || "Không SĐT")} · ${esc(r.channel || "")}</div>
+      <div>${r.amount ? `<b>${esc(money(r.amount))}</b> · ` : ""}${esc(r.note || "")}</div>
+      ${r.customerId ? `<div class="actions"><button class="small" type="button" data-care-open="${esc(r.customerId)}">Mở khách</button></div>` : ""}
+    </div>
+  `).join("") : `<div class="muted">Không có timeline hoạt động phù hợp.</div>`;
 }
 
 function exportOrders() {
@@ -4868,6 +5058,27 @@ function activityRowsForExport() {
     });
 
   return {range, rows: rows.sort((a,b) => String(a.date).localeCompare(String(b.date)) || String(a.owner).localeCompare(String(b.owner), "vi"))};
+}
+
+function exportSaleActivityReport() {
+  if (!canExportData()) return notice("Bạn chưa có quyền xuất file.", true);
+  const {range, rows} = saleActivityRows();
+  const summary = saleActivitySummary(rows);
+  if (!rows.length) return notice("Không có hoạt động phù hợp để xuất.", true);
+  const summaryRows = [
+    [`Báo cáo hoạt động sale - ${range.label}`, "", "", "", "", "", "", ""],
+    ["Nhân viên","Email","Task mở","Task quá hạn","Chăm sóc","Báo giá","Deal tạo","Đơn hoàn thành","Doanh số"],
+    ...summary.map(s => [s.owner, s.ownerEmail, s.taskOpen, s.taskOverdue, s.care, s.quote, s.deal, s.completed, s.revenue])
+  ];
+  const detailRows = [
+    [`Chi tiết hoạt động - ${range.label}`, "", "", "", "", "", "", "", "", ""],
+    ["Ngày","Loại","Nhân viên","Email","Khách hàng","SĐT","Công ty","Kênh","Trạng thái","Giá trị","Ghi chú"],
+    ...rows.map(r => [fmtDate(r.date), r.type, r.owner, r.ownerEmail, r.customer, r.phone, r.companyName, r.channel, r.status, r.amount || "", r.note])
+  ];
+  exportXlsx([
+    {name:"Tong hop sale", rows:summaryRows},
+    {name:"Chi tiet hoat dong", rows:detailRows}
+  ], `crm-hoat-dong-sale-${range.start}-${range.end}`);
 }
 
 function selectedOptionText(id) {
@@ -5108,6 +5319,8 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 ["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => on(id, "input", scheduleRenderAll));
 ["taskScopeFilter","taskOwnerFilter","taskSearchBox"].forEach(id => on(id, "input", renderTaskBoard));
 ["taskScopeFilter","taskOwnerFilter"].forEach(id => on(id, "change", renderTaskBoard));
+["reportActivityWeek","reportActivityMonth","reportActivityOwner","reportActivitySearch"].forEach(id => on(id, "input", renderSaleActivityReport));
+["reportActivityWeek","reportActivityMonth","reportActivityOwner"].forEach(id => on(id, "change", renderSaleActivityReport));
 on("filterMonth", "change", scheduleRenderAll);
 on("kpiRuleMonth", "change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
 on("myKpiProposalStatus", "change", renderMyKpiProposalPanel);
@@ -5165,6 +5378,7 @@ on("exportKpiBtn", "click", () => runAction("exportKpiBtn", "exportKpi", "Đang 
 on("reportExportManagementBtn", "click", () => runAction("reportExportManagementBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
 on("reportExportKpiBtn", "click", () => runAction("reportExportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
 on("reportExportOrdersBtn", "click", () => runAction("reportExportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
+on("reportExportActivityBtn", "click", () => runAction("reportExportActivityBtn", "exportSaleActivity", "Đang xuất...", exportSaleActivityReport));
 on("openKpiProposalBtn", "click", () => openKpiProposalModal());
 on("openKpiProposalBtnTop", "click", () => openKpiProposalModal());
 on("closeKpiProposalBtn", "click", closeKpiProposalModal);

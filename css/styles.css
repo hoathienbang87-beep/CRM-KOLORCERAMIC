@@ -67,6 +67,8 @@
     .task-row.quiet{background:#f8fbff}
     .task-title{font-weight:800}
     .task-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+    .report-toolbar{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(180px,1fr) minmax(260px,2fr)}
+    .activity-type{font-weight:800;color:var(--brand)}
     .toolbar{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;align-items:end;margin:12px 0}
     .toolbar-search{grid-column:span 2}
     .toolbar-actions{grid-column:1 / -1;display:flex;gap:10px;align-items:center;justify-content:flex-start}

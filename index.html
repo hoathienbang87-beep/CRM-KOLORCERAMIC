@@ -159,6 +159,20 @@
             <button id="reportExportKpiBtn" class="small primary" type="button">Xuất KPI</button>
             <button id="reportExportOrdersBtn" class="small primary" type="button">Xuất đơn hàng</button>
           </div>
+          <div class="section" style="margin-top:14px">
+            <div class="pro-section-title">
+              <h3>Hoạt động sale</h3>
+              <button id="reportExportActivityBtn" class="small primary" type="button">Xuất hoạt động sale</button>
+            </div>
+            <div class="toolbar report-toolbar">
+              <div><label>Tuần</label><input id="reportActivityWeek" type="week"></div>
+              <div><label>Tháng</label><input id="reportActivityMonth" type="month"></div>
+              <div><label>Nhân viên</label><select id="reportActivityOwner"></select></div>
+              <div class="toolbar-search"><label>Tìm hoạt động</label><input id="reportActivitySearch" placeholder="Tên KH, SĐT, ghi chú, loại hoạt động..."></div>
+            </div>
+            <div id="saleActivitySummary" class="table-wrap" style="margin-top:10px"></div>
+            <div id="saleActivityTimeline" class="detail-list" style="margin-top:12px"></div>
+          </div>
         </div>
 
         <div class="chart-grid">
