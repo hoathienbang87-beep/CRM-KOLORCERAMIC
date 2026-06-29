@@ -1762,7 +1762,51 @@ function handleChannelReportPointer(event) {
   canvas.style.cursor = hit ? "pointer" : "";
 }
 
+function careWorkGroups() {
+  const visible = customers.filter(canSeeCustomer);
+  const openRows = visible.filter(c => !isCustomerClosed(c));
+  const todayRows = openRows.filter(c => clean(c.nextCareDate) === todayIso()).sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"));
+  const overdueRows = openRows.filter(isCareOverdue).sort((a,b) => clean(a.nextCareDate).localeCompare(clean(b.nextCareDate)) || clean(a.name).localeCompare(clean(b.name), "vi"));
+  const noDateRows = openRows.filter(c => !clean(c.nextCareDate)).sort(byDateDesc);
+  const activeRows = openRows.filter(c => clean(c.nextCareDate) && !isCareDue(c)).sort((a,b) => clean(a.nextCareDate).localeCompare(clean(b.nextCareDate)));
+  return {visible, openRows, todayRows, overdueRows, noDateRows, activeRows};
+}
+
+function renderCareWorkSummary() {
+  const box = $("careWorkSummary");
+  if (!box) return;
+  const {openRows, todayRows, overdueRows, noDateRows, activeRows} = careWorkGroups();
+  $("careWorkSummaryText").textContent = `${openRows.length} khách đang cần theo dõi`;
+  const cards = [
+    ["today", "Hôm nay", todayRows.length, "Lịch hẹn trong ngày", todayRows.length ? "warn" : ""],
+    ["overdue", "Quá hạn", overdueRows.length, "Cần xử lý trước", overdueRows.length ? "bad" : ""],
+    ["no-date", "Chưa hẹn", noDateRows.length, "Khách chưa có ngày chăm", noDateRows.length ? "warn" : "quiet"],
+    ["active", "Đang chăm", activeRows.length, "Có lịch hẹn sắp tới", "quiet"]
+  ];
+  box.innerHTML = cards.map(([type, label, count, hint, cls]) => `
+    <button class="care-work-card ${esc(cls)}" type="button" data-care-work-detail="${esc(type)}">
+      <span>${esc(label)}</span>
+      <b>${esc(count)}</b>
+      <small>${esc(hint)}</small>
+    </button>
+  `).join("");
+}
+
+function openCareWorkDetail(type) {
+  const groups = careWorkGroups();
+  const config = {
+    today: ["Lịch hẹn hôm nay", "khách có lịch chăm trong ngày", groups.todayRows],
+    overdue: ["Quá hạn chăm", "khách đã quá hạn chăm", groups.overdueRows],
+    "no-date": ["Khách chưa có lịch hẹn", "khách chưa được đặt ngày chăm tiếp", groups.noDateRows],
+    active: ["Khách đang chăm", "khách có lịch chăm sắp tới", groups.activeRows]
+  }[type];
+  if (!config) return;
+  const [title, subtitle, rows] = config;
+  openDetailModal(title, `${rows.length} ${subtitle}`, customerDetailRows(rows));
+}
+
 function renderNeedCare() {
+  renderCareWorkSummary();
   const rows = customers.filter(canSeeCustomer).filter(isCareDue).sort((a,b) => clean(a.nextCareDate).localeCompare(clean(b.nextCareDate)));
   const panel = $("needCarePanel");
   panel.classList.toggle("care-alert", rows.length > 0);
@@ -4482,6 +4526,8 @@ document.addEventListener("click", e => {
   const saveUserId = e.target.closest("[data-save-user]")?.dataset.saveUser;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
+  const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
+  if (careWorkDetail) openCareWorkDetail(careWorkDetail);
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
   if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
   if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
@@ -4531,8 +4577,10 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   if (e.key !== "Enter" && e.key !== " ") return;
   const dashboardAction = e.target.closest?.("[data-dashboard-action]")?.dataset.dashboardAction;
-  if (!dashboardAction) return;
+  const careWorkDetail = e.target.closest?.("[data-care-work-detail]")?.dataset.careWorkDetail;
+  if (!dashboardAction && !careWorkDetail) return;
   e.preventDefault();
+  if (careWorkDetail) openCareWorkDetail(careWorkDetail);
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
   if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
   if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
