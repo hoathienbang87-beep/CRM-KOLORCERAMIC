@@ -98,6 +98,14 @@ const ownerEmail = () => clean(appUser?.email) || clean(currentUser?.email);
 const sameIdentity = (a, b) => !!clean(a) && !!clean(b) && normalizeKey(a) === normalizeKey(b);
 const ownerMatchesCurrentUser = item => sameIdentity(item?.ownerEmail, ownerEmail()) || sameIdentity(item?.createdByEmail, ownerEmail()) || sameIdentity(item?.owner, ownerName());
 const canEditCustomer = c => !!c?.id && (isManager() || ownerMatchesCurrentUser(c));
+const logAudit = (action, entity, entityId = "", payload = {}) => setDoc(doc(collection(db, "auditLogs")), {
+  action,
+  entity,
+  entityId,
+  email: currentUser?.email || "",
+  payloadJson: JSON.stringify(payload || {}),
+  createdAt: serverTimestamp()
+});
 const systemLabel = key => clean(settings?.systemLabels?.[key]) || clean(DEFAULT_SETTINGS.systemLabels[key]);
 const sameLabel = (value, key) => normalizeKey(value) === normalizeKey(systemLabel(key));
 const normalizeDealStatus = v => {
@@ -468,6 +476,8 @@ async function loadSettings() {
 async function seedSettings() {
   if (!isAdmin()) return notice("Chỉ admin được tạo SETTINGS.", true);
   await setDoc(doc(db, "settings", "crm"), DEFAULT_SETTINGS, {merge:true});
+  await logAudit("seedSettings", "settings", "crm", {keys: Object.keys(DEFAULT_SETTINGS)})
+    .catch(err => notice("Đã tạo SETTINGS, nhưng chưa ghi được audit log: " + authMessage(err), true));
   await loadSettings();
   notice("Đã tạo/cập nhật SETTINGS trên Supabase.");
 }
@@ -481,6 +491,8 @@ async function saveCareSettings() {
       updatedByEmail: currentUser?.email || "",
       updatedAt: serverTimestamp()
     }, {merge:true});
+    await logAudit("updateCareSettings", "settings", "crm", {careDueDays: days})
+      .catch(err => notice("Đã lưu thiết lập chăm sóc, nhưng chưa ghi được audit log: " + authMessage(err), true));
     settings.careDueDays = days;
     hydrateSelects();
     renderAll();
@@ -539,6 +551,14 @@ async function saveDropdownSettings() {
   if (!data.statuses.length || !data.follows.length) return notice("Trạng thái và tình trạng chăm không được để trống.", true);
   try {
     await setDoc(doc(db, "settings", "crm"), data, {merge:true});
+    await logAudit("updateDropdownSettings", "settings", "crm", {
+      channels: data.channels.length,
+      statuses: data.statuses.length,
+      follows: data.follows.length,
+      careChannels: data.careChannels.length,
+      careResults: data.careResults.length,
+      dealStatuses: data.dealStatuses.length
+    }).catch(err => notice("Đã lưu dropdown, nhưng chưa ghi được audit log: " + authMessage(err), true));
     settings = normalizeSettings({...settings, ...data});
     hydrateSelects();
     renderAll();
@@ -572,6 +592,11 @@ async function syncPhoneIndex() {
     });
     await batch.commit();
   }
+  try {
+    await logAudit("syncPhoneIndex", "phoneIndex", "bulk", {count: entries.length, duplicates: duplicates.length});
+  } catch (err) {
+    notice("Đã đồng bộ SĐT, nhưng chưa ghi được audit log: " + authMessage(err), true);
+  }
   notice(`Đã đồng bộ ${entries.length} SĐT.${duplicates.length ? " Có " + duplicates.length + " SĐT đang trùng cần xử lý thủ công." : ""}`, duplicates.length > 0);
 }
 
@@ -596,6 +621,11 @@ async function syncOwnerEmail() {
     const batch = writeBatch(db);
     updates.slice(i, i + 450).forEach(u => batch.update(u.ref, u.data));
     await batch.commit();
+  }
+  try {
+    await logAudit("syncOwnerEmail", "customers/careLogs/deals", "bulk", {count: updates.length});
+  } catch (err) {
+    notice("Đã đồng bộ nhân viên, nhưng chưa ghi được audit log: " + authMessage(err), true);
   }
   notice(`Đã đồng bộ email nhân viên cho ${updates.length} bản ghi.`);
 }
@@ -2949,13 +2979,18 @@ async function saveKpiRule() {
   try {
     if (editingKpiRuleId) {
       await setDoc(doc(db, "kpiRules", editingKpiRuleId), data, {merge:true});
+      await logAudit("updateKpiRule", "kpiRules", editingKpiRuleId, {before: existingRule || null, after: {...data, updatedAt: undefined}})
+        .catch(err => notice("Đã cập nhật KPI, nhưng chưa ghi được audit log: " + authMessage(err), true));
       notice("Đã cập nhật KPI.");
     } else {
-      await setDoc(doc(collection(db, "kpiRules")), {
+      const ruleRef = doc(collection(db, "kpiRules"));
+      await setDoc(ruleRef, {
         ...data,
         createdByEmail: currentUser?.email || "",
         createdAt: serverTimestamp()
       });
+      await logAudit("createKpiRule", "kpiRules", ruleRef.id, {...data, createdAt: undefined, updatedAt: undefined})
+        .catch(err => notice("Đã tạo KPI, nhưng chưa ghi được audit log: " + authMessage(err), true));
       notice("Đã tạo KPI.");
     }
     resetKpiRuleForm();
@@ -3000,6 +3035,8 @@ async function disableKpiRule(ruleId) {
       updatedByEmail: currentUser?.email || "",
       updatedAt: serverTimestamp()
     }, {merge:true});
+    await logAudit("disableKpiRule", "kpiRules", ruleId, {before: kpiRules.find(r => r.id === ruleId) || null})
+      .catch(err => notice("Đã tắt KPI, nhưng chưa ghi được audit log: " + authMessage(err), true));
     notice("Đã tắt KPI.");
   } catch (err) {
     notice("Không tắt được KPI: " + authMessage(err), true);
@@ -3015,6 +3052,8 @@ async function activateKpiRule(ruleId) {
       updatedByEmail: currentUser?.email || "",
       updatedAt: serverTimestamp()
     }, {merge:true});
+    await logAudit("activateKpiRule", "kpiRules", ruleId, {before: kpiRules.find(r => r.id === ruleId) || null})
+      .catch(err => notice("Đã bật lại KPI, nhưng chưa ghi được audit log: " + authMessage(err), true));
     notice("Đã bật lại KPI. KPI này sẽ áp dụng cho tháng báo cáo hiện tại và các tháng sau.");
   } catch (err) {
     notice("Không bật lại được KPI: " + authMessage(err), true);
@@ -4957,7 +4996,7 @@ function renderSaleActivityReport() {
   `).join("") : `<div class="muted">Không có timeline hoạt động phù hợp.</div>`;
 }
 
-function exportOrders() {
+async function exportOrders() {
   if (!canExportData()) return notice("Bạn chưa có quyền xuất file.", true);
   const rows = filteredOrderDeals();
   if (!rows.length) return notice("Không có đơn hàng phù hợp với bộ lọc hiện tại.", true);
@@ -4982,7 +5021,13 @@ function exportOrders() {
       ];
     })
   ];
-  exportXlsx([{ name: "Don hang", rows: dataRows }], `crm-don-hang-${new Date().toISOString().slice(0,10)}`);
+  const exported = exportXlsx([{ name: "Don hang", rows: dataRows }], `crm-don-hang-${new Date().toISOString().slice(0,10)}`);
+  if (exported) {
+    await logAudit("exportOrders", "exports", "orders", {
+      rows: rows.length,
+      filter: activeOrderFilterLabel()
+    }).catch(err => notice("File đã xuất, nhưng chưa ghi được audit log: " + authMessage(err), true));
+  }
 }
 
 function activityRowsForExport() {
@@ -5061,7 +5106,7 @@ function activityRowsForExport() {
   return {range, rows: rows.sort((a,b) => String(a.date).localeCompare(String(b.date)) || String(a.owner).localeCompare(String(b.owner), "vi"))};
 }
 
-function exportSaleActivityReport() {
+async function exportSaleActivityReport() {
   if (!canExportData()) return notice("Bạn chưa có quyền xuất file.", true);
   const {range, rows} = saleActivityRows();
   const summary = saleActivitySummary(rows);
@@ -5076,10 +5121,18 @@ function exportSaleActivityReport() {
     ["Ngày","Loại","Nhân viên","Email","Khách hàng","SĐT","Công ty","Kênh","Trạng thái","Giá trị","Ghi chú"],
     ...rows.map(r => [fmtDate(r.date), r.type, r.owner, r.ownerEmail, r.customer, r.phone, r.companyName, r.channel, r.status, r.amount || "", r.note])
   ];
-  exportXlsx([
+  const exported = exportXlsx([
     {name:"Tong hop sale", rows:summaryRows},
     {name:"Chi tiet hoat dong", rows:detailRows}
   ], `crm-hoat-dong-sale-${range.start}-${range.end}`);
+  if (exported) {
+    await logAudit("exportSaleActivityReport", "exports", "saleActivity", {
+      rows: rows.length,
+      start: range.start,
+      end: range.end,
+      label: range.label
+    }).catch(err => notice("File đã xuất, nhưng chưa ghi được audit log: " + authMessage(err), true));
+  }
 }
 
 function selectedOptionText(id) {
@@ -5102,7 +5155,7 @@ function activeCustomerFilterLabel() {
   return parts.length ? parts.join(" | ") : "Tất cả khách hàng";
 }
 
-function exportCsv() {
+async function exportCsv() {
   if (!canExportData()) return notice("Bạn chưa có quyền xuất file.", true);
   const rows = visibleCustomers();
   if (!rows.length) return notice("Không có khách hàng phù hợp với bộ lọc hiện tại.", true);
@@ -5130,7 +5183,13 @@ function exportCsv() {
       ];
     })
   ];
-  exportXlsx([{ name: "Khach hang", rows: dataRows }], `crm-khach-hang-theo-bo-loc-${new Date().toISOString().slice(0,10)}`);
+  const exported = exportXlsx([{ name: "Khach hang", rows: dataRows }], `crm-khach-hang-theo-bo-loc-${new Date().toISOString().slice(0,10)}`);
+  if (exported) {
+    await logAudit("exportCustomers", "exports", "customers", {
+      rows: rows.length,
+      filter: filterLabel
+    }).catch(err => notice("File đã xuất, nhưng chưa ghi được audit log: " + authMessage(err), true));
+  }
 }
 
 function setViewHidden(id, hidden) {
