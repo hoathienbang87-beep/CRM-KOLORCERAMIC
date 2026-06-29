@@ -1982,6 +1982,8 @@ function ownKpiProposals() {
 function renderMyKpiProposalPanel() {
   if (!$("kpiMyProposalList")) return;
   const rows = ownKpiProposals();
+  const statusFilter = clean($("myKpiProposalStatus")?.value);
+  const visibleRows = statusFilter ? rows.filter(p => kpiProposalStatusKey(p) === statusFilter) : rows;
   const pending = rows.filter(isPendingKpiProposal).length;
   const approved = rows.filter(isApprovedKpiProposal).length;
   const rejected = rows.filter(isRejectedKpiProposal).length;
@@ -1990,8 +1992,9 @@ function renderMyKpiProposalPanel() {
       <span>Chờ duyệt: ${esc(pending)}</span>
       <span>Đã duyệt: ${esc(approved)}</span>
       <span>Từ chối: ${esc(rejected)}</span>
+      ${statusFilter ? `<span>Đang lọc: ${esc(kpiProposalStatusLabel({status: statusFilter}))}</span>` : ""}
     </div>
-    ${rows.map(kpiProposalCard).join("")}
+    ${visibleRows.length ? visibleRows.map(kpiProposalCard).join("") : `<div class="muted">Không có đề xuất KPI trong trạng thái đang lọc.</div>`}
   ` : `<div class="muted">Bạn chưa gửi đề xuất KPI nào.</div>`;
 }
 
@@ -2391,11 +2394,18 @@ function renderKpiRuleList() {
 function renderKpiApprovalPanel() {
   if (!isManager()) return;
   const reportMonth = clean($("kpiRuleMonth")?.value) || currentMonth();
+  const scope = clean($("kpiApprovalScope")?.value) || "all";
   const proposalPending = kpiProposals
     .filter(p => isPendingKpiProposal(p) && !p.isDeleted)
     .sort(byDateDesc);
+  const scopedPending = proposalPending.filter(p => {
+    const month = kpiProposalMonth(p);
+    if (scope === "month") return month === reportMonth;
+    if (scope === "old") return month && month !== reportMonth;
+    return true;
+  });
   const oldPendingCount = proposalPending.filter(p => kpiProposalMonth(p) && kpiProposalMonth(p) !== reportMonth).length;
-  const proposalHtml = proposalPending.length ? proposalPending.map(p => `
+  const proposalHtml = scopedPending.length ? scopedPending.map(p => `
     <div class="rule-item">
       <div class="actions" style="justify-content:space-between;align-items:flex-start">
         <div>
@@ -2415,10 +2425,11 @@ function renderKpiApprovalPanel() {
         </div>
       </div>
     </div>
-  `).join("") : `<div class="muted">Chưa có đề xuất thủ công chờ duyệt.</div>`;
+  `).join("") : `<div class="muted">Không có đề xuất KPI chờ duyệt trong bộ lọc này.</div>`;
   $("kpiApprovalList").innerHTML = proposalPending.length ? `
     <div class="detail-meta" style="margin-bottom:8px">
       <span>Tổng chờ duyệt: ${esc(proposalPending.length)}</span>
+      <span>Đang hiển thị: ${esc(scopedPending.length)}</span>
       <span>Tháng báo cáo: ${esc(reportMonth)}</span>
       <span>Tồn tháng cũ: ${esc(oldPendingCount)}</span>
     </div>
@@ -2532,6 +2543,8 @@ function kpiProposalDetailHtml(p) {
 
 function kpiProposalCard(p) {
   const statusLabel = kpiProposalStatusLabel(p);
+  const month = kpiProposalMonth(p);
+  const reportMonth = clean($("kpiRuleMonth")?.value) || currentMonth();
   return `
     <div class="detail-row">
       <div class="detail-row-head">
@@ -2539,6 +2552,8 @@ function kpiProposalCard(p) {
           <b>${esc(p.kpiName || "KPI")}</b>
           <div class="detail-meta">
             <span class="pill ${kpiProposalStatusClass(p)}">${esc(statusLabel)}</span>
+            ${month ? `<span>Tháng: ${esc(month)}</span>` : ""}
+            ${month && month !== reportMonth && isPendingKpiProposal(p) ? `<span class="pill orange">Tồn tháng cũ</span>` : ""}
             <span>${esc([p.owner, p.email || p.ownerEmail].filter(Boolean).join(" - "))}</span>
             ${p.customerName ? `<span>KH: ${esc(p.customerName)}</span>` : ""}
             <span>${esc(fmtDate(p.createdAt) || "")}</span>
@@ -4644,6 +4659,8 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 ["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => on(id, "input", scheduleRenderAll));
 on("filterMonth", "change", scheduleRenderAll);
 on("kpiRuleMonth", "change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
+on("myKpiProposalStatus", "change", renderMyKpiProposalPanel);
+on("kpiApprovalScope", "change", renderKpiApprovalPanel);
 on("crmViewBtn", "click", () => setMainView("crm"));
 on("customersViewBtn", "click", () => setMainView("customers"));
 on("ordersViewBtn", "click", () => setMainView("orders"));

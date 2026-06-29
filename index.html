@@ -265,8 +265,15 @@
         <div id="kpiApprovalPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
             <h3>Duyệt KPI</h3>
-            <span class="muted">KPI phụ chỉ tính sau khi admin/manager duyệt</span>
+            <div class="actions">
+              <select id="kpiApprovalScope" class="small-select" aria-label="Lọc KPI chờ duyệt">
+                <option value="all">Tất cả chờ duyệt</option>
+                <option value="month">Tháng đang xem</option>
+                <option value="old">Tồn tháng cũ</option>
+              </select>
+            </div>
           </div>
+          <div class="muted" style="margin-bottom:8px">KPI chỉ được tính sau khi admin/manager duyệt. Đề xuất tồn tháng cũ vẫn hiện ở đây để xử lý tiếp.</div>
           <div id="kpiApprovalList" class="rule-list muted">Chưa có KPI chờ duyệt.</div>
         </div>
 
@@ -287,8 +294,16 @@
           <div id="kpiMyProposalPanel" class="section" style="margin-top:14px">
             <div class="pro-section-title">
               <h3>Đề xuất KPI của tôi</h3>
-              <span class="muted">Chờ duyệt được sửa/xóa; đã duyệt hoặc từ chối sẽ khóa để giữ log</span>
+              <div class="actions">
+                <select id="myKpiProposalStatus" class="small-select" aria-label="Lọc đề xuất KPI của tôi">
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="pending">Chờ duyệt</option>
+                  <option value="approved">Đã duyệt</option>
+                  <option value="rejected">Từ chối</option>
+                </select>
+              </div>
             </div>
+            <div class="muted" style="margin-bottom:8px">Chờ duyệt được sửa/xóa; đã duyệt hoặc từ chối sẽ khóa để giữ log.</div>
             <div id="kpiMyProposalList" class="detail-list muted">Chưa có đề xuất KPI.</div>
           </div>
         </div>

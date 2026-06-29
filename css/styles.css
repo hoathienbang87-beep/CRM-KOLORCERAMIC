@@ -62,6 +62,7 @@
     .toolbar{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;align-items:end;margin:12px 0}
     .toolbar-search{grid-column:span 2}
     .toolbar-actions{grid-column:1 / -1;display:flex;gap:10px;align-items:center;justify-content:flex-start}
+    .small-select{width:auto;min-width:170px;padding:8px 10px;margin:0}
     .toolbar-actions #exportBtn{margin-left:28px}
     .table-title{font-size:18px;font-weight:800;margin:14px 0 10px}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
