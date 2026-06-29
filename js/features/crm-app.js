@@ -2251,9 +2251,9 @@ function renderKpiTable() {
       const value = kpiRuleValue(rule, o);
       const target = kpiRuleTargetForOwner(rule, o);
       const cls = target && value >= target ? "green" : "";
-      return `<td><button class="pill ${cls} kpi-drill-pill" type="button" title="Xem chi tiết KPI đã gửi" data-kpi-owner-detail="${esc(rule.id)}" data-owner-key="${esc(o)}">${esc(value)}${target ? `/${esc(target)}` : ""}</button></td>`;
+      return `<td><button class="kpi-progress-btn ${cls}" type="button" title="Xem chi tiết KPI đã gửi" data-kpi-owner-detail="${esc(rule.id)}" data-owner-key="${esc(o)}">${kpiProgressHtml(value, target)}</button></td>`;
     }).join("");
-    return `<tr><td><b>${esc(profile.name || o)}</b><div class="muted">${esc(profile.email && profile.email !== profile.name ? profile.email : "")}</div></td><td>${cs.length}</td><td>${monthLead}</td><td>${dealCount}</td><td>${ds.filter(d=>sameLabel(normalizeDealStatus(d.dealStatus),"depositStatus")).length}</td><td>${closeCount}</td><td>${cancelCount}</td><td>${esc(money(revenue))}</td>${ruleCells}<td>${rate}%</td><td>${due}</td><td>${overdue}</td></tr>`;
+    return `<tr class="kpi-row"><td><b>${esc(profile.name || o)}</b><div class="muted">${esc(profile.email && profile.email !== profile.name ? profile.email : "")}</div></td><td>${cs.length}</td><td>${monthLead}</td><td>${dealCount}</td><td>${ds.filter(d=>sameLabel(normalizeDealStatus(d.dealStatus),"depositStatus")).length}</td><td>${closeCount}</td><td>${cancelCount}</td><td>${esc(money(revenue))}</td>${ruleCells}<td><span class="pill ${rate >= 30 ? "green" : rate ? "orange" : ""}">${rate}%</span></td><td>${due}</td><td>${overdue}</td></tr>`;
   }).join("") || `<tr><td colspan="${9 + monthRules.length}" class="muted">Chưa có KPI.</td></tr>`;
 }
 
@@ -2267,6 +2267,19 @@ function kpiProposalStatusClass(p) {
   if (isApprovedKpiProposal(p)) return "green";
   if (isRejectedKpiProposal(p)) return "red";
   return "orange";
+}
+
+function kpiProgressHtml(value, target) {
+  const safeValue = Number(value || 0);
+  const safeTarget = Number(target || 0);
+  const pct = safeTarget ? Math.min(100, Math.round(safeValue / safeTarget * 100)) : 0;
+  const done = safeTarget && safeValue >= safeTarget;
+  return `
+    <div class="kpi-progress ${done ? "done" : ""}">
+      <div class="kpi-progress-top"><b>${esc(safeValue)}/${esc(safeTarget)}</b><span>${esc(pct)}%</span></div>
+      <div class="kpi-progress-bar"><span style="width:${esc(pct)}%"></span></div>
+    </div>
+  `;
 }
 
 function ownKpiProposals() {
@@ -2662,19 +2675,17 @@ function renderKpiControlRows() {
       const profile = ownerProfileByValue(email);
       const value = rule.active === false ? 0 : kpiRuleValue(rule, email, month);
       const target = kpiRuleTargetForOwner(rule, email);
-      const pct = target ? Math.min(100, Math.round(value / target * 100)) : 0;
-      return `<div><b>${esc(profile.name || email)}</b> <span class="muted">${esc(email)}</span> · ${esc(value)}/${esc(target || 0)} <span class="pill ${target && value >= target ? "green" : ""}">${esc(pct)}%</span></div>`;
+      return `<div class="kpi-assignee-progress"><div><b>${esc(profile.name || email)}</b> <span class="muted">${esc(email)}</span></div>${kpiProgressHtml(value, target)}</div>`;
     }).join("");
     const totalValue = rule.active === false ? 0 : (assigned.length ? assigned : kpiAssignableUsers().map(u => u.email)).reduce((sum,email) => sum + kpiRuleValue(rule, email, month), 0);
     const totalTarget = (assigned.length ? assigned : kpiAssignableUsers().map(u => u.email)).reduce((sum,email) => sum + kpiRuleTargetForOwner(rule, email), 0);
-    const totalPct = totalTarget ? Math.round(totalValue / totalTarget * 100) : 0;
     const statusLabel = rule.active === false ? "Đã tắt" : (totalTarget && totalValue >= totalTarget ? "Đạt" : "Đang chạy");
     const statusClass = rule.active === false ? "red" : (totalTarget && totalValue >= totalTarget ? "green" : "orange");
     return `
       <tr>
         <td><b>${esc(rule.name)}</b><div class="muted">${rule.active === false ? "Đã tắt · " : ""}${assigned.length ? "Gán riêng" : "Áp dụng tất cả nhân viên"}${rule.month ? ` · Tạo từ ${esc(rule.month)}` : ""}</div></td>
         <td>${ownerRows || "<span class='muted'>Chưa gán nhân viên</span>"}</td>
-        <td><b>${esc(totalValue)}/${esc(totalTarget)}</b><div class="muted">${esc(totalPct)}%</div></td>
+        <td>${kpiProgressHtml(totalValue, totalTarget)}</td>
         <td><span class="pill ${statusClass}">${statusLabel}</span></td>
         <td><div class="actions"><button class="small" data-edit-kpi-rule="${esc(rule.id)}">Sửa</button><button class="small" data-kpi-rule-proposals="${esc(rule.id)}">Chi tiết KPI</button>${rule.active === false ? `<button class="small primary" data-activate-kpi-rule="${esc(rule.id)}">Bật lại</button>` : `<button class="small danger" data-disable-kpi-rule="${esc(rule.id)}">Tắt</button>`}</div></td>
       </tr>
@@ -2703,8 +2714,8 @@ function renderKpiApprovalPanel() {
   });
   const oldPendingCount = proposalPending.filter(p => kpiProposalMonth(p) && kpiProposalMonth(p) !== reportMonth).length;
   const proposalHtml = scopedPending.length ? scopedPending.map(p => `
-    <div class="rule-item">
-      <div class="actions" style="justify-content:space-between;align-items:flex-start">
+    <div class="rule-item kpi-approval-item">
+      <div class="kpi-approval-grid">
         <div>
           <b>${esc(p.kpiName || "KPI")}</b> <span class="muted">· ${esc(kpiProposalMonth(p) || "Chưa có tháng")}</span>
           ${kpiProposalMonth(p) && kpiProposalMonth(p) !== reportMonth ? `<span class="pill orange">Tồn từ tháng cũ</span>` : ""}
@@ -2714,7 +2725,7 @@ function renderKpiApprovalPanel() {
           <div>${esc(p.content || "")}</div>
           ${p.evidenceUrl ? `<div><button class="small" type="button" data-kpi-proposal-detail="${esc(p.id)}">Xem ảnh minh chứng</button></div>` : ""}
         </div>
-        <div class="actions">
+        <div class="kpi-approval-actions">
           <button class="small" data-kpi-proposal-detail="${esc(p.id)}">Chi tiết</button>
           ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Xóa test</button>` : ""}
           <button class="small primary" data-approve-kpi-proposal="${esc(p.id)}">Duyệt</button>
@@ -2724,11 +2735,11 @@ function renderKpiApprovalPanel() {
     </div>
   `).join("") : `<div class="muted">Không có đề xuất KPI chờ duyệt trong bộ lọc này.</div>`;
   $("kpiApprovalList").innerHTML = proposalPending.length ? `
-    <div class="detail-meta" style="margin-bottom:8px">
-      <span>Tổng chờ duyệt: ${esc(proposalPending.length)}</span>
-      <span>Đang hiển thị: ${esc(scopedPending.length)}</span>
-      <span>Tháng báo cáo: ${esc(reportMonth)}</span>
-      <span>Tồn tháng cũ: ${esc(oldPendingCount)}</span>
+    <div class="kpi-state-grid">
+      <div><span>Tổng chờ duyệt</span><b>${esc(proposalPending.length)}</b></div>
+      <div><span>Đang hiển thị</span><b>${esc(scopedPending.length)}</b></div>
+      <div><span>Tháng báo cáo</span><b>${esc(reportMonth)}</b></div>
+      <div class="${oldPendingCount ? "warn" : ""}"><span>Tồn tháng cũ</span><b>${esc(oldPendingCount)}</b></div>
     </div>
     ${proposalHtml}
   ` : proposalHtml;
@@ -2840,10 +2851,11 @@ function kpiProposalDetailHtml(p) {
 
 function kpiProposalCard(p) {
   const statusLabel = kpiProposalStatusLabel(p);
+  const statusKey = kpiProposalStatusKey(p);
   const month = kpiProposalMonth(p);
   const reportMonth = clean($("kpiRuleMonth")?.value) || currentMonth();
   return `
-    <div class="detail-row">
+    <div class="detail-row kpi-proposal-card ${esc(statusKey)}">
       <div class="detail-row-head">
         <div>
           <b>${esc(p.kpiName || "KPI")}</b>
@@ -2856,14 +2868,14 @@ function kpiProposalCard(p) {
             <span>${esc(fmtDate(p.createdAt) || "")}</span>
           </div>
         </div>
-        <div class="actions">
+        <div class="kpi-card-actions">
           <button class="small" data-kpi-proposal-detail="${esc(p.id)}">Chi tiết</button>
           ${canEditKpiProposal(p) ? `<button class="small primary" data-edit-kpi-proposal="${esc(p.id)}">Sửa</button>` : ""}
           ${canSoftDeleteKpiProposal(p) ? `<button class="small danger" data-soft-delete-kpi-proposal="${esc(p.id)}">Xóa đề xuất</button>` : ""}
           ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Xóa test</button>` : ""}
         </div>
       </div>
-      <div class="detail-note">${esc(p.content || "")}</div>
+      <div class="detail-note kpi-content-preview">${esc(p.content || "")}</div>
       ${p.evidenceUrl ? `<div><button class="small" type="button" data-kpi-proposal-detail="${esc(p.id)}">Xem ảnh minh chứng</button></div>` : ""}
     </div>
   `;

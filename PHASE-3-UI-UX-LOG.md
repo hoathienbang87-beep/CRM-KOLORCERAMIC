@@ -25,8 +25,15 @@ Muc tieu: nang giao dien CRM chuyen nghiep hon nhung giu workflow quen thuoc cho
 - Nut thao tac trong bang deal xep doc gon hon, tranh tran ngang.
 - Chi tiet don hang chuyen tu alert dai sang modal co thong tin, san pham, ghi chu va hanh dong tiep theo.
 
+## Dot 4 - Man KPI
+
+- KPI trong bang tong hop co progress bar theo dang da lam/chi tieu/phan tram.
+- Card de xuat KPI co mau theo trang thai: cho duyet, da duyet, tu choi.
+- Phan duyet KPI co grid thong ke: tong cho duyet, dang hien thi, thang bao cao, ton thang cu.
+- Action trong card KPI xep doc gon hon de tranh roi nut.
+- Bang control KPI rule hien tien do tung nhan vien va tong rule bang progress bar.
+
 ## Cac man hinh con lai nen lam tiep
 
-1. KPI: tach ro KPI cua toi, KPI cho duyet, rule KPI; lam trang thai pending/approved/rejected de nhin hon.
-2. Bao cao: lam report cards va timeline sale gon hon, them empty/loading state ro.
-3. Quan tri: gom settings/dropdown/users/audit thanh cac khoi de quan ly it roi hon.
+1. Bao cao: lam report cards va timeline sale gon hon, them empty/loading state ro.
+2. Quan tri: gom settings/dropdown/users/audit thanh cac khoi de quan ly it roi hon.
