@@ -91,10 +91,13 @@ const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
 const roleKey = () => clean(appUser?.role).toLowerCase();
 const isAdmin = () => roleKey() === "admin";
 const isManager = () => ["admin","manager","quanly","quản lý","quản lí"].includes(roleKey());
+const isSale = () => roleKey() === "sale";
 const canExportData = () => ["admin","manager","sale"].includes(roleKey()) || appUser?.canExport === true || String(appUser?.canExport || "").toLowerCase() === "true";
-const canEditCustomer = c => !!c && (isManager() || canSeeCustomer(c));
 const ownerName = () => clean(appUser?.name) || clean(currentUser?.displayName) || clean(currentUser?.email);
 const ownerEmail = () => clean(appUser?.email) || clean(currentUser?.email);
+const sameIdentity = (a, b) => !!clean(a) && !!clean(b) && normalizeKey(a) === normalizeKey(b);
+const ownerMatchesCurrentUser = item => sameIdentity(item?.ownerEmail, ownerEmail()) || sameIdentity(item?.createdByEmail, ownerEmail()) || sameIdentity(item?.owner, ownerName());
+const canEditCustomer = c => !!c?.id && (isManager() || ownerMatchesCurrentUser(c));
 const systemLabel = key => clean(settings?.systemLabels?.[key]) || clean(DEFAULT_SETTINGS.systemLabels[key]);
 const sameLabel = (value, key) => normalizeKey(value) === normalizeKey(systemLabel(key));
 const normalizeDealStatus = v => {
@@ -350,13 +353,13 @@ function hydrateSelects() {
     $("importProductsBtn")?.classList.toggle("hide", !isManager());
     $("kpiRulePanel").classList.remove("hide");
     $("kpiApprovalPanel").classList.remove("hide");
-    $("careSettingsPanel").classList.remove("hide");
+    $("careSettingsPanel").classList.toggle("hide", !isAdmin());
     $("dropdownSettingsPanel").classList.toggle("hide", !isAdmin());
     $("proHealthPanel").classList.toggle("hide", !isAdmin());
     $("auditPanel").classList.toggle("hide", !isAdmin());
     $("userAdminPanel").classList.toggle("hide", !isAdmin());
     $("trashPanel").classList.toggle("hide", !isAdmin());
-    $("adminViewBtn")?.classList.remove("hide");
+    $("adminViewBtn")?.classList.toggle("hide", !isAdmin());
     $("reportsViewBtn")?.classList.remove("hide");
   }
 }
@@ -470,7 +473,7 @@ async function seedSettings() {
 }
 
 async function saveCareSettings() {
-  if (!isManager()) return notice("Chỉ admin/manager được lưu thiết lập chăm sóc.", true);
+  if (!isAdmin()) return notice("Chỉ admin được lưu thiết lập chăm sóc.", true);
   const days = Math.max(0, Number($("careDueDays").value || 0));
   try {
     await setDoc(doc(db, "settings", "crm"), {
@@ -996,8 +999,9 @@ function replaceDocs(targetName, docs) {
 }
 
 function canSeeCustomer(c) {
+  if (!c?.id) return false;
   if (isManager()) return true;
-  return clean(c.ownerEmail) === ownerEmail() || clean(c.createdByEmail) === ownerEmail() || clean(c.owner) === ownerName();
+  return ownerMatchesCurrentUser(c);
 }
 
 function watchData() {
@@ -1045,6 +1049,10 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "auditLogs"), snap => {
+      auditLogs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byDateDesc);
+      scheduleRenderAll();
+    }, err => notice("Lỗi tải audit log: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "users"), snap => {
       users = snap.docs.map(d => ({uid:d.id, ...d.data()})).sort((a,b) => clean(a.email).localeCompare(clean(b.email)));
       hydrateSelects();
@@ -1059,16 +1067,10 @@ function watchData() {
     return;
   }
 
-  const owned = ownerName();
-  const email = ownerEmail();
-  unsubscribers.push(onSnapshot(query(collection(db, "customers"), where("ownerEmail", "==", email)), snap => applySnap("customers", snap, true, "ownerEmail"), err => notice("Lỗi tải khách phụ trách: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(query(collection(db, "customers"), where("owner", "==", owned)), snap => applySnap("customers", snap, true, "owner"), err => notice("Lỗi tải khách cũ phụ trách: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(query(collection(db, "customers"), where("createdByEmail", "==", email)), snap => applySnap("customers", snap, true, "created"), err => notice("Lỗi tải khách đã tạo: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(query(collection(db, "careLogs"), where("ownerEmail", "==", email)), snap => applySnap("careLogs", snap, true, "ownerEmail"), err => notice("Lỗi tải lịch sử chăm: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(query(collection(db, "careLogs"), where("owner", "==", owned)), snap => applySnap("careLogs", snap, true, "owner"), err => notice("Lỗi tải lịch sử chăm cũ: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(query(collection(db, "deals"), where("ownerEmail", "==", email)), snap => applySnap("deals", snap, true, "ownerEmail"), err => notice("Lỗi tải đơn hàng: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(query(collection(db, "deals"), where("owner", "==", owned)), snap => applySnap("deals", snap, true, "owner"), err => notice("Lỗi tải đơn hàng cũ: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(query(collection(db, "kpiProposals"), where("ownerEmail", "==", email)), snap => applySnap("kpiProposals", snap, true, "ownerEmail"), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI của bạn: " + authMessage(err), true)));
 }
 
 function visibleCustomers() {
@@ -1084,7 +1086,7 @@ function visibleCustomers() {
   return customers.filter(canSeeCustomer).filter(c => {
     const haystack = normalizeKey([c.name,c.companyName,c.phoneRaw,c.phoneNormalized,c.address,c.channel,c.owner,c.ownerEmail,customerOwnerName(c),c.status,c.follow,computedFollowStatus(c),c.need,c.note].join(" "));
     if (q && !haystack.includes(q)) return false;
-    if (owner && customerOwnerKey(c) !== owner && clean(c.owner) !== owner) return false;
+    if (owner && !sameIdentity(customerOwnerKey(c), owner) && !sameIdentity(c.owner, owner)) return false;
     if (status === "__NO_PHONE__" && c.phoneNormalized) return false;
     if (status && status !== "__NO_PHONE__" && clean(c.status) !== status) return false;
     if (dealStatus && !customerDeals(c.id).some(d => normalizeKey(normalizeDealStatus(d.dealStatus)) === normalizeKey(dealStatus))) return false;
@@ -1114,8 +1116,7 @@ const canEditDeal = d => {
   if (!d || d.isDeleted) return false;
   if (isManager()) return true;
   const c = customerById(d.customerId);
-  const isOwner = normalizeKey(d.ownerEmail || customerOwnerKey(c)) === normalizeKey(ownerEmail()) || normalizeKey(d.owner || customerOwnerName(c)) === normalizeKey(ownerName());
-  return isOwner && isActiveDeal(d);
+  return (ownerMatchesCurrentUser(d) || ownerMatchesCurrentUser(c)) && isActiveDeal(d);
 };
 const purchaseCount = id => customerDeals(id).filter(isCompletedDeal).length;
 const customerHasDealStatus = (id, labelKey) => customerDeals(id).some(d => sameLabel(normalizeDealStatus(d.dealStatus), labelKey));
@@ -1199,7 +1200,7 @@ function renderCrmView() {
 function setMainView(view) {
   activeMainView = ["customers","kpi","orders","products","reports","admin"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
-  if (activeMainView === "admin" && !isManager()) activeMainView = "crm";
+  if (activeMainView === "admin" && !isAdmin()) activeMainView = "crm";
   const isCustomerView = activeMainView === "customers";
   const isKpiView = activeMainView === "kpi";
   const isOrdersView = activeMainView === "orders";
@@ -1216,9 +1217,9 @@ function setMainView(view) {
   }
   adminViewIds.forEach(id => $(id)?.classList.add("hide"));
   if (isAdminView) {
-    $("careSettingsPanel")?.classList.toggle("hide", !isManager());
-    $("proHealthPanel")?.classList.toggle("hide", !isManager());
-    $("auditPanel")?.classList.toggle("hide", !isManager());
+    $("careSettingsPanel")?.classList.toggle("hide", !isAdmin());
+    $("proHealthPanel")?.classList.toggle("hide", !isAdmin());
+    $("auditPanel")?.classList.toggle("hide", !isAdmin());
     $("dropdownSettingsPanel")?.classList.toggle("hide", !isAdmin());
     $("userAdminPanel")?.classList.toggle("hide", !isAdmin());
     $("trashPanel")?.classList.toggle("hide", !isAdmin());
@@ -1231,7 +1232,7 @@ function setMainView(view) {
   ordersViewIds.forEach(id => $(id)?.classList.toggle("hide", !isOrdersView));
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
-  $("adminViewBtn")?.classList.toggle("hide", !isManager());
+  $("adminViewBtn")?.classList.toggle("hide", !isAdmin());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
   $("crmViewBtn")?.classList.toggle("primary", !isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isReportsView && !isAdminView);
   $("customersViewBtn")?.classList.toggle("primary", isCustomerView);
@@ -2010,7 +2011,7 @@ function taskRows() {
     })
     .filter(t => {
       const c = t.customer;
-      if (owner && normalizeKey(customerOwnerKey(c)) !== normalizeKey(owner) && normalizeKey(customerOwnerName(c)) !== normalizeKey(owner)) return false;
+      if (owner && !sameIdentity(customerOwnerKey(c), owner) && !sameIdentity(customerOwnerName(c), owner)) return false;
       if (!key) return true;
       return normalizeKey([c.name, c.companyName, c.phoneRaw, c.phoneNormalized, c.address, c.channel, customerOwnerName(c), c.status, c.need, c.note, computedFollowStatus(c)].join(" ")).includes(key);
     })
@@ -2187,7 +2188,7 @@ function renderKpiTable() {
   </tr>`;
   $("kpiRows").innerHTML = ownerKeys.map(o => {
     const profile = ownerProfileByValue(o);
-    const cs = customers.filter(c => canSeeCustomer(c) && (customerOwnerKey(c) === o || clean(c.owner) === o));
+    const cs = customers.filter(c => canSeeCustomer(c) && (sameIdentity(customerOwnerKey(c), o) || sameIdentity(c.owner, o)));
     if (!cs.length && !isManager() && !monthRules.some(rule => kpiRuleAppliesToOwner(rule, o))) return "";
     const ids = new Set(cs.map(c => c.id));
     const ds = deals.filter(d => ids.has(d.customerId));
@@ -2256,7 +2257,7 @@ function kpiReportData() {
   const ownerKeys = reportOwnerKeys();
   const summaryRows = ownerKeys.map(o => {
     const profile = ownerProfileByValue(o);
-    const cs = customers.filter(c => canSeeCustomer(c) && (customerOwnerKey(c) === o || clean(c.owner) === o));
+    const cs = customers.filter(c => canSeeCustomer(c) && (sameIdentity(customerOwnerKey(c), o) || sameIdentity(c.owner, o)));
     const ids = new Set(cs.map(c => c.id));
     const ds = deals.filter(d => ids.has(d.customerId));
     const closeCount = ds.filter(isCompletedDeal).length;
@@ -3363,7 +3364,7 @@ function renderUserAdmin() {
 }
 
 function renderAuditTrail() {
-  if (!isManager()) return;
+  if (!isAdmin()) return;
   $("auditRows").innerHTML = auditLogs.length ? auditLogs.slice(0,60).map(a => `
     <tr class="audit-row">
       <td>${esc(fmtDate(a.createdAt))}</td>
@@ -4573,12 +4574,12 @@ function inDateRange(value, range) {
 
 function exportOwnerMatches(item, ownerFilter) {
   if (!ownerFilter) return true;
-  return clean(item.ownerEmail) === ownerFilter || clean(item.owner) === ownerFilter;
+  return sameIdentity(item.ownerEmail, ownerFilter) || sameIdentity(item.owner, ownerFilter);
 }
 
 function ownerMatchesKey(item, ownerFilter) {
   if (!ownerFilter) return true;
-  return normalizeKey(item.ownerEmail || "") === normalizeKey(ownerFilter) || normalizeKey(item.owner || "") === normalizeKey(ownerFilter);
+  return sameIdentity(item.ownerEmail, ownerFilter) || sameIdentity(item.owner, ownerFilter);
 }
 
 function customerById(id) {
@@ -4633,7 +4634,7 @@ function orderStatusLabel(d) {
 function visibleOrderDeals() {
   return deals
     .filter(d => !d.isDeleted)
-    .filter(d => isManager() || normalizeKey(orderOwnerEmail(d)) === normalizeKey(ownerEmail()) || normalizeKey(d.owner) === normalizeKey(ownerName()))
+    .filter(d => isManager() || sameIdentity(orderOwnerEmail(d), ownerEmail()) || sameIdentity(d.owner, ownerName()))
     .sort((a,b) => String(orderDate(b)).localeCompare(String(orderDate(a))) || byDateDesc(a,b));
 }
 
