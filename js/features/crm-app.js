@@ -1727,6 +1727,137 @@ function openDashboardDealDetail(type) {
   );
 }
 
+function quoteTemplateUrl() {
+  return clean(settings.quoteTemplateUrl) || DEFAULT_SETTINGS.quoteTemplateUrl;
+}
+
+function quoteCustomerSummary(c) {
+  return [
+    `Khách hàng: ${c.name || ""}`,
+    c.companyName ? `Công ty: ${c.companyName}` : "",
+    `SĐT: ${c.phoneRaw || c.phoneNormalized || "Không SĐT"}`,
+    c.address ? `Địa chỉ: ${c.address}` : "",
+    c.channel ? `Kênh: ${c.channel}` : "",
+    c.need ? `Nhu cầu/Sản phẩm: ${c.need}` : "",
+    c.note ? `Ghi chú: ${c.note}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function quoteProductSuggestions(c) {
+  const terms = clean([c.need, c.note].filter(Boolean).join(" "))
+    .split(/[^0-9A-Za-zÀ-ỹđĐ]+/u)
+    .map(normalizeKey)
+    .map(clean)
+    .filter(part => part.length >= 3);
+  if (!terms.length) return [];
+  return products
+    .filter(p => !p.isDeleted)
+    .filter(p => {
+      const text = normalizeKey([p.name, p.code, p.sku, p.size, p.surface, p.color, p.description].filter(Boolean).join(" "));
+      return terms.some(part => text.includes(part));
+    })
+    .slice(0, 8);
+}
+
+async function logQuoteAction(customerId, action="openQuoteProposal") {
+  try {
+    await setDoc(doc(collection(db, "auditLogs")), {
+      action, entity: "customers", entityId: customerId,
+      email: currentUser.email || "", payloadJson: JSON.stringify({templateUrl: quoteTemplateUrl()}), createdAt: serverTimestamp()
+    });
+  } catch (err) {
+    console.warn("Quote audit log skipped", err);
+  }
+}
+
+function openQuoteProposal(customerId) {
+  const c = customers.find(x => x.id === customerId);
+  if (!c || !canSeeCustomer(c)) return notice("Không tìm thấy khách hoặc bạn không có quyền xem.", true);
+  const ds = customerDeals(c.id);
+  const logs = customerLogs(c.id).slice(0, 4);
+  const suggestions = quoteProductSuggestions(c);
+  const dealRows = ds.length ? ds.slice(0, 5).map(d => `
+    <div class="detail-row">
+      <div><b>${esc(orderStatusLabel(d))}</b> · ${esc(fmtDate(d.dealDate || d.createdAt))} · <b>${esc(money(d.amount || 0))}</b></div>
+      <div class="muted">${esc(orderProductText(d) || "Chưa có sản phẩm")}</div>
+    </div>
+  `).join("") : `<div class="muted">Chưa có đơn hàng/deal nào.</div>`;
+  const logRows = logs.length ? logs.map(l => `
+    <div class="activity-mini care">
+      <b>${esc(fmtDate(l.createdAt))} · ${esc(l.careResult || l.status || "Chăm sóc")}</b>
+      <span class="muted">${esc(l.note || "")}</span>
+    </div>
+  `).join("") : `<div class="muted">Chưa có lịch sử chăm sóc gần đây.</div>`;
+  const productRows = suggestions.length ? suggestions.map(p => `
+    <div class="detail-row">
+      <b>${esc(p.name || p.code || "Sản phẩm")}</b>
+      <div class="muted">${esc([p.code || p.sku, p.size, p.surface, p.color, p.priceText || (p.price ? money(p.price) : "")].filter(Boolean).join(" · "))}</div>
+    </div>
+  `).join("") : `<div class="muted">Chưa gợi ý được sản phẩm từ nhu cầu hiện tại.</div>`;
+  openDetailModal(
+    `Báo giá/Đề xuất - ${c.name || "Khách hàng"}`,
+    `${c.phoneRaw || c.phoneNormalized || "Không SĐT"} · ${customerOwnerName(c)}`,
+    `
+      <div class="detail-list">
+        <div class="detail-row">
+          <h3 style="margin:0 0 8px">Thông tin để báo giá</h3>
+          <div class="info-grid">
+            <div class="info-cell"><span class="muted">Khách hàng</span><b>${esc(c.name || "")}</b></div>
+            <div class="info-cell"><span class="muted">SĐT</span><b>${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")}</b></div>
+            <div class="info-cell"><span class="muted">Công ty</span><b>${esc(c.companyName || "-")}</b></div>
+            <div class="info-cell"><span class="muted">Kênh</span><b>${esc(c.channel || "-")}</b></div>
+            <div class="info-cell"><span class="muted">Phụ trách</span><b>${esc(customerOwnerName(c))}</b></div>
+            <div class="info-cell"><span class="muted">Tình trạng</span><b>${esc(c.status || "-")}</b></div>
+          </div>
+          <div class="muted" style="margin-top:8px;white-space:pre-wrap">${esc(quoteCustomerSummary(c))}</div>
+          <div class="actions" style="margin-top:10px">
+            <button class="small primary" type="button" data-quote-create-deal="${esc(c.id)}">Tạo đơn từ báo giá</button>
+            <button class="small" type="button" data-quote-open-template="${esc(c.id)}">Mở template báo giá</button>
+            <button class="small" type="button" data-quote-copy="${esc(c.id)}">Copy thông tin</button>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="detail-row">
+            <h3 style="margin:0 0 8px">Đơn hàng/deal liên quan</h3>
+            <div class="detail-list">${dealRows}</div>
+          </div>
+          <div class="detail-row">
+            <h3 style="margin:0 0 8px">Chăm sóc gần đây</h3>
+            <div class="detail-list">${logRows}</div>
+          </div>
+        </div>
+        <div class="detail-row">
+          <h3 style="margin:0 0 8px">Gợi ý sản phẩm từ nhu cầu</h3>
+          <div class="detail-list">${productRows}</div>
+        </div>
+      </div>
+    `
+  );
+  logQuoteAction(c.id);
+}
+
+function createDealFromQuote(customerId) {
+  const c = customers.find(x => x.id === customerId);
+  if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền tạo đơn cho khách này.", true);
+  closeDetailModal();
+  openDrawer(c.id, "deal");
+  $("dealNote").value = [`Tạo từ Báo giá/Đề xuất ngày ${new Date().toLocaleDateString("vi-VN")}`, c.note || ""].filter(Boolean).join("\n");
+  logQuoteAction(c.id, "createDealFromQuote");
+}
+
+function openQuoteTemplate(customerId) {
+  const c = customers.find(x => x.id === customerId);
+  if (c) logQuoteAction(c.id, "openQuoteTemplate");
+  window.open(quoteTemplateUrl(), "_blank", "noopener");
+}
+
+function copyQuoteCustomerInfo(customerId) {
+  const c = customers.find(x => x.id === customerId);
+  if (!c) return;
+  navigator.clipboard?.writeText(quoteCustomerSummary(c));
+  notice("Đã copy thông tin báo giá.");
+}
+
 function jumpToPendingKpi() {
   if (!isManager()) return;
   setMainView("kpi");
@@ -4763,6 +4894,9 @@ document.addEventListener("click", e => {
   const careId = e.target.closest("[data-open-care]")?.dataset.openCare || e.target.closest("[data-care-open]")?.dataset.careOpen;
   const dealId = e.target.closest("[data-open-deal]")?.dataset.openDeal;
   const docId = e.target.closest("[data-open-template]")?.dataset.openTemplate;
+  const quoteCreateDealId = e.target.closest("[data-quote-create-deal]")?.dataset.quoteCreateDeal;
+  const quoteOpenTemplateId = e.target.closest("[data-quote-open-template]")?.dataset.quoteOpenTemplate;
+  const quoteCopyId = e.target.closest("[data-quote-copy]")?.dataset.quoteCopy;
   const completeDealId = e.target.closest("[data-complete-deal]")?.dataset.completeDeal;
   const cancelDealId = e.target.closest("[data-cancel-deal]")?.dataset.cancelDeal;
   const deleteDealId = e.target.closest("[data-delete-deal]")?.dataset.deleteDeal;
@@ -4800,10 +4934,10 @@ document.addEventListener("click", e => {
     openDrawer(careId, "care");
   }
   if (dealId) openDrawer(dealId, "deal");
-  if (docId) {
-    const url = clean(settings.quoteTemplateUrl) || DEFAULT_SETTINGS.quoteTemplateUrl;
-    window.open(url, "_blank", "noopener");
-  }
+  if (docId) openQuoteProposal(docId);
+  if (quoteCreateDealId) createDealFromQuote(quoteCreateDealId);
+  if (quoteOpenTemplateId) openQuoteTemplate(quoteOpenTemplateId);
+  if (quoteCopyId) copyQuoteCustomerInfo(quoteCopyId);
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
   if (cancelDealId) cancelDeal(cancelDealId);
