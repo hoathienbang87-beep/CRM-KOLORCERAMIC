@@ -2175,18 +2175,33 @@ function renderCustomers() {
     const careStatus = computedFollowStatus(c);
     const rowClass = ["customer-row", isFailStatus(st) || isCanceledDeal(st) ? "row-fail" : "", purchaseCount(c.id) ? "row-success row-vip" : "", isCareOverdue(c) ? "row-overdue" : ""].filter(Boolean).join(" ");
     const careBadge = isCareOverdue(c) ? `<br><span class="pill red">Quá ${esc(careDeltaDays(c))} ngày</span>` : isCareDue(c) ? `<br><span class="pill orange">${esc(systemLabel("dueFollow"))}</span>` : "";
+    const contactText = c.phoneRaw || c.phoneNormalized || "Không SĐT";
+    const customerMeta = [c.companyName, c.address].filter(Boolean).join(" · ");
+    const statusClass = isFailStatus(st) || isCanceledDeal(st) ? "red" : purchaseCount(c.id) ? "green" : "orange";
     return `<tr class="${rowClass}">
-      <td><b>${esc(c.name)}</b>${c.companyName ? `<br><span class="muted">${esc(c.companyName)}</span>` : ""}</td>
-      <td>${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")} ${(c.phoneRaw || c.phoneNormalized) ? `<button class="quick-copy" type="button" data-copy-phone="${esc(c.phoneRaw || c.phoneNormalized)}">Copy</button>` : ""}</td>
+      <td>
+        <div class="customer-cell">
+          <b>${esc(c.name || "Không tên")}</b>
+          ${customerMeta ? `<span>${esc(customerMeta)}</span>` : ""}
+        </div>
+      </td>
+      <td>
+        <div class="phone-cell">
+          <b>${esc(contactText)}</b>
+          ${(c.phoneRaw || c.phoneNormalized) ? `<button class="quick-copy" type="button" data-copy-phone="${esc(c.phoneRaw || c.phoneNormalized)}">Copy</button>` : ""}
+        </div>
+      </td>
       <td>${esc(fmtDate(c.createdAt))}</td>
       <td class="source-col">${c.channel ? `<span class="pill">${esc(c.channel)}</span>` : ""}</td>
       <td>${esc(customerOwnerName(c))}</td>
-      <td>${esc(c.status || "")}</td>
+      <td><span class="pill ${statusClass}">${esc(c.status || st || "Chưa rõ")}</span></td>
       <td><span class="pill ${sameLabel(careStatus, "overdueFollow") ? "red" : sameLabel(careStatus, "dueFollow") ? "orange" : sameLabel(careStatus, "closedFollow") ? "" : "green"}">${esc(careStatus)}</span></td>
       <td>
-        <div><b>${esc(systemLabel("depositStatus"))}:</b> ${counts.deposit}</div>
-        <div><b>${esc(systemLabel("boughtStatus"))}:</b> ${counts.bought}</div>
-        <div><b>${esc(systemLabel("canceledStatus"))}:</b> ${counts.canceled}</div>
+        <div class="deal-counts">
+          <span><b>${esc(counts.deposit)}</b> ${esc(systemLabel("depositStatus"))}</span>
+          <span><b>${esc(counts.bought)}</b> ${esc(systemLabel("boughtStatus"))}</span>
+          <span><b>${esc(counts.canceled)}</b> ${esc(systemLabel("canceledStatus"))}</span>
+        </div>
       </td>
       <td>${esc(fmtDate(c.nextCareDate))}${careBadge}</td>
       <td class="note-col">${esc(c.note || "")}</td>
@@ -4335,8 +4350,15 @@ function openDrawer(id, mode="care") {
   const c = customers.find(x => x.id === id);
   if (!c) return notice("Không tìm thấy khách.", true);
   selectedCustomerId = id;
-  $("drawerTitle").textContent = c.name || "Khách hàng";
-  $("drawerInfo").textContent = `${c.phoneRaw || c.phoneNormalized || "Không SĐT"} · ${customerOwnerName(c)} · Lần mua hàng: ${purchaseCount(id)}`;
+  const drawerTitle = c.name || "Khách hàng";
+  const drawerMeta = [
+    c.phoneRaw || c.phoneNormalized || "Không SĐT",
+    c.companyName || c.channel || "",
+    customerOwnerName(c),
+    `Lần mua hàng: ${purchaseCount(id)}`
+  ].filter(Boolean);
+  $("drawerTitle").textContent = drawerTitle;
+  $("drawerInfo").innerHTML = drawerMeta.map(item => `<span>${esc(item)}</span>`).join("");
   $("careStatus").value = clean(c.status);
   updateCareStatusVisual();
   $("careChannel").value = "";
