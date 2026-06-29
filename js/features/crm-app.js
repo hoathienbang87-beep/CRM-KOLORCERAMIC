@@ -4883,7 +4883,7 @@ function renderReportCenter() {
   ];
   $("reportCenterTime").textContent = `Cập nhật ${new Date().toLocaleString("vi-VN")}`;
   $("reportCenterGrid").innerHTML = cards.map(([label,value,cls]) => `
-    <div class="executive-card ${esc(cls)}">
+    <div class="executive-card report-card ${esc(cls)}">
       <span class="muted">${esc(label)}</span>
       <b>${esc(value)}</b>
     </div>
@@ -5044,6 +5044,31 @@ function renderSaleActivityReport() {
   hydrateSaleActivityFilters();
   const {range, rows} = saleActivityRows();
   const summary = saleActivitySummary(rows);
+  const metrics = {
+    total: rows.length,
+    taskOverdue: rows.filter(r => r.bucket === "task" && r.taskType === "overdue").length,
+    care: rows.filter(r => r.bucket === "care").length,
+    quote: rows.filter(r => r.bucket === "quote").length,
+    deal: rows.filter(r => r.bucket === "deal").length,
+    completed: rows.filter(r => r.bucket === "completed").length,
+    revenue: rows.filter(r => r.bucket === "completed").reduce((sum,r) => sum + Number(r.amount || 0), 0)
+  };
+  if ($("saleActivityMetrics")) {
+    $("saleActivityMetrics").innerHTML = [
+      ["Tổng hoạt động", metrics.total, ""],
+      ["Task quá hạn", metrics.taskOverdue, metrics.taskOverdue ? "bad" : ""],
+      ["Chăm sóc", metrics.care, ""],
+      ["Báo giá", metrics.quote, ""],
+      ["Deal tạo", metrics.deal, ""],
+      ["Đơn hoàn thành", metrics.completed, ""],
+      ["Doanh số", money(metrics.revenue), ""]
+    ].map(([label,value,cls]) => `
+      <div class="report-metric ${esc(cls)}">
+        <span>${esc(label)}</span>
+        <b>${esc(value)}</b>
+      </div>
+    `).join("");
+  }
   $("saleActivitySummary").innerHTML = summary.length ? `
     <table class="admin-table">
       <thead><tr><th>Nhân viên</th><th>Task mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Báo giá</th><th>Deal tạo</th><th>Đơn hoàn thành</th><th>Doanh số</th></tr></thead>
@@ -5061,14 +5086,26 @@ function renderSaleActivityReport() {
       `).join("")}</tbody>
     </table>
   ` : `<div class="muted" style="padding:12px">Không có hoạt động trong khoảng ${esc(range.label)}.</div>`;
-  $("saleActivityTimeline").innerHTML = rows.length ? rows.slice(0, 80).map(r => `
-    <div class="activity-mini ${r.bucket === "deal" || r.bucket === "completed" ? "deal" : r.bucket === "quote" ? "kpi" : "care"}">
-      <div><span class="activity-type">${esc(r.type)}</span> · <b>${esc(r.customer || "Không tên")}</b> · ${esc(fmtDate(r.date) || "")}</div>
-      <div class="muted">${esc(r.owner || "")} · ${esc(r.phone || "Không SĐT")} · ${esc(r.channel || "")}</div>
-      <div>${r.amount ? `<b>${esc(money(r.amount))}</b> · ` : ""}${esc(r.note || "")}</div>
+  $("saleActivityTimeline").innerHTML = rows.length ? rows.slice(0, 80).map(r => {
+    const cls = r.bucket === "deal" || r.bucket === "completed" ? "deal" : r.bucket === "quote" ? "kpi" : r.taskType === "overdue" ? "bad" : "care";
+    return `
+    <div class="activity-mini report-activity ${esc(cls)}">
+      <div class="activity-mini-head">
+        <div>
+          <span class="activity-type">${esc(r.type)}</span>
+          <b>${esc(r.customer || "Không tên")}</b>
+        </div>
+        <span class="muted">${esc(fmtDate(r.date) || "")}</span>
+      </div>
+      <div class="report-activity-meta">
+        <span>${esc(r.owner || "Không rõ NV")}</span>
+        <span>${esc(r.phone || "Không SĐT")}</span>
+        ${r.channel ? `<span>${esc(r.channel)}</span>` : ""}
+      </div>
+      <div class="report-activity-body">${r.amount ? `<b>${esc(money(r.amount))}</b> · ` : ""}${esc(r.note || "Không có ghi chú.")}</div>
       ${r.customerId ? `<div class="actions"><button class="small" type="button" data-care-open="${esc(r.customerId)}">Mở khách</button></div>` : ""}
     </div>
-  `).join("") : `<div class="muted">Không có timeline hoạt động phù hợp.</div>`;
+  `;}).join("") : `<div class="muted">Không có timeline hoạt động phù hợp.</div>`;
 }
 
 async function exportOrders() {

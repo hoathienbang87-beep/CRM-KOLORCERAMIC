@@ -33,7 +33,13 @@ Muc tieu: nang giao dien CRM chuyen nghiep hon nhung giu workflow quen thuoc cho
 - Action trong card KPI xep doc gon hon de tranh roi nut.
 - Bang control KPI rule hien tien do tung nhan vien va tong rule bang progress bar.
 
+## Dot 5 - Man Bao cao
+
+- Them metric grid cho bao cao hoat dong sale: tong hoat dong, task qua han, cham soc, bao gia, deal tao, don hoan thanh, doanh so.
+- Timeline hoat dong sale chuyen sang card ro nhan vien, SĐT, kenh, noi dung va tien neu co.
+- Card bao cao tong quan co class rieng de dong bo UI voi dashboard.
+- Task qua han trong timeline duoc nhan mau canh bao de manager de thay.
+
 ## Cac man hinh con lai nen lam tiep
 
-1. Bao cao: lam report cards va timeline sale gon hon, them empty/loading state ro.
-2. Quan tri: gom settings/dropdown/users/audit thanh cac khoi de quan ly it roi hon.
+1. Quan tri: gom settings/dropdown/users/audit thanh cac khoi de quan ly it roi hon.
