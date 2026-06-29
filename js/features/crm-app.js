@@ -1148,6 +1148,11 @@ const followMatchesFilter = (c, follow) => {
 const isCareDue = c => sameLabel(computedFollowStatus(c), "dueFollow") || sameLabel(computedFollowStatus(c), "overdueFollow");
 const isCareOverdue = c => sameLabel(computedFollowStatus(c), "overdueFollow");
 const openDealCount = id => customerDeals(id).filter(isActiveDeal).length;
+const addDaysIso = (iso, days) => {
+  const d = new Date((iso || todayIso()) + "T00:00:00");
+  d.setDate(d.getDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+};
 
 function statusPill(status) {
   const s = clean(status);
@@ -1858,6 +1863,31 @@ function copyQuoteCustomerInfo(customerId) {
   notice("Đã copy thông tin báo giá.");
 }
 
+async function snoozeTask(customerId, days=1) {
+  const c = customers.find(x => x.id === customerId);
+  if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền dời lịch khách này.", true);
+  const nextCareDate = addDaysIso(todayIso(), days);
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "customers", c.id), {
+      nextCareDate,
+      follow: computedFollowStatus({...c, nextCareDate}),
+      updatedAt: serverTimestamp(),
+      updatedByEmail: currentUser.email || ""
+    });
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: "snoozeTask", entity: "customers", entityId: c.id,
+      email: currentUser.email || "",
+      payloadJson: JSON.stringify({before: c.nextCareDate || "", after: nextCareDate, days}),
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    notice(`Đã dời lịch chăm sang ${fmtDate(nextCareDate)}.`);
+  } catch (err) {
+    notice(authMessage(err), true);
+  }
+}
+
 function jumpToPendingKpi() {
   if (!isManager()) return;
   setMainView("kpi");
@@ -1916,7 +1946,7 @@ function renderCareWorkSummary() {
   const box = $("careWorkSummary");
   if (!box) return;
   const {openRows, todayRows, overdueRows, noDateRows, activeRows} = careWorkGroups();
-  $("careWorkSummaryText").textContent = `${openRows.length} khách đang cần theo dõi`;
+  $("careWorkSummaryText").textContent = `${openRows.length} công việc/khách đang mở`;
   const cards = [
     ["today", "Hôm nay", todayRows.length, "Lịch hẹn trong ngày", todayRows.length ? "warn" : ""],
     ["overdue", "Quá hạn", overdueRows.length, "Cần xử lý trước", overdueRows.length ? "bad" : ""],
@@ -1930,6 +1960,107 @@ function renderCareWorkSummary() {
       <small>${esc(hint)}</small>
     </button>
   `).join("");
+}
+
+function hydrateTaskFilters() {
+  if (!$("taskOwnerFilter")) return;
+  const currentOwner = $("taskOwnerFilter").value;
+  fillSelect("taskOwnerFilter", ownerOptions(), "", "Tất cả nhân viên");
+  if (ownerOptions().some(o => clean(o.email) === currentOwner || clean(o.name) === currentOwner) || currentOwner === "") $("taskOwnerFilter").value = currentOwner;
+  if (!isManager()) {
+    $("taskOwnerFilter").value = ownerEmail();
+    $("taskOwnerFilter").disabled = true;
+  } else {
+    $("taskOwnerFilter").disabled = false;
+  }
+}
+
+function taskTypeForCustomer(c) {
+  if (isCareOverdue(c)) return "overdue";
+  if (clean(c.nextCareDate) === todayIso()) return "today";
+  if (!clean(c.nextCareDate)) return "no-date";
+  return "upcoming";
+}
+
+function taskLabel(type) {
+  return {
+    overdue: "Quá hạn",
+    today: "Hôm nay",
+    "no-date": "Chưa hẹn",
+    upcoming: "Sắp tới"
+  }[type] || "Công việc";
+}
+
+function taskClass(type) {
+  return type === "overdue" ? "bad" : type === "today" || type === "no-date" ? "warn" : "quiet";
+}
+
+function taskRows() {
+  const scope = clean($("taskScopeFilter")?.value) || "priority";
+  const owner = clean($("taskOwnerFilter")?.value);
+  const key = normalizeKey($("taskSearchBox")?.value || "");
+  return customers
+    .filter(canSeeCustomer)
+    .filter(c => !isCustomerClosed(c))
+    .map(c => ({customer: c, type: taskTypeForCustomer(c), delta: careDeltaDays(c)}))
+    .filter(t => {
+      if (scope === "priority") return ["overdue", "today", "no-date"].includes(t.type);
+      if (scope !== "all" && t.type !== scope) return false;
+      return true;
+    })
+    .filter(t => {
+      const c = t.customer;
+      if (owner && normalizeKey(customerOwnerKey(c)) !== normalizeKey(owner) && normalizeKey(customerOwnerName(c)) !== normalizeKey(owner)) return false;
+      if (!key) return true;
+      return normalizeKey([c.name, c.companyName, c.phoneRaw, c.phoneNormalized, c.address, c.channel, customerOwnerName(c), c.status, c.need, c.note, computedFollowStatus(c)].join(" ")).includes(key);
+    })
+    .sort((a,b) => {
+      const rank = {overdue: 0, today: 1, "no-date": 2, upcoming: 3};
+      return (rank[a.type] - rank[b.type]) || clean(a.customer.nextCareDate).localeCompare(clean(b.customer.nextCareDate)) || clean(a.customer.name).localeCompare(clean(b.customer.name), "vi");
+    });
+}
+
+function renderTaskBoard() {
+  const list = $("needCareList");
+  const panel = $("needCarePanel");
+  if (!list || !panel) return;
+  hydrateTaskFilters();
+  const rows = taskRows();
+  const hasUrgent = rows.some(t => t.type === "overdue" || t.type === "today");
+  panel.classList.toggle("care-alert", hasUrgent);
+  if (!rows.length) {
+    list.className = "care-empty";
+    list.textContent = "Không có công việc phù hợp với bộ lọc.";
+    return;
+  }
+  list.className = "task-board";
+  list.innerHTML = rows.map(({customer: c, type, delta}) => {
+    const dateText = clean(c.nextCareDate) ? fmtDate(c.nextCareDate) : "Chưa đặt lịch";
+    const overdueText = type === "overdue" ? ` · Quá ${esc(delta)} ngày` : "";
+    return `
+      <div class="task-row ${esc(taskClass(type))}">
+        <div>
+          <div class="task-title">${esc(c.name || "Không tên")}</div>
+          <div class="muted">${esc(c.companyName || c.channel || "")}</div>
+          <div class="muted">${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")}</div>
+        </div>
+        <div>
+          <span class="pill ${type === "overdue" ? "red" : type === "upcoming" ? "green" : "orange"}">${esc(taskLabel(type))}</span>
+          <div class="muted">${esc(dateText)}${overdueText}</div>
+        </div>
+        <div>
+          <b>${esc(customerOwnerName(c))}</b>
+          <div class="muted">${esc(c.need || c.note || "Chưa có nội dung công việc")}</div>
+        </div>
+        <div class="task-actions">
+          <button class="small primary" type="button" data-care-open="${esc(c.id)}">Chăm sóc</button>
+          <button class="small" type="button" data-open-template="${esc(c.id)}">Báo giá</button>
+          <button class="small" type="button" data-open-deal="${esc(c.id)}">Đơn hàng</button>
+          <button class="small" type="button" data-task-snooze="${esc(c.id)}" data-days="1">Dời mai</button>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
 function openCareWorkDetail(type) {
@@ -1947,27 +2078,7 @@ function openCareWorkDetail(type) {
 
 function renderNeedCare() {
   renderCareWorkSummary();
-  const rows = customers.filter(canSeeCustomer).filter(isCareDue).sort((a,b) => clean(a.nextCareDate).localeCompare(clean(b.nextCareDate)));
-  const panel = $("needCarePanel");
-  panel.classList.toggle("care-alert", rows.length > 0);
-  if (!rows.length) {
-    $("needCareList").className = "care-empty";
-    $("needCareList").textContent = "Không có khách cần chăm.";
-    return;
-  }
-  $("needCareList").className = "need-grid";
-  $("needCareList").innerHTML = rows.slice(0,12).map(c => {
-    const delta = careDeltaDays(c);
-    const label = sameLabel(computedFollowStatus(c), "overdueFollow") ? `${systemLabel("overdueFollow")} ${delta} ngày` : systemLabel("dueFollow");
-    return `
-      <div class="need-card">
-        <div><b>${esc(c.name)}</b> - ${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")}</div>
-        <div class="muted">${esc(customerOwnerName(c))} · Hẹn: ${esc(fmtDate(c.nextCareDate))}</div>
-        <div><span class="pill ${delta > 0 ? "red" : "orange"}">${esc(label)}</span></div>
-        <button class="small" data-care-open="${esc(c.id)}">Mở</button>
-      </div>
-    `;
-  }).join("");
+  renderTaskBoard();
 }
 
 function todayCareRows() {
@@ -4897,6 +5008,7 @@ document.addEventListener("click", e => {
   const quoteCreateDealId = e.target.closest("[data-quote-create-deal]")?.dataset.quoteCreateDeal;
   const quoteOpenTemplateId = e.target.closest("[data-quote-open-template]")?.dataset.quoteOpenTemplate;
   const quoteCopyId = e.target.closest("[data-quote-copy]")?.dataset.quoteCopy;
+  const taskSnoozeBtn = e.target.closest("[data-task-snooze]");
   const completeDealId = e.target.closest("[data-complete-deal]")?.dataset.completeDeal;
   const cancelDealId = e.target.closest("[data-cancel-deal]")?.dataset.cancelDeal;
   const deleteDealId = e.target.closest("[data-delete-deal]")?.dataset.deleteDeal;
@@ -4938,6 +5050,7 @@ document.addEventListener("click", e => {
   if (quoteCreateDealId) createDealFromQuote(quoteCreateDealId);
   if (quoteOpenTemplateId) openQuoteTemplate(quoteOpenTemplateId);
   if (quoteCopyId) copyQuoteCustomerInfo(quoteCopyId);
+  if (taskSnoozeBtn) snoozeTask(taskSnoozeBtn.dataset.taskSnooze, Number(taskSnoozeBtn.dataset.days || 1));
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
   if (cancelDealId) cancelDeal(cancelDealId);
@@ -4993,6 +5106,8 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 }));
 
 ["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => on(id, "input", scheduleRenderAll));
+["taskScopeFilter","taskOwnerFilter","taskSearchBox"].forEach(id => on(id, "input", renderTaskBoard));
+["taskScopeFilter","taskOwnerFilter"].forEach(id => on(id, "change", renderTaskBoard));
 on("filterMonth", "change", scheduleRenderAll);
 on("kpiRuleMonth", "change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
 on("myKpiProposalStatus", "change", renderMyKpiProposalPanel);

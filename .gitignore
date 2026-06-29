@@ -65,5 +65,8 @@ node_modules/
 # dotenv environment variables file
 .env
 
+# Temporary editor/Office lock files
+~$*
+
 # dataconnect generated files
 .dataconnect

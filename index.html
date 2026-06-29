@@ -189,10 +189,22 @@
 
         <div id="needCarePanel" class="panel" style="margin-top:14px">
           <div class="pro-section-title">
-            <h3>Trung tâm chăm sóc</h3>
+            <h3>Tasks / Lịch hẹn công việc</h3>
             <span id="careWorkSummaryText" class="muted"></span>
           </div>
           <div id="careWorkSummary" class="care-work-summary"></div>
+          <div class="toolbar task-toolbar">
+            <div><label>Nhóm việc</label><select id="taskScopeFilter">
+              <option value="priority">Ưu tiên hôm nay</option>
+              <option value="today">Hôm nay</option>
+              <option value="overdue">Quá hạn</option>
+              <option value="upcoming">Sắp tới</option>
+              <option value="no-date">Chưa hẹn</option>
+              <option value="all">Tất cả việc mở</option>
+            </select></div>
+            <div><label>Nhân viên</label><select id="taskOwnerFilter"></select></div>
+            <div class="toolbar-search"><label>Tìm task</label><input id="taskSearchBox" placeholder="Tên, SĐT, công ty, ghi chú..."></div>
+          </div>
           <div id="needCareList" class="care-empty">Không có khách cần chăm.</div>
         </div>
 
