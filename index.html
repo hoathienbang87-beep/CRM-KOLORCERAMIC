@@ -104,10 +104,10 @@
             <div class="field"><label>Năm</label><select id="orderFilterYear"></select></div>
             <div class="field"><label>Tháng</label><select id="orderFilterMonth"></select></div>
             <div class="field"><label>Nhân viên</label><select id="orderFilterOwner"></select></div>
-            <div class="field"><label>Trạng thái</label><select id="orderFilterStatus"></select></div>
+            <div class="field"><label>Tình trạng đơn</label><select id="orderFilterStatus"></select></div>
           </div>
           <div id="orderSummaryGrid" class="executive-grid order-summary-grid"></div>
-          <div class="table-title">Khách hàng đã giao dịch</div>
+          <div class="table-title">Thông tin đơn hàng / deal</div>
           <div class="table-wrap order-table-wrap">
             <table class="admin-table">
               <thead>
@@ -471,7 +471,7 @@
       <div class="field"><label>Địa chỉ giao hàng</label><textarea id="dealDeliveryAddress"></textarea></div>
       <div class="field"><label>Mã số thuế</label><input id="dealTaxCode"></div>
       <div class="grid2">
-        <select id="dealStatus" class="hide"></select>
+        <div class="field"><label>Tình trạng đơn</label><select id="dealStatus"></select></div>
         <div class="field"><label>Đã cọc (%)</label><input id="dealDepositPercent" type="number" min="0" max="100" step="0.1"></div>
         <div class="field"><label>Giá trị đơn (VNĐ)</label><input id="dealAmount" type="number" min="0" step="1000" placeholder="VD: 25000000"></div>
         <div class="field"><label>Ngày cọc</label><input id="dealDate" type="date"></div>

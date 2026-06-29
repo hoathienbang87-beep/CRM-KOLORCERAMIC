@@ -1108,6 +1108,7 @@ const dealCounts = id => {
 const isCompletedDeal = d => d?.completed === true || sameLabel(normalizeDealStatus(d?.dealStatus), "boughtStatus");
 const isKpiRevenueDeal = d => isCompletedDeal(d) || sameLabel(normalizeDealStatus(d?.dealStatus), "depositStatus");
 const dealAmount = d => Number(d?.amount || 0);
+const isActiveDeal = d => !!d && !d.isDeleted && !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus);
 const purchaseCount = id => customerDeals(id).filter(isCompletedDeal).length;
 const customerHasDealStatus = (id, labelKey) => customerDeals(id).some(d => sameLabel(normalizeDealStatus(d.dealStatus), labelKey));
 const customerHasCompletedDeal = id => customerDeals(id).some(isCompletedDeal);
@@ -1138,7 +1139,7 @@ const followMatchesFilter = (c, follow) => {
 };
 const isCareDue = c => sameLabel(computedFollowStatus(c), "dueFollow") || sameLabel(computedFollowStatus(c), "overdueFollow");
 const isCareOverdue = c => sameLabel(computedFollowStatus(c), "overdueFollow");
-const openDealCount = id => customerDeals(id).filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus)).length;
+const openDealCount = id => customerDeals(id).filter(isActiveDeal).length;
 
 function statusPill(status) {
   const s = clean(status);
@@ -1251,7 +1252,7 @@ function renderKpis() {
   const rowIds = new Set(rows.map(c => c.id));
   const filteredDeals = deals.filter(d => rowIds.has(d.customerId));
   const completed = filteredDeals.filter(isCompletedDeal);
-  const pending = filteredDeals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const pending = filteredDeals.filter(isActiveDeal);
   const due = rows.filter(isCareDue);
   const overdue = rows.filter(isCareOverdue);
   const withPhone = rows.filter(c => c.phoneNormalized);
@@ -1296,7 +1297,7 @@ function renderExecutiveDashboard() {
   const month = currentMonth();
   const monthCustomers = rows.filter(c => monthOf(c.createdAt) === month);
   const completedMonth = reportDeals.filter(d => isCompletedDeal(d) && monthOf(d.completedAt || d.dealDate || d.createdAt) === month);
-  const pendingDeals = reportDeals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const pendingDeals = reportDeals.filter(isActiveDeal);
   const completedDeals = reportDeals.filter(isCompletedDeal);
   const boughtCustomers = rows.filter(c => customerHasCompletedDeal(c.id));
   const pendingValue = pendingDeals.reduce((sum, d) => sum + dealAmount(d), 0);
@@ -1696,7 +1697,7 @@ function openDashboardDealDetail(type) {
   if (!isManager()) return;
   const reportDeals = currentReportDeals();
   const month = currentMonth();
-  const pendingDeals = reportDeals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const pendingDeals = reportDeals.filter(isActiveDeal);
   const completedDeals = reportDeals.filter(isCompletedDeal);
   const monthCompleted = completedDeals.filter(d => monthOf(d.completedAt || d.dealDate || d.createdAt) === month);
   const depositDeals = reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
@@ -2165,7 +2166,7 @@ async function exportManagementReport() {
     pendingKpi: kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length
   };
   const completed = report.deals.filter(isCompletedDeal);
-  const pending = report.deals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const pending = report.deals.filter(isActiveDeal);
   const summaryRows = [
     ["Báo cáo quản trị CRM", ""],
     ["Thời điểm xuất", new Date().toLocaleString("vi-VN")],
@@ -3357,8 +3358,9 @@ async function saveDeal() {
   const c = customers.find(x => x.id === selectedCustomerId);
   if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền tạo đơn cho khách này.", true);
   if (!clean($("dealCustomerName").value)) return notice("Vui lòng nhập tên khách trong đơn hàng.", true);
-  const dealStatus = systemLabel("depositStatus");
+  const dealStatus = normalizeDealStatus(clean($("dealStatus").value) || systemLabel("depositStatus"));
   const completed = sameLabel(dealStatus, "boughtStatus");
+  const canceled = isCanceledDeal(dealStatus) || isFailStatus(dealStatus);
   const depositPercent = Number($("dealDepositPercent").value || 0);
   const amount = Number($("dealAmount").value || 0);
   if (depositPercent < 0 || depositPercent > 100) return notice("Tỷ lệ cọc phải từ 0 đến 100%.", true);
@@ -3382,6 +3384,9 @@ async function saveDeal() {
     completed,
     completedAt: completed ? serverTimestamp() : null,
     completedByEmail: completed ? (currentUser.email || "") : "",
+    canceled,
+    canceledAt: canceled ? serverTimestamp() : null,
+    canceledByEmail: canceled ? (currentUser.email || "") : "",
     createdAt: serverTimestamp()
   };
   if (!items.length) return notice("Vui lòng thêm ít nhất 1 sản phẩm.", true);
@@ -3393,8 +3398,9 @@ async function saveDeal() {
     batch.set(dealRef, deal);
     batch.update(customerRef, {
       dealStatus: deal.dealStatus,
-      status: completed ? systemLabel("boughtStatus") : systemLabel("depositStatus"),
-      follow: completed ? systemLabel("closedFollow") : systemLabel("activeFollow"),
+      status: completed ? systemLabel("boughtStatus") : canceled ? systemLabel("activeStatus") : systemLabel("depositStatus"),
+      follow: completed ? systemLabel("closedFollow") : canceled ? systemLabel("dueFollow") : systemLabel("activeFollow"),
+      nextCareDate: completed ? "" : canceled ? todayIso() : c.nextCareDate || "",
       need: deal.product || c.need || "",
       note: deal.note || c.note || "",
       updatedAt: serverTimestamp(),
@@ -3407,7 +3413,7 @@ async function saveDeal() {
     await batch.commit();
     ["dealDepositPercent","dealAmount","dealNote","dealDeliveryDate","dealTaxCode"].forEach(id => $(id).value = "");
     resetDealItems();
-    $("dealStatus").value = "";
+    $("dealStatus").value = systemLabel("depositStatus");
     $("dealDate").value = todayIso();
     notice("Đã tạo đơn hàng.");
   } catch (err) {
@@ -3480,6 +3486,51 @@ async function cancelDeal(dealId) {
     });
     await batch.commit();
     notice("Đã hủy đơn hàng.");
+  } catch (err) {
+    notice(authMessage(err), true);
+  }
+}
+
+function customerDealStatePatch(customerId, excludeDealId="") {
+  const otherDeals = customerDeals(customerId).filter(d => d.id !== excludeDealId && !d.isDeleted);
+  const liveDeals = otherDeals.filter(d => !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const hasBought = liveDeals.some(isCompletedDeal);
+  const hasDeposit = liveDeals.some(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
+  const hasOpen = liveDeals.some(isActiveDeal);
+  const status = hasBought ? systemLabel("boughtStatus") : hasDeposit ? systemLabel("depositStatus") : systemLabel("activeStatus");
+  return {
+    dealStatus: hasBought ? systemLabel("boughtStatus") : hasDeposit ? systemLabel("depositStatus") : hasOpen ? normalizeDealStatus(liveDeals[0]?.dealStatus) : systemLabel("canceledStatus"),
+    status,
+    follow: hasBought ? systemLabel("closedFollow") : hasOpen || hasDeposit ? systemLabel("activeFollow") : systemLabel("dueFollow"),
+    nextCareDate: hasBought ? "" : todayIso(),
+    updatedAt: serverTimestamp(),
+    updatedByEmail: currentUser.email || ""
+  };
+}
+
+async function softDeleteDeal(dealId) {
+  const deal = deals.find(d => d.id === dealId);
+  if (!deal || deal.isDeleted) return;
+  if (!deal.customerId) return notice("Đơn hàng này thiếu mã khách, chưa thể xóa mềm an toàn.", true);
+  if (!isManager()) return notice("Chỉ admin/manager được xóa mềm đơn hàng.", true);
+  const ok = confirm(`Xóa mềm đơn hàng của "${orderCustomerName(deal) || deal.customerName || deal.id}"? Dữ liệu sẽ được giữ trong hệ thống.`);
+  if (!ok) return;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "deals", deal.id), {
+      isDeleted: true,
+      deletedAt: serverTimestamp(),
+      deletedByEmail: currentUser.email || "",
+      updatedAt: serverTimestamp(),
+      updatedByEmail: currentUser.email || ""
+    });
+    batch.update(doc(db, "customers", deal.customerId), customerDealStatePatch(deal.customerId, deal.id));
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: "softDeleteDeal", entity: "deals", entityId: deal.id,
+      email: currentUser.email || "", payloadJson: JSON.stringify({customerId: deal.customerId}), createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    notice("Đã xóa mềm đơn hàng.");
   } catch (err) {
     notice(authMessage(err), true);
   }
@@ -3725,7 +3776,7 @@ function renderCustomerActivityPreview(c) {
   const logs = customerLogs(c.id);
   const ds = customerDeals(c.id);
   const proposals = kpiProposals.filter(p => p.customerId === c.id && !p.isDeleted);
-  const pendingDeals = ds.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const pendingDeals = ds.filter(isActiveDeal);
   const approvedKpi = proposals.filter(isApprovedKpiProposal);
   const nextCare = clean(c.nextCareDate) ? fmtDate(c.nextCareDate) : "Chưa hẹn";
   box.innerHTML = `
@@ -3897,7 +3948,7 @@ function openDrawer(id, mode="care") {
   $("careNeed").value = clean(c.need);
   $("careNote").value = "";
   $("careNextDate").value = clean(c.nextCareDate);
-  $("dealStatus").value = "";
+  $("dealStatus").value = systemLabel("depositStatus");
   $("dealCustomerName").value = clean(c.name);
   $("dealCustomerPhone").value = clean(c.phoneRaw || c.phoneNormalized);
   $("dealDeliveryAddress").value = clean(c.address);
@@ -3954,14 +4005,18 @@ function dealCard(d) {
       ${Array.isArray(d.items) && d.items.length ? `<div class="muted">${esc(d.items.map(item => `${item.product || item.productLabel || ""}${item.code ? " - " + item.code : ""}${item.size ? " - " + item.size : ""}${item.qty ? " - SL: " + item.qty : ""}`).join("; "))}</div>` : ""}
       <div>${d.completed ? `<span class="pill green">Hoàn thành</span> ${d.completedAt ? `<span class="muted">· ${esc(fmtDate(d.completedAt))}</span>` : ""}` : isCanceledDeal(d.dealStatus) ? `<span class="pill red">${esc(systemLabel("canceledStatus"))}</span> ${d.canceledAt ? `<span class="muted">· ${esc(fmtDate(d.canceledAt))}</span>` : ""}` : `<span class="pill orange">Đang xử lý</span>`}</div>
       <div class="muted">${esc(d.note || "")}</div>
-      ${(!d.completed && !isFailStatus(d.dealStatus) && !isCanceledDeal(d.dealStatus)) ? `<div class="actions"><button class="small" data-review-deal="${esc(d.id)}">Xem lại</button><button class="small primary" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" data-cancel-deal="${esc(d.id)}">Hủy đơn</button></div>` : `<div class="actions"><button class="small" data-review-deal="${esc(d.id)}">Xem lại</button></div>`}
+      <div class="actions">
+        <button class="small" data-review-deal="${esc(d.id)}">Xem lại</button>
+        ${isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus") ? `<button class="small primary" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" data-cancel-deal="${esc(d.id)}">Hủy đơn</button>` : ""}
+        ${isManager() ? `<button class="small danger" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
+      </div>
     </div>
   `;
 }
 
 function showDealList(kind) {
   if (!selectedCustomerId) return;
-  const ds = customerDeals(selectedCustomerId).filter(d => kind === "completed" ? d.completed : (!d.completed && !isCanceledDeal(d.dealStatus)));
+  const ds = customerDeals(selectedCustomerId).filter(d => kind === "completed" ? isCompletedDeal(d) : isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
   $("dealListTitle").textContent = kind === "completed" ? "Đơn đã hoàn thành" : "Đơn đang xử lý";
   $("dealListContent").innerHTML = ds.length ? ds.map(dealCard).join("") : "Chưa có đơn hàng.";
   $("dealListSection").classList.remove("hide");
@@ -4190,17 +4245,22 @@ function orderOwnerEmail(d) {
 
 function orderStatusKey(d) {
   if (d.completed === true || sameLabel(normalizeDealStatus(d.dealStatus), "boughtStatus")) return "bought";
+  if (isCanceledDeal(d.dealStatus) || isFailStatus(d.dealStatus)) return "canceled";
   if (sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")) return "deposit";
-  return "";
+  return "open";
 }
 
 function orderStatusLabel(d) {
-  return orderStatusKey(d) === "bought" ? systemLabel("boughtStatus") : systemLabel("depositStatus");
+  const key = orderStatusKey(d);
+  if (key === "bought") return systemLabel("boughtStatus");
+  if (key === "deposit") return systemLabel("depositStatus");
+  if (key === "canceled") return normalizeDealStatus(d.dealStatus) || systemLabel("canceledStatus");
+  return normalizeDealStatus(d.dealStatus) || "Đang xử lý";
 }
 
 function visibleOrderDeals() {
   return deals
-    .filter(d => !d.isDeleted && orderStatusKey(d))
+    .filter(d => !d.isDeleted)
     .filter(d => isManager() || normalizeKey(orderOwnerEmail(d)) === normalizeKey(ownerEmail()) || normalizeKey(d.owner) === normalizeKey(ownerName()))
     .sort((a,b) => String(orderDate(b)).localeCompare(String(orderDate(a))) || byDateDesc(a,b));
 }
@@ -4216,13 +4276,15 @@ function hydrateOrderFilters() {
   fillSelect("orderFilterMonth", Array.from({length:12}, (_,i) => ({value:String(i + 1).padStart(2,"0"), label:`Tháng ${String(i + 1).padStart(2,"0")}`})), "", "Tất cả tháng");
   fillSelect("orderFilterOwner", ownerOptions(), "", "Tất cả nhân viên");
   fillSelect("orderFilterStatus", [
+    {value:"open", label:"Đang xử lý"},
     {value:"deposit", label:systemLabel("depositStatus")},
-    {value:"bought", label:systemLabel("boughtStatus")}
+    {value:"bought", label:systemLabel("boughtStatus")},
+    {value:"canceled", label:systemLabel("canceledStatus")}
   ], "", "Tất cả trạng thái");
   if (years.includes(yearCurrent) || yearCurrent === "") $("orderFilterYear").value = yearCurrent;
   if (/^\d{2}$/.test(monthCurrent) || monthCurrent === "") $("orderFilterMonth").value = monthCurrent;
   if (ownerOptions().some(o => clean(o.email) === ownerCurrent || clean(o.name) === ownerCurrent) || ownerCurrent === "") $("orderFilterOwner").value = ownerCurrent;
-  if (["deposit","bought",""].includes(statusCurrent)) $("orderFilterStatus").value = statusCurrent;
+  if (["open","deposit","bought","canceled",""].includes(statusCurrent)) $("orderFilterStatus").value = statusCurrent;
   if (!isManager()) {
     $("orderFilterOwner").value = ownerEmail();
     $("orderFilterOwner").disabled = true;
@@ -4251,27 +4313,33 @@ function activeOrderFilterLabel() {
     selectedOptionText("orderFilterOwner") ? `Nhân viên: ${selectedOptionText("orderFilterOwner")}` : "",
     selectedOptionText("orderFilterStatus") ? `Trạng thái: ${selectedOptionText("orderFilterStatus")}` : ""
   ].filter(Boolean);
-  return parts.length ? parts.join(" | ") : "Tất cả đơn đã cọc/đã mua";
+  return parts.length ? parts.join(" | ") : "Tất cả đơn hàng";
 }
 
 function renderOrders() {
   if (!$("ordersPanel")) return;
   hydrateOrderFilters();
   const rows = filteredOrderDeals();
+  const openRows = rows.filter(d => orderStatusKey(d) === "open");
   const depositRows = rows.filter(d => orderStatusKey(d) === "deposit");
   const boughtRows = rows.filter(d => orderStatusKey(d) === "bought");
+  const canceledRows = rows.filter(d => orderStatusKey(d) === "canceled");
   const customersSet = new Set(rows.map(d => d.customerId || `${orderCustomerPhone(d)}:${orderCustomerName(d)}`).filter(Boolean));
   const totalValue = rows.reduce((sum,d) => sum + dealAmount(d), 0);
   const boughtValue = boughtRows.reduce((sum,d) => sum + dealAmount(d), 0);
   const depositValue = depositRows.reduce((sum,d) => sum + dealAmount(d), 0);
+  const openValue = openRows.reduce((sum,d) => sum + dealAmount(d), 0);
   const avgValue = rows.length ? Math.round(totalValue / rows.length) : 0;
   const cards = [
     ["Tổng đơn", rows.length, ""],
+    ["Đang xử lý", openRows.length, openRows.length ? "warn" : ""],
     [systemLabel("depositStatus"), depositRows.length, depositRows.length ? "warn" : ""],
     [systemLabel("boughtStatus"), boughtRows.length, ""],
+    [systemLabel("canceledStatus"), canceledRows.length, canceledRows.length ? "bad" : ""],
     ["Tổng giá trị", money(totalValue), ""],
     ["Giá trị đã mua", money(boughtValue), ""],
     ["Giá trị đang cọc", money(depositValue), depositValue ? "warn" : ""],
+    ["Giá trị đang xử lý", money(openValue), openValue ? "warn" : ""],
     ["Khách đã giao dịch", customersSet.size, ""],
     ["Giá trị TB/đơn", money(avgValue), ""]
   ];
@@ -4283,7 +4351,8 @@ function renderOrders() {
   `).join("");
   $("orderRows").innerHTML = rows.length ? rows.map(d => {
     const c = customerById(d.customerId);
-    const statusClass = orderStatusKey(d) === "bought" ? "green" : "orange";
+    const statusKey = orderStatusKey(d);
+    const statusClass = statusKey === "bought" ? "green" : statusKey === "canceled" ? "red" : statusKey === "deposit" ? "orange" : "blue";
     return `
       <tr>
         <td><b>${esc(orderCustomerName(d) || "Không tên")}</b>${c.companyName ? `<div class="muted">${esc(c.companyName)}</div>` : ""}</td>
@@ -4296,17 +4365,24 @@ function renderOrders() {
         <td>${esc(orderProductText(d))}</td>
         <td><b>${esc(money(d.amount || 0))}</b></td>
         <td>${esc(d.note || "")}</td>
-        <td><button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button></td>
+        <td>
+          <div class="actions">
+            <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
+            <button class="small" type="button" data-review-deal="${esc(d.id)}">Chi tiết</button>
+            ${isActiveDeal(d) || statusKey === "deposit" ? `<button class="small primary" type="button" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" type="button" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
+            ${isManager() ? `<button class="small danger" type="button" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
+          </div>
+        </td>
       </tr>
     `;
-  }).join("") : `<tr><td colspan="11" class="muted">Chưa có đơn đã cọc/đã mua phù hợp với bộ lọc.</td></tr>`;
+  }).join("") : `<tr><td colspan="11" class="muted">Chưa có đơn hàng phù hợp với bộ lọc.</td></tr>`;
 }
 
 function renderReportCenter() {
   if (!$("reportsPanel") || !isManager()) return;
   const reportDeals = currentReportDeals();
   const completed = reportDeals.filter(isCompletedDeal);
-  const pending = reportDeals.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const pending = reportDeals.filter(isActiveDeal);
   const month = currentMonth();
   const monthCompleted = completed.filter(d => monthOf(d.completedAt || d.dealDate || d.createdAt) === month);
   const cards = [
@@ -4567,6 +4643,7 @@ document.addEventListener("click", e => {
   const docId = e.target.closest("[data-open-template]")?.dataset.openTemplate;
   const completeDealId = e.target.closest("[data-complete-deal]")?.dataset.completeDeal;
   const cancelDealId = e.target.closest("[data-cancel-deal]")?.dataset.cancelDeal;
+  const deleteDealId = e.target.closest("[data-delete-deal]")?.dataset.deleteDeal;
   const reviewDealId = e.target.closest("[data-review-deal]")?.dataset.reviewDeal;
   const pipelineLabel = e.target.closest("[data-pipeline-detail]")?.dataset.pipelineDetail;
   const editKpiRuleId = e.target.closest("[data-edit-kpi-rule]")?.dataset.editKpiRule;
@@ -4607,6 +4684,7 @@ document.addEventListener("click", e => {
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
   if (cancelDealId) cancelDeal(cancelDealId);
+  if (deleteDealId) softDeleteDeal(deleteDealId);
   if (reviewDealId) reviewDeal(reviewDealId);
   if (pipelineLabel) openPipelineDetail(pipelineLabel);
   if (editKpiRuleId) editKpiRule(editKpiRuleId);
