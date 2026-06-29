@@ -3668,6 +3668,75 @@ function infoCell(label, value) {
   return `<div class="info-cell"><span>${esc(label)}</span><b>${esc(value || "-")}</b></div>`;
 }
 
+function profileStat(label, value) {
+  return `<div class="profile-stat"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+}
+
+function customerActivityItems(id) {
+  const careRows = customerLogs(id).map(l => ({
+    kind: "care",
+    label: "Chăm sóc",
+    at: l.createdAt,
+    title: [l.status, l.careResult].filter(Boolean).join(" · ") || "Ghi chăm sóc",
+    text: [l.careChannel, l.note].filter(Boolean).join(" · "),
+    meta: l.nextCareDate ? `Hẹn tiếp: ${fmtDate(l.nextCareDate)}` : ""
+  }));
+  const dealRows = customerDeals(id).map(d => ({
+    kind: "deal",
+    label: "Đơn hàng",
+    at: d.completedAt || d.dealDate || d.createdAt,
+    title: normalizeDealStatus(d.dealStatus) || "Đơn hàng",
+    text: [orderProductText(d), dealAmount(d) ? money(dealAmount(d)) : ""].filter(Boolean).join(" · "),
+    meta: d.completedAt ? `Ngày mua: ${fmtDate(d.completedAt)}` : d.deliveryDate ? `Hẹn giao: ${fmtDate(d.deliveryDate)}` : ""
+  }));
+  const proposalRows = kpiProposals
+    .filter(p => p.customerId === id && !p.isDeleted)
+    .map(p => ({
+      kind: "kpi",
+      label: "KPI",
+      at: p.createdAt,
+      title: p.kpiName || "Đề xuất KPI",
+      text: isApprovedKpiProposal(p) ? "Đã duyệt" : isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt",
+      meta: p.content || ""
+    }));
+  return [...careRows, ...dealRows, ...proposalRows]
+    .sort((a,b) => (toDate(b.at)?.getTime() || 0) - (toDate(a.at)?.getTime() || 0));
+}
+
+function renderCustomerActivityPreview(c) {
+  const box = $("customerActivityPreview");
+  if (!box || !c) return;
+  const activity = customerActivityItems(c.id);
+  const logs = customerLogs(c.id);
+  const ds = customerDeals(c.id);
+  const proposals = kpiProposals.filter(p => p.customerId === c.id && !p.isDeleted);
+  const pendingDeals = ds.filter(d => !isCompletedDeal(d) && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
+  const approvedKpi = proposals.filter(isApprovedKpiProposal);
+  const nextCare = clean(c.nextCareDate) ? fmtDate(c.nextCareDate) : "Chưa hẹn";
+  box.innerHTML = `
+    <div class="profile-stats">
+      ${profileStat("Lần chăm", logs.length)}
+      ${profileStat("Đơn xử lý", pendingDeals.length)}
+      ${profileStat("Đã mua", purchaseCount(c.id))}
+      ${profileStat("KPI duyệt", approvedKpi.length)}
+    </div>
+    <div class="profile-subtitle">
+      <h4>Hoạt động gần đây</h4>
+      <span class="pill ${isCareOverdue(c) ? "red" : isCareDue(c) ? "orange" : "green"}">Hẹn: ${esc(nextCare)}</span>
+    </div>
+    ${activity.length ? `<div class="activity-mini-list">${activity.slice(0,5).map(item => `
+      <div class="activity-mini ${esc(item.kind)}">
+        <div class="activity-mini-head">
+          <b>${esc(item.label)} · ${esc(item.title)}</b>
+          <span class="muted">${esc(fmtDate(item.at))}</span>
+        </div>
+        ${item.text ? `<div>${esc(item.text)}</div>` : ""}
+        ${item.meta ? `<div class="muted">${esc(item.meta)}</div>` : ""}
+      </div>
+    `).join("")}</div>` : `<div class="muted">Chưa có hoạt động nào cho khách này.</div>`}
+  `;
+}
+
 function renderCustomerInfo(c) {
   if (!c) return;
   $("careStatus").value = clean(c.status);
@@ -3682,6 +3751,7 @@ function renderCustomerInfo(c) {
     infoCell("Nhu cầu / Sản phẩm", c.need),
     infoCell("Ghi chú", c.note)
   ].join("");
+  renderCustomerActivityPreview(c);
 }
 
 function fillCustomerInfoEdit(c) {
@@ -3711,9 +3781,11 @@ function toggleCustomerInfoEdit(show) {
   const c = customers.find(x => x.id === selectedCustomerId);
   if (!c) return;
   $("customerInfoView").classList.toggle("hide", show);
+  $("customerActivityPreview").classList.toggle("hide", show);
   $("customerInfoEdit").classList.toggle("hide", !show);
   $("editCustomerInfoBtn").classList.toggle("hide", show);
   if (show) fillCustomerInfoEdit(c);
+  else renderCustomerActivityPreview(c);
 }
 
 async function saveCustomerInfo() {
@@ -4005,47 +4077,23 @@ function renderHistories(id) {
     const title = $("dealListTitle").textContent.includes("hoàn thành") ? "completed" : "pending";
     showDealList(title);
   }
-  const logs = customerLogs(id);
-  const dealRows = customerDeals(id).map(d => ({
-    type: "Đơn hàng",
-    at: d.completedAt || d.dealDate || d.createdAt,
-    html: `
-      <div class="log-item deal-item">
-        <b>${esc(normalizeDealStatus(d.dealStatus) || "Đơn hàng")}</b> · ${esc(fmtDate(d.completedAt || d.dealDate || d.createdAt))}
-        <div>${esc(d.product || d.itemsText || "")} ${d.amount ? "· " + esc(money(d.amount)) : ""}</div>
-        ${d.note ? `<div class="muted">${esc(d.note)}</div>` : ""}
-      </div>
-    `
-  }));
-  const proposalRows = kpiProposals
-    .filter(p => p.customerId === id && !p.isDeleted)
-    .map(p => ({
-      type: "KPI",
-      at: p.createdAt,
-      html: `
-        <div class="log-item">
-          <b>KPI: ${esc(p.kpiName || "")}</b> · ${esc(isApprovedKpiProposal(p) ? "Đã duyệt" : isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt")} · ${esc(fmtDate(p.createdAt))}
-          <div class="muted">${esc(p.content || "")}</div>
-          ${p.evidenceUrl ? `<div><button class="small" type="button" data-kpi-proposal-detail="${esc(p.id)}">Xem ảnh minh chứng</button></div>` : ""}
+  const careActionsByDate = new Map(customerLogs(id).map(l => [String(l.createdAt || ""), l]));
+  const timeline = customerActivityItems(id);
+  $("logHistory").innerHTML = timeline.length ? timeline.map(item => {
+    const careLog = item.kind === "care" ? careActionsByDate.get(String(item.at || "")) : null;
+    return `
+      <div class="activity-mini ${esc(item.kind)}">
+        <div class="activity-mini-head">
+          <b>${esc(item.label)} · ${esc(item.title)}</b>
+          <span class="muted">${esc(fmtDate(item.at))}</span>
         </div>
-      `
-    }));
-  const careRows = logs.map(l => ({
-    type: "Chăm sóc",
-    at: l.createdAt,
-    html: `
-    <div class="log-item">
-      <b>${esc(l.status || "")}</b> · ${esc(l.follow || "")} · ${esc(fmtDate(l.createdAt))}
-      <div>${esc(l.careChannel || "")} ${l.careResult ? "· " + esc(l.careResult) : ""}</div>
-      ${(l.companyName || l.partnerType || l.partnerActivity || l.partnerLevel || l.partnerCapacity) ? `<div class="muted">${esc([l.companyName,l.partnerType,l.partnerActivity,l.partnerLevel,l.partnerCapacity].filter(Boolean).join(" · "))}</div>` : ""}
-      <div class="muted">${esc(l.note || "")}</div>
-      ${l.nextCareDate ? `<div class="muted">Hẹn: ${esc(fmtDate(l.nextCareDate))}</div>` : ""}
-      ${isAdmin() ? `<div class="actions"><button class="small" data-edit-care-log="${esc(l.id)}">Sửa</button><button class="small danger" data-delete-care-log="${esc(l.id)}">Xóa</button></div>` : ""}
-    </div>
-    `
-  }));
-  const timeline = [...careRows, ...dealRows, ...proposalRows].sort((a,b) => (toDate(b.at)?.getTime() || 0) - (toDate(a.at)?.getTime() || 0));
-  $("logHistory").innerHTML = timeline.length ? timeline.map(x => x.html).join("") : "Chưa có timeline hoạt động.";
+        ${item.text ? `<div>${esc(item.text)}</div>` : ""}
+        ${item.meta ? `<div class="muted">${esc(item.meta)}</div>` : ""}
+        ${careLog && (careLog.companyName || careLog.partnerType || careLog.partnerActivity || careLog.partnerLevel || careLog.partnerCapacity) ? `<div class="muted">${esc([careLog.companyName,careLog.partnerType,careLog.partnerActivity,careLog.partnerLevel,careLog.partnerCapacity].filter(Boolean).join(" · "))}</div>` : ""}
+        ${careLog && isAdmin() ? `<div class="actions"><button class="small" data-edit-care-log="${esc(careLog.id)}">Sửa</button><button class="small danger" data-delete-care-log="${esc(careLog.id)}">Xóa</button></div>` : ""}
+      </div>
+    `;
+  }).join("") : "Chưa có timeline hoạt động.";
 }
 
 function isoFromAny(value) {
