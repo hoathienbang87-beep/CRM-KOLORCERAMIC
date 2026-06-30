@@ -896,7 +896,7 @@ function productInventoryQty(product) {
 }
 
 function inventoryTypeLabel(type) {
-  return {in:"Nhập kho", out:"Xuất kho", return:"Hoàn kho", adjustment:"Điều chỉnh"}[clean(type)] || clean(type) || "Điều chỉnh";
+  return {in:"Nhập kho", out:"Xuất kho", return:"Hoàn kho", adjustment:"Điều chỉnh", delivery:"Giao hàng", delivery_return:"Hoàn giao"}[clean(type)] || clean(type) || "Điều chỉnh";
 }
 
 function inventorySignedQty(type, qty) {
@@ -4270,6 +4270,87 @@ function collectDealItems() {
   }).filter(item => item.product || item.code || item.qty);
 }
 
+function normalizedDealItem(item = {}, index = 0) {
+  return {
+    productId: item.productId || "",
+    customerId: item.customerId || "",
+    productSku: item.productSku || item.code || "",
+    productName: item.productName || item.product || item.productLabel || item.name || "",
+    unit: item.unit || item.size || "",
+    qty: item.qty || 0,
+    unitPrice: item.unitPrice || item.price || 0,
+    discountAmount: item.discountAmount || 0,
+    lineTotal: item.lineTotal || 0,
+    deliveredQty: item.deliveredQty || 0,
+    sortOrder: item.sortOrder ?? index,
+    note: item.note || ""
+  };
+}
+
+function dealOrderItems(deal) {
+  const rows = orderItems.filter(item => item.dealId === deal.id).sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  if (rows.length) return rows;
+  return (Array.isArray(deal.items) ? deal.items : []).map((item, index) => ({
+    id: `legacy:${deal.id}:${index}`,
+    dealId: deal.id,
+    customerId: deal.customerId || "",
+    ...normalizedDealItem(item, index)
+  }));
+}
+
+function qtyNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const match = clean(value).replace(",", ".").match(/-?\d+(\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+function deliveryStats(deal) {
+  const rows = dealOrderItems(deal);
+  const total = rows.reduce((sum,item) => sum + Math.max(0, qtyNumber(item.qty)), 0);
+  const delivered = rows.reduce((sum,item) => sum + Math.max(0, Number(item.deliveredQty || 0)), 0);
+  const clamped = total ? Math.min(delivered, total) : delivered;
+  const status = total <= 0
+    ? "none"
+    : clamped <= 0
+      ? "none"
+      : clamped >= total
+        ? "done"
+        : "partial";
+  return {total, delivered: clamped, rawDelivered: delivered, remaining: Math.max(0, total - clamped), status};
+}
+
+function deliveryStatusLabel(status) {
+  return {none:"Chưa giao", partial:"Giao thiếu", done:"Giao đủ"}[status] || "Chưa giao";
+}
+
+function deliveryStatusClass(status) {
+  return status === "done" ? "green" : status === "partial" ? "orange" : "red";
+}
+
+function canUpdateDelivery(deal) {
+  return isManager() && deal?.id && !deal.isDeleted && !isCanceledDeal(deal.dealStatus) && !isFailStatus(deal.dealStatus);
+}
+
+function writeOrderItemsForDeal(batch, deal, items, existingItems = []) {
+  existingItems.forEach(item => batch.delete(doc(db, "orderItems", item.id)));
+  items.forEach((item, index) => {
+    const normalized = normalizedDealItem(item, index);
+    const matchedOld = existingItems.find(old =>
+      (normalized.productId && old.productId === normalized.productId)
+      || (normalized.productSku && normalizeKey(old.productSku) === normalizeKey(normalized.productSku))
+      || (normalizeKey(old.productName) && normalizeKey(old.productName) === normalizeKey(normalized.productName) && Number(old.sortOrder || 0) === index)
+    );
+    batch.set(doc(collection(db, "orderItems")), {
+      dealId: deal.id,
+      customerId: deal.customerId || "",
+      ...normalized,
+      deliveredQty: matchedOld ? Number(matchedOld.deliveredQty || 0) : 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  });
+}
+
 function dealFormDataForCustomer(c) {
   const dealStatus = normalizeDealStatus(clean($("dealStatus").value) || systemLabel("depositStatus"));
   const completed = sameLabel(dealStatus, "boughtStatus");
@@ -4494,9 +4575,11 @@ async function saveDeal() {
   try {
     const batch = writeBatch(db);
     const dealRef = doc(collection(db, "deals"));
+    const dealWithId = {...deal, id: dealRef.id};
     const customerRef = doc(db, "customers", c.id);
     const auditRef = doc(collection(db, "auditLogs"));
     batch.set(dealRef, deal);
+    writeOrderItemsForDeal(batch, dealWithId, items);
     batch.update(customerRef, {
       dealStatus: deal.dealStatus,
       status: completed ? systemLabel("boughtStatus") : canceled ? systemLabel("activeStatus") : systemLabel("depositStatus"),
@@ -4547,6 +4630,7 @@ async function updateDeal(dealId) {
   try {
     const batch = writeBatch(db);
     batch.update(doc(db, "deals", oldDeal.id), updatedDeal);
+    writeOrderItemsForDeal(batch, {...oldDeal, ...updatedDeal, id: oldDeal.id}, items, orderItems.filter(item => item.dealId === oldDeal.id));
     batch.update(doc(db, "customers", oldDeal.customerId), customerDealStatePatch(oldDeal.customerId, oldDeal.id, {...oldDeal, ...updatedDeal, id: oldDeal.id}));
     batch.set(doc(collection(db, "auditLogs")), {
       action: "updateDeal", entity: "deals", entityId: oldDeal.id,
@@ -4634,6 +4718,146 @@ async function cancelDeal(dealId) {
   }
 }
 
+function openDeliveryModal(dealId) {
+  const deal = deals.find(d => d.id === dealId);
+  if (!deal) return notice("Không tìm thấy đơn hàng.", true);
+  const rows = dealOrderItems(deal);
+  const stats = deliveryStats(deal);
+  const canSave = canUpdateDelivery(deal);
+  openDetailModal(
+    `Giao hàng - ${orderCustomerName(deal) || "Khách hàng"}`,
+    `${deliveryStatusLabel(stats.status)} · Đã giao ${stats.delivered}/${stats.total || "-"} · Còn ${stats.remaining}`,
+    `
+      <div class="profile-stats">
+        ${profileStat("Trạng thái giao", deliveryStatusLabel(stats.status))}
+        ${profileStat("Tổng SL", stats.total || "-")}
+        ${profileStat("Đã giao", stats.delivered)}
+        ${profileStat("Còn lại", stats.remaining)}
+      </div>
+      <div class="section">
+        <h3>Sản phẩm bàn giao</h3>
+        <div class="delivery-list">
+          ${rows.length ? rows.map((item, index) => {
+            const qty = Math.max(0, qtyNumber(item.qty));
+            const delivered = Math.max(0, Number(item.deliveredQty || 0));
+            return `
+              <div class="delivery-item" data-delivery-row data-order-item-id="${esc(item.id)}" data-delivery-index="${esc(index)}" data-product-id="${esc(item.productId || "")}" data-product-sku="${esc(item.productSku || item.code || "")}" data-product-name="${esc(item.productName || item.product || item.productLabel || "")}" data-qty="${esc(qty)}" data-old-delivered="${esc(delivered)}" data-unit="${esc(item.unit || "")}">
+                <div>
+                  <b>${esc(item.productName || item.product || item.productLabel || "Sản phẩm")}</b>
+                  <div class="detail-meta">
+                    ${item.productSku || item.code ? `<span>Mã: ${esc(item.productSku || item.code)}</span>` : ""}
+                    <span>SL đơn: ${esc(qty || item.qty || 0)}</span>
+                    <span>Đã giao: ${esc(delivered)}</span>
+                    <span>Còn: ${esc(Math.max(0, qty - delivered))}</span>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>SL đã giao lũy kế</label>
+                  <input data-delivery-qty type="number" min="0" step="0.01" value="${esc(delivered)}" ${canSave ? "" : "disabled"}>
+                </div>
+              </div>
+            `;
+          }).join("") : `<div class="muted">Đơn này chưa có dòng sản phẩm để giao.</div>`}
+        </div>
+      </div>
+      <div class="section">
+        <h3>Ghi chú bàn giao</h3>
+        <textarea id="deliveryNote" placeholder="Số phiếu giao, người nhận, ghi chú thiếu hàng..." ${canSave ? "" : "disabled"}></textarea>
+      </div>
+      <div class="actions">
+        <button class="small" type="button" data-review-deal="${esc(deal.id)}">Quay lại chi tiết</button>
+        ${canSave ? `<button class="small primary" type="button" data-save-delivery="${esc(deal.id)}">Lưu bàn giao</button>` : `<span class="muted">Chỉ admin/manager được cập nhật bàn giao.</span>`}
+      </div>
+    `
+  );
+}
+
+async function saveDelivery(dealId) {
+  const deal = deals.find(d => d.id === dealId);
+  if (!deal) return notice("Không tìm thấy đơn hàng.", true);
+  if (!canUpdateDelivery(deal)) return notice("Chỉ admin/manager được cập nhật bàn giao.", true);
+  const rows = [...document.querySelectorAll("[data-delivery-row]")];
+  if (!rows.length) return notice("Đơn này chưa có sản phẩm để giao.", true);
+  const sourceItems = dealOrderItems(deal);
+  const batch = writeBatch(db);
+  let changed = 0;
+  let deliveredTotal = 0;
+  let qtyTotal = 0;
+  rows.forEach(row => {
+    const orderItemId = clean(row.dataset.orderItemId);
+    const index = Number(row.dataset.deliveryIndex || 0);
+    const source = sourceItems[index] || {};
+    const qty = Math.max(0, qtyNumber(row.dataset.qty || source.qty));
+    const oldDelivered = Math.max(0, Number(row.dataset.oldDelivered || 0));
+    const nextDelivered = Math.max(0, Number(row.querySelector("[data-delivery-qty]")?.value || 0));
+    const deliveredQty = qty > 0 ? Math.min(nextDelivered, qty) : nextDelivered;
+    const delta = deliveredQty - oldDelivered;
+    qtyTotal += qty;
+    deliveredTotal += deliveredQty;
+    const payload = {
+      dealId: deal.id,
+      customerId: deal.customerId || "",
+      productId: clean(row.dataset.productId || source.productId),
+      productSku: clean(row.dataset.productSku || source.productSku || source.code),
+      productName: clean(row.dataset.productName || source.productName || source.product || source.productLabel),
+      unit: clean(row.dataset.unit || source.unit),
+      qty: qty || source.qty || 0,
+      unitPrice: source.unitPrice || source.price || 0,
+      discountAmount: source.discountAmount || 0,
+      lineTotal: source.lineTotal || 0,
+      deliveredQty,
+      sortOrder: source.sortOrder ?? index,
+      note: source.note || "",
+      updatedAt: serverTimestamp()
+    };
+    if (orderItemId.startsWith("legacy:")) {
+      batch.set(doc(collection(db, "orderItems")), {...payload, createdAt: serverTimestamp()});
+    } else {
+      batch.set(doc(db, "orderItems", orderItemId), payload, {merge:true});
+    }
+    if (delta !== 0) {
+      changed += 1;
+      const movementType = delta > 0 ? "delivery" : "delivery_return";
+      batch.set(doc(collection(db, "inventoryMovements")), {
+        productId: payload.productId,
+        productSku: payload.productSku,
+        productName: payload.productName,
+        movementType,
+        qty: -delta,
+        unit: payload.unit,
+        refType: "delivery",
+        refId: deal.id,
+        warehouse: "main",
+        note: clean($("deliveryNote")?.value) || `${delta > 0 ? "Giao hàng" : "Giảm SL giao"} cho ${orderCustomerName(deal)}`,
+        isDeleted: false,
+        createdByEmail: ownerEmail(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+  });
+  const deliveryStatus = qtyTotal <= 0 ? "none" : deliveredTotal <= 0 ? "none" : deliveredTotal >= qtyTotal ? "done" : "partial";
+  batch.set(doc(db, "deals", deal.id), {
+    deliveryStatus,
+    deliveredAt: deliveryStatus === "done" ? serverTimestamp() : null,
+    deliveryNote: clean($("deliveryNote")?.value),
+    updatedAt: serverTimestamp(),
+    updatedByEmail: ownerEmail()
+  }, {merge:true});
+  batch.set(doc(collection(db, "auditLogs")), {
+    action: "saveDelivery",
+    entity: "deals",
+    entityId: deal.id,
+    email: ownerEmail(),
+    payloadJson: JSON.stringify({deliveryStatus, deliveredTotal, qtyTotal, changed}),
+    createdAt: serverTimestamp()
+  });
+  await batch.commit();
+  closeDetailModal();
+  notice("Đã cập nhật bàn giao.");
+  renderOrders();
+}
+
 function customerDealStatePatch(customerId, excludeDealId="", replacementDeal=null) {
   const otherDeals = customerDeals(customerId).filter(d => d.id !== excludeDealId && !d.isDeleted);
   const sourceDeals = replacementDeal && !replacementDeal.isDeleted ? [replacementDeal, ...otherDeals] : otherDeals;
@@ -4683,19 +4907,26 @@ async function softDeleteDeal(dealId) {
 function reviewDeal(dealId) {
   const d = deals.find(x => x.id === dealId);
   if (!d) return;
-  const items = Array.isArray(d.items) && d.items.length
-    ? d.items.map((item, idx) => `
+  const ship = deliveryStats(d);
+  const itemRows = dealOrderItems(d);
+  const items = itemRows.length
+    ? itemRows.map((item, idx) => {
+      const qty = Math.max(0, qtyNumber(item.qty));
+      const delivered = Math.max(0, Number(item.deliveredQty || 0));
+      return `
       <div class="detail-row">
-        <b>${esc(idx + 1)}. ${esc(item.product || item.productLabel || "Sản phẩm")}</b>
+        <b>${esc(idx + 1)}. ${esc(item.productName || item.product || item.productLabel || "Sản phẩm")}</b>
         <div class="detail-meta">
-          ${item.code ? `<span>Mã: ${esc(item.code)}</span>` : ""}
+          ${item.productSku || item.code ? `<span>Mã: ${esc(item.productSku || item.code)}</span>` : ""}
           ${item.size ? `<span>Size: ${esc(item.size)}</span>` : ""}
           ${item.surface ? `<span>Bề mặt: ${esc(item.surface)}</span>` : ""}
           ${item.origin ? `<span>Xuất xứ: ${esc(item.origin)}</span>` : ""}
-          ${item.qty ? `<span>SL: ${esc(item.qty)}</span>` : ""}
+          <span>SL: ${esc(qty || item.qty || 0)}</span>
+          <span>Đã giao: ${esc(delivered)}</span>
+          <span>Còn: ${esc(Math.max(0, qty - delivered))}</span>
         </div>
       </div>
-    `).join("")
+    `;}).join("")
     : `<div class="detail-row">${esc(d.product || "Chưa có sản phẩm")}${d.quantity ? ` · SL: ${esc(d.quantity)}` : ""}</div>`;
   openDetailModal(
     `Chi tiết đơn - ${orderCustomerName(d) || "Khách hàng"}`,
@@ -4706,6 +4937,7 @@ function reviewDeal(dealId) {
         ${profileStat("Giá trị", money(d.amount || 0))}
         ${profileStat("Đã cọc", `${d.depositPercent ?? 0}%`)}
         ${profileStat("Ngày đơn", fmtDate(d.dealDate || d.createdAt) || "-")}
+        ${profileStat("Giao hàng", `${deliveryStatusLabel(ship.status)} (${ship.delivered}/${ship.total || "-"})`)}
       </div>
       <div class="info-grid">
         ${infoCell("Địa chỉ giao hàng", d.deliveryAddress)}
@@ -4723,6 +4955,7 @@ function reviewDeal(dealId) {
       </div>
       <div class="actions">
         <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
+        <button class="small primary" type="button" data-delivery-deal="${esc(d.id)}">Giao hàng</button>
         ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa đơn</button>` : ""}
       </div>
     `
@@ -5559,6 +5792,9 @@ function openOrderSummaryDetail(type) {
   const depositRows = rows.filter(d => orderStatusKey(d) === "deposit");
   const boughtRows = rows.filter(d => orderStatusKey(d) === "bought");
   const canceledRows = rows.filter(d => orderStatusKey(d) === "canceled");
+  const deliveryPendingRows = rows.filter(d => deliveryStats(d).status === "none" && orderStatusKey(d) !== "canceled");
+  const deliveryPartialRows = rows.filter(d => deliveryStats(d).status === "partial");
+  const deliveryDoneRows = rows.filter(d => deliveryStats(d).status === "done");
   const paidRows = rows.filter(d => dealPaidAmount(d.id) > 0);
   const debtRows = rows.filter(d => dealDebtAmount(d) > 0);
   const customerIds = new Set();
@@ -5576,6 +5812,9 @@ function openOrderSummaryDetail(type) {
     boughtValue: ["Giá trị đã mua", boughtRows],
     depositValue: ["Giá trị đang cọc", depositRows],
     openValue: ["Giá trị đang xử lý", openRows],
+    deliveryPending: ["Chờ giao", deliveryPendingRows],
+    deliveryPartial: ["Giao thiếu", deliveryPartialRows],
+    deliveryDone: ["Giao đủ", deliveryDoneRows],
     customers: ["Khách đã giao dịch", rows],
     avgValue: ["Giá trị trung bình / đơn", rows],
     paidValue: ["Đã thu", paidRows],
@@ -5734,6 +5973,9 @@ function renderOrders() {
   const depositRows = rows.filter(d => orderStatusKey(d) === "deposit");
   const boughtRows = rows.filter(d => orderStatusKey(d) === "bought");
   const canceledRows = rows.filter(d => orderStatusKey(d) === "canceled");
+  const deliveryPendingRows = rows.filter(d => deliveryStats(d).status === "none" && orderStatusKey(d) !== "canceled");
+  const deliveryPartialRows = rows.filter(d => deliveryStats(d).status === "partial");
+  const deliveryDoneRows = rows.filter(d => deliveryStats(d).status === "done");
   const customersSet = new Set(rows.map(d => d.customerId || `${orderCustomerPhone(d)}:${orderCustomerName(d)}`).filter(Boolean));
   const totalValue = rows.reduce((sum,d) => sum + dealAmount(d), 0);
   const boughtValue = boughtRows.reduce((sum,d) => sum + dealAmount(d), 0);
@@ -5754,6 +5996,9 @@ function renderOrders() {
     ["Giá trị đang xử lý", money(openValue), openValue ? "warn" : "", "openValue"],
     ["Đã thu", money(paidValue), "", "paidValue"],
     ["Còn nợ", money(debtValue), debtValue ? "bad" : "", "debtValue"],
+    ["Chờ giao", deliveryPendingRows.length, deliveryPendingRows.length ? "warn" : "", "deliveryPending"],
+    ["Giao thiếu", deliveryPartialRows.length, deliveryPartialRows.length ? "warn" : "", "deliveryPartial"],
+    ["Giao đủ", deliveryDoneRows.length, "", "deliveryDone"],
     ["Khách đã giao dịch", customersSet.size, "", "customers"],
     ["Giá trị TB/đơn", money(avgValue), "", "avgValue"]
   ];
@@ -5770,6 +6015,7 @@ function renderOrders() {
     const productText = orderProductText(d);
     const paidAmount = dealPaidAmount(d.id);
     const debtAmount = dealDebtAmount(d);
+    const ship = deliveryStats(d);
     const dateMeta = [
       `Đơn: ${fmtDate(d.dealDate || d.createdAt) || "-"}`,
       d.completedAt ? `Mua: ${fmtDate(d.completedAt)}` : "",
@@ -5789,8 +6035,15 @@ function renderOrders() {
           <div class="muted">${esc(orderOwnerEmail(d))}</div>
         </td>
         <td><span class="pill ${statusClass}">${esc(orderStatusLabel(d))}</span></td>
-        <td colspan="3"><div class="order-date-stack">${esc(dateMeta)}</div></td>
-        <td><div class="order-product-text">${esc(productText || "Chưa có sản phẩm")}</div></td>
+        <td colspan="3">
+          <div class="order-date-stack">${esc(dateMeta)}</div>
+          <span class="pill ${deliveryStatusClass(ship.status)}">${esc(deliveryStatusLabel(ship.status))}</span>
+          <div class="muted">Đã giao ${esc(ship.delivered)} / ${esc(ship.total || "-")}</div>
+        </td>
+        <td>
+          <div class="order-product-text">${esc(productText || "Chưa có sản phẩm")}</div>
+          ${ship.remaining ? `<div class="muted">Còn giao: ${esc(ship.remaining)}</div>` : ""}
+        </td>
         <td>
           <b class="money-cell">${esc(money(d.amount || 0))}</b>
           <div class="debt-cell">
@@ -5803,6 +6056,7 @@ function renderOrders() {
           <div class="order-actions">
             <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
             <button class="small" type="button" data-review-deal="${esc(d.id)}">Chi tiết</button>
+            <button class="small" type="button" data-delivery-deal="${esc(d.id)}">Giao hàng</button>
             <button class="small" type="button" data-pay-deal="${esc(d.id)}">Thanh toán</button>
             ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa</button>` : ""}
             ${isActiveDeal(d) || statusKey === "deposit" ? `<button class="small primary" type="button" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" type="button" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
@@ -6095,12 +6349,13 @@ async function exportOrders() {
   if (!canExportData()) return notice("Bạn chưa có quyền xuất file.", true);
   const rows = filteredOrderDeals();
   if (!rows.length) return notice("Không có đơn hàng phù hợp với bộ lọc hiện tại.", true);
-  const header = ["Khách hàng","Tên công ty","SĐT","Nhân viên / Email","Trạng thái","Ngày đơn","Ngày mua","Hẹn giao","Sản phẩm","Giá trị","Đã thu","Còn nợ","Ghi chú"];
+  const header = ["Khách hàng","Tên công ty","SĐT","Nhân viên / Email","Trạng thái","Ngày đơn","Ngày mua","Hẹn giao","Trạng thái giao","Đã giao","Tổng SL","Còn giao","Sản phẩm","Giá trị","Đã thu","Còn nợ","Ghi chú"];
   const dataRows = [
-    [`Báo cáo đơn hàng - ${activeOrderFilterLabel()}`, "", "", "", "", "", "", "", "", "", "", "", ""],
+    [`Báo cáo đơn hàng - ${activeOrderFilterLabel()}`, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
     header,
     ...rows.map(d => {
       const c = customerById(d.customerId);
+      const ship = deliveryStats(d);
       return [
         orderCustomerName(d),
         c.companyName || "",
@@ -6110,6 +6365,10 @@ async function exportOrders() {
         fmtDate(d.dealDate || d.createdAt),
         fmtDate(d.completedAt),
         fmtDate(d.deliveryDate),
+        deliveryStatusLabel(ship.status),
+        ship.delivered,
+        ship.total,
+        ship.remaining,
         orderProductText(d),
         d.amount || 0,
         dealPaidAmount(d.id),
@@ -6384,6 +6643,8 @@ document.addEventListener("click", e => {
   const deleteDealId = e.target.closest("[data-delete-deal]")?.dataset.deleteDeal;
   const editDealId = e.target.closest("[data-edit-deal]")?.dataset.editDeal;
   const reviewDealId = e.target.closest("[data-review-deal]")?.dataset.reviewDeal;
+  const deliveryDealId = e.target.closest("[data-delivery-deal]")?.dataset.deliveryDeal;
+  const saveDeliveryId = e.target.closest("[data-save-delivery]")?.dataset.saveDelivery;
   const pipelineLabel = e.target.closest("[data-pipeline-detail]")?.dataset.pipelineDetail;
   const editKpiRuleId = e.target.closest("[data-edit-kpi-rule]")?.dataset.editKpiRule;
   const disableKpiRuleId = e.target.closest("[data-disable-kpi-rule]")?.dataset.disableKpiRule;
@@ -6447,6 +6708,8 @@ document.addEventListener("click", e => {
   if (deleteDealId) softDeleteDeal(deleteDealId);
   if (editDealId) editDeal(editDealId);
   if (reviewDealId) reviewDeal(reviewDealId);
+  if (deliveryDealId) openDeliveryModal(deliveryDealId);
+  if (saveDeliveryId) runAction(`saveDelivery:${saveDeliveryId}`, "saveDelivery", "Đang lưu...", () => saveDelivery(saveDeliveryId));
   if (pipelineLabel) openPipelineDetail(pipelineLabel);
   if (editKpiRuleId) editKpiRule(editKpiRuleId);
   if (disableKpiRuleId) disableKpiRule(disableKpiRuleId);
