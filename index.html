@@ -167,12 +167,53 @@
             <div><label>Xuất xứ</label><select id="productFilterOrigin"></select></div>
             <div class="toolbar-actions"><button id="resetProductFilterBtn" type="button">Xóa lọc</button></div>
           </div>
+          <div id="inventorySummaryGrid" class="executive-grid inventory-summary-grid"></div>
+          <div id="inventoryFormPanel" class="section inventory-section">
+            <div class="pro-section-title">
+              <h3>Nhập / Xuất kho</h3>
+              <span class="muted">Số xuất kho sẽ tự ghi âm để tính tồn.</span>
+            </div>
+            <div class="grid4">
+              <div class="field"><label>Sản phẩm</label><select id="inventoryProduct"></select></div>
+              <div class="field"><label>Loại phiếu</label><select id="inventoryType">
+                <option value="in">Nhập kho</option>
+                <option value="out">Xuất kho</option>
+                <option value="return">Khách trả / hoàn kho</option>
+                <option value="adjustment">Điều chỉnh +/-</option>
+              </select></div>
+              <div class="field"><label>Số lượng</label><input id="inventoryQty" type="number" step="0.01" placeholder="0"></div>
+              <div class="field"><label>Kho</label><input id="inventoryWarehouse" value="main" placeholder="main"></div>
+            </div>
+            <div class="grid4">
+              <div class="field"><label>Tham chiếu</label><select id="inventoryRefType">
+                <option value="">Không có</option>
+                <option value="deal">Đơn hàng</option>
+                <option value="quote">Báo giá</option>
+                <option value="manual">Thủ công</option>
+              </select></div>
+              <div class="field"><label>Mã tham chiếu</label><input id="inventoryRefId" placeholder="Mã đơn / mã báo giá nếu có"></div>
+              <div class="field grid-wide"><label>Ghi chú</label><input id="inventoryNote" placeholder="Lý do nhập/xuất/điều chỉnh..."></div>
+            </div>
+            <div class="actions">
+              <button id="saveInventoryBtn" class="primary" type="button">Lưu phiếu kho</button>
+              <button id="clearInventoryBtn" type="button">Xóa form</button>
+            </div>
+          </div>
+          <div class="table-title">Lịch sử nhập / xuất kho</div>
+          <div class="table-wrap inventory-table-wrap">
+            <table class="admin-table inventory-table">
+              <thead>
+                <tr><th>Thời gian</th><th>Sản phẩm</th><th>Loại</th><th>Số lượng</th><th>Kho</th><th>Tham chiếu</th><th>Người tạo</th><th>Ghi chú</th><th>Thao tác</th></tr>
+              </thead>
+              <tbody id="inventoryRows"></tbody>
+            </table>
+          </div>
           <div class="table-title">Danh mục sản phẩm</div>
           <div class="table-wrap product-table-wrap">
             <table class="admin-table">
               <thead>
                 <tr>
-                  <th>Code</th><th>Tên sản phẩm</th><th>Size</th><th>Bề mặt</th><th>Xuất xứ</th><th>Màu</th><th>Giá</th><th>Mô tả</th><th>Thao tác</th>
+                  <th>Code</th><th>Tên sản phẩm</th><th>Size</th><th>Bề mặt</th><th>Xuất xứ</th><th>Màu</th><th>Giá</th><th>Tồn kho</th><th>Mô tả</th><th>Thao tác</th>
                 </tr>
               </thead>
               <tbody id="productRows"></tbody>

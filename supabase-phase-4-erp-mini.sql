@@ -152,6 +152,8 @@ alter table public.payments add column if not exists updated_at timestamptz defa
 
 alter table public.inventory_movements add column if not exists raw_data jsonb not null default '{}'::jsonb;
 alter table public.inventory_movements add column if not exists is_deleted boolean default false;
+alter table public.inventory_movements add column if not exists deleted_at timestamptz;
+alter table public.inventory_movements add column if not exists deleted_by_email text;
 alter table public.inventory_movements add column if not exists created_by_email text;
 alter table public.inventory_movements add column if not exists updated_at timestamptz default now();
 
@@ -550,6 +552,15 @@ begin
         and tablename = 'payments'
     ) then
       alter publication supabase_realtime add table public.payments;
+    end if;
+
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'inventory_movements'
+    ) then
+      alter publication supabase_realtime add table public.inventory_movements;
     end if;
   end if;
 end $$;

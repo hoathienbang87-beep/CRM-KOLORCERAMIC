@@ -73,6 +73,8 @@ let quoteItems = [];
 let orderItems = [];
 let allPayments = [];
 let payments = [];
+let allInventoryMovements = [];
+let inventoryMovements = [];
 let products = [];
 let users = [];
 let onlineSessions = [];
@@ -873,16 +875,180 @@ function renderProductOptions() {
   el.innerHTML = products.map(p => `<option value="${esc(productLabel(p))}">${esc([p.surface, p.origin, p.priceText || money(p.price || 0)].filter(Boolean).join(" · "))}</option>`).join("");
 }
 
+function productSku(p) {
+  return clean(p?.code || p?.sku);
+}
+
+function productInventoryQty(product) {
+  const keys = new Set([
+    clean(product?.id),
+    normalizeKey(productSku(product)),
+    normalizeKey(product?.name)
+  ].filter(Boolean));
+  return inventoryMovements.reduce((sum,m) => {
+    const movementKeys = [
+      clean(m.productId),
+      normalizeKey(m.productSku),
+      normalizeKey(m.productName)
+    ].filter(Boolean);
+    return movementKeys.some(k => keys.has(k)) ? sum + Number(m.qty || 0) : sum;
+  }, 0);
+}
+
+function inventoryTypeLabel(type) {
+  return {in:"Nhập kho", out:"Xuất kho", return:"Hoàn kho", adjustment:"Điều chỉnh"}[clean(type)] || clean(type) || "Điều chỉnh";
+}
+
+function inventorySignedQty(type, qty) {
+  const value = Number(qty || 0);
+  if (clean(type) === "out") return -Math.abs(value);
+  if (clean(type) === "in" || clean(type) === "return") return Math.abs(value);
+  return value;
+}
+
+function hydrateInventoryProductOptions() {
+  const el = $("inventoryProduct");
+  if (!el) return;
+  const current = el.value;
+  el.innerHTML = `<option value="">-- Chọn sản phẩm --</option>` + products.map(p => {
+    const stock = productInventoryQty(p);
+    return `<option value="${esc(p.id)}">${esc([productSku(p), p.name, `Tồn ${stock}`].filter(Boolean).join(" · "))}</option>`;
+  }).join("");
+  if (products.some(p => p.id === current)) el.value = current;
+}
+
+function clearInventoryForm() {
+  if (!$("inventoryProduct")) return;
+  $("inventoryProduct").value = "";
+  $("inventoryType").value = "in";
+  $("inventoryQty").value = "";
+  $("inventoryWarehouse").value = "main";
+  $("inventoryRefType").value = "";
+  $("inventoryRefId").value = "";
+  $("inventoryNote").value = "";
+}
+
+function selectInventoryProduct(productId, type = "in") {
+  if (!$("inventoryProduct")) return;
+  hydrateInventoryProductOptions();
+  $("inventoryProduct").value = productId || "";
+  $("inventoryType").value = type;
+  $("inventoryQty").value = "";
+  $("inventoryNote").focus();
+  $("inventoryProduct").scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+function renderInventory() {
+  if (!$("inventoryRows")) return;
+  $("inventoryFormPanel")?.classList.toggle("hide", !isManager());
+  hydrateInventoryProductOptions();
+  const visible = visibleProducts();
+  const totalStock = visible.reduce((sum,p) => sum + productInventoryQty(p), 0);
+  const inStock = visible.filter(p => productInventoryQty(p) > 0).length;
+  const zeroStock = visible.filter(p => productInventoryQty(p) === 0).length;
+  const negativeStock = visible.filter(p => productInventoryQty(p) < 0).length;
+  $("inventorySummaryGrid").innerHTML = [
+    ["Sản phẩm đang lọc", visible.length, ""],
+    ["Có tồn", inStock, ""],
+    ["Hết tồn", zeroStock, zeroStock ? "warn" : ""],
+    ["Âm kho", negativeStock, negativeStock ? "bad" : ""],
+    ["Tổng tồn", totalStock, ""]
+  ].map(([label,value,cls]) => `
+    <div class="executive-card inventory-card ${esc(cls)}">
+      <span class="muted">${esc(label)}</span>
+      <b>${esc(value)}</b>
+    </div>
+  `).join("");
+  const rows = inventoryMovements.slice(0, 100);
+  $("inventoryRows").innerHTML = rows.length ? rows.map(m => {
+    const qty = Number(m.qty || 0);
+    const qtyClass = qty < 0 ? "red" : "green";
+    return `
+      <tr>
+        <td>${esc(fmtDate(m.createdAt) || "")}</td>
+        <td><b>${esc(m.productName || "Không tên")}</b><div class="muted">${esc(m.productSku || "")}</div></td>
+        <td><span class="pill ${qtyClass}">${esc(inventoryTypeLabel(m.movementType))}</span></td>
+        <td><b class="money-cell ${qty < 0 ? "debt-positive" : "paid-positive"}">${esc(qty)}</b> ${esc(m.unit || "")}</td>
+        <td>${esc(m.warehouse || "main")}</td>
+        <td>${esc([m.refType, m.refId].filter(Boolean).join(" · "))}</td>
+        <td>${esc(m.createdByEmail || "")}</td>
+        <td>${esc(m.note || "")}</td>
+        <td>${isAdmin() ? `<button class="small danger" type="button" data-delete-inventory="${esc(m.id)}">Xóa mềm</button>` : ""}</td>
+      </tr>
+    `;
+  }).join("") : `<tr><td colspan="9" class="muted">Chưa có phiếu nhập/xuất kho.</td></tr>`;
+}
+
+async function saveInventoryMovement() {
+  if (!isManager()) return notice("Chỉ admin/manager được nhập/xuất kho.", true);
+  const productId = clean($("inventoryProduct")?.value);
+  const p = products.find(item => item.id === productId);
+  if (!p) return notice("Hãy chọn sản phẩm cần nhập/xuất kho.", true);
+  const rawQty = Number($("inventoryQty")?.value || 0);
+  if (!Number.isFinite(rawQty) || rawQty === 0) return notice("Số lượng phải khác 0.", true);
+  const movementType = clean($("inventoryType")?.value) || "adjustment";
+  const qty = inventorySignedQty(movementType, rawQty);
+  const id = doc(collection(db, "inventoryMovements")).id;
+  const payload = {
+    productId: p.id,
+    productSku: productSku(p),
+    productName: p.name || productSku(p),
+    movementType,
+    qty,
+    unit: p.unit || p.size || "",
+    refType: clean($("inventoryRefType")?.value),
+    refId: clean($("inventoryRefId")?.value),
+    warehouse: clean($("inventoryWarehouse")?.value) || "main",
+    note: clean($("inventoryNote")?.value),
+    isDeleted: false,
+    createdByEmail: ownerEmail(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  await setDoc(doc(db, "inventoryMovements", id), payload);
+  await logAudit("createInventoryMovement", "inventoryMovements", id, {
+    productId: p.id,
+    productSku: productSku(p),
+    movementType,
+    qty
+  }).catch(() => {});
+  clearInventoryForm();
+  renderProducts();
+  notice("Đã lưu phiếu kho.");
+}
+
+async function softDeleteInventoryMovement(id) {
+  if (!isAdmin()) return notice("Chỉ admin được xóa phiếu kho.", true);
+  const m = allInventoryMovements.find(item => item.id === id) || inventoryMovements.find(item => item.id === id);
+  if (!m) return;
+  if (!confirm("Xóa mềm phiếu kho này? Tồn kho sẽ được tính lại.")) return;
+  await setDoc(doc(db, "inventoryMovements", id), {
+    ...m,
+    isDeleted: true,
+    deletedAt: serverTimestamp(),
+    deletedByEmail: ownerEmail(),
+    updatedAt: serverTimestamp()
+  }, {merge:true});
+  await logAudit("softDeleteInventoryMovement", "inventoryMovements", id, {
+    productId: m.productId || "",
+    qty: m.qty || 0
+  }).catch(() => {});
+  notice("Đã xóa mềm phiếu kho.");
+}
+
 function renderProducts() {
   if (!$("productsPanel")) return;
   $("importProductsBtn")?.classList.toggle("hide", !isManager());
   hydrateProductFilters();
   renderProductOptions();
+  renderInventory();
   const rows = visibleProducts();
   $("productRows").innerHTML = rows.length ? rows.map(p => {
     const readonly = isManager() ? "" : "disabled";
+    const stock = productInventoryQty(p);
+    const stockClass = stock < 0 ? "red" : stock === 0 ? "orange" : "green";
     const action = isManager()
-      ? `<div class="actions"><button class="small primary" type="button" data-save-product="${esc(p.id)}">Lưu</button><button class="small danger" type="button" data-delete-product="${esc(p.id)}">Xóa</button></div>`
+      ? `<div class="actions"><button class="small primary" type="button" data-save-product="${esc(p.id)}">Lưu</button><button class="small" type="button" data-inventory-product="${esc(p.id)}">Nhập/Xuất</button><button class="small danger" type="button" data-delete-product="${esc(p.id)}">Xóa</button></div>`
       : `<span class="muted">Chỉ xem</span>`;
     return `
       <tr>
@@ -893,11 +1059,12 @@ function renderProducts() {
         <td><input data-product-origin="${esc(p.id)}" value="${esc(p.origin || "")}" ${readonly}></td>
         <td><input data-product-color="${esc(p.id)}" value="${esc(p.color || "")}" ${readonly}></td>
         <td><input data-product-price="${esc(p.id)}" value="${esc(p.priceText || (p.price ? money(p.price) : ""))}" ${readonly}></td>
+        <td><span class="pill ${stockClass}">${esc(stock)}</span></td>
         <td><input data-product-description="${esc(p.id)}" value="${esc(p.description || "")}" ${readonly}></td>
         <td>${action}</td>
       </tr>
     `;
-  }).join("") : `<tr><td colspan="9" class="muted">Chưa có sản phẩm phù hợp. Manager/admin có thể import CSV từ Google Sheet PRODUCTS.</td></tr>`;
+  }).join("") : `<tr><td colspan="10" class="muted">Chưa có sản phẩm phù hợp. Manager/admin có thể import CSV từ Google Sheet PRODUCTS.</td></tr>`;
 }
 
 function productInputValue(row, field) {
@@ -1466,6 +1633,10 @@ function setCollectionState(targetName, docs) {
     allPayments = docs;
     payments = docs.filter(p => !p.isDeleted && clean(p.status) !== "void");
   }
+  else if (targetName === "inventoryMovements") {
+    allInventoryMovements = docs;
+    inventoryMovements = docs.filter(m => !m.isDeleted).sort(byDateDesc);
+  }
   else if (targetName === "products") {
     products = docs.filter(d => !d.isDeleted).sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"));
   }
@@ -1504,6 +1675,8 @@ function watchData() {
   orderItems = [];
   payments = [];
   allPayments = [];
+  inventoryMovements = [];
+  allInventoryMovements = [];
   products = [];
   users = [];
   kpiRules = [];
@@ -1511,7 +1684,7 @@ function watchData() {
   auditLogs = [];
 
   const applySnap = (targetName, snap, filterDeleted=false, scopeKey="") => {
-    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","orderItems","payments","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
+    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","orderItems","payments","inventoryMovements","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
     if (scopeKey) setScopedDocs(targetName, scopeKey, docs);
     else replaceDocs(targetName, docs);
     scheduleRenderAll();
@@ -1543,6 +1716,7 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "payments"), snap => applySnap("payments", snap, false), err => notice("Lỗi tải thanh toán: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "inventoryMovements"), snap => applySnap("inventoryMovements", snap, false), err => notice("Lỗi tải kho: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "auditLogs"), snap => {
       auditLogs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byDateDesc);
@@ -1569,6 +1743,7 @@ function watchData() {
   unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "payments"), snap => applySnap("payments", snap, false), err => notice("Lỗi tải thanh toán được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "inventoryMovements"), snap => applySnap("inventoryMovements", snap, false), err => notice("Lỗi tải kho được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI của bạn: " + authMessage(err), true)));
 }
 
@@ -6288,8 +6463,12 @@ document.addEventListener("click", e => {
   if (rejectKpiProposalId) reviewKpiProposal(rejectKpiProposalId, "rejected");
   const saveProductId = e.target.closest("[data-save-product]")?.dataset.saveProduct;
   const deleteProductId = e.target.closest("[data-delete-product]")?.dataset.deleteProduct;
+  const inventoryProductId = e.target.closest("[data-inventory-product]")?.dataset.inventoryProduct;
+  const deleteInventoryId = e.target.closest("[data-delete-inventory]")?.dataset.deleteInventory;
   if (saveProductId) runAction(`saveProduct:${saveProductId}`, "saveProduct", "Đang lưu...", () => saveProduct(saveProductId));
   if (deleteProductId) runAction(`deleteProduct:${deleteProductId}`, "deleteProduct", "Đang xóa...", () => deleteProduct(deleteProductId));
+  if (inventoryProductId) selectInventoryProduct(inventoryProductId);
+  if (deleteInventoryId) softDeleteInventoryMovement(deleteInventoryId);
   if (editCareLogId) editCareLog(editCareLogId);
   if (deleteCareLogId) deleteCareLog(deleteCareLogId);
   if (restoreCustomerId) restoreCustomer(restoreCustomerId);
@@ -6367,6 +6546,8 @@ on("resetProductFilterBtn", "click", () => {
   ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).value = "");
   renderProducts();
 });
+on("saveInventoryBtn", "click", () => runAction("saveInventoryBtn", "saveInventoryMovement", "Đang lưu...", saveInventoryMovement));
+on("clearInventoryBtn", "click", clearInventoryForm);
 ["quoteSearchBox","quoteFilterOwner","quoteFilterStatus"].forEach(id => on(id, "input", renderQuotes));
 ["quoteFilterOwner","quoteFilterStatus"].forEach(id => on(id, "change", renderQuotes));
 on("resetQuoteFilterBtn", "click", resetQuoteFilters);

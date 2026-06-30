@@ -33,6 +33,7 @@
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
     .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .grid-wide{grid-column:span 2}
     .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .notice{position:fixed;right:16px;bottom:16px;z-index:30;max-width:420px;background:#062b24;color:#fff;border-radius:7px;padding:12px 14px;font-weight:700;box-shadow:0 10px 35px rgba(2,6,23,.25)}
     .notice.bad{background:#8a1f16}
@@ -107,6 +108,10 @@
     .payment-title{font-size:15px;margin-top:14px}
     .payment-table-wrap{max-height:260px}
     .payment-table{min-width:1050px}
+    .inventory-summary-grid{margin:12px 0 14px}
+    .inventory-section{margin:12px 0 14px;background:linear-gradient(145deg,#fff,#f8fcff);border:1px solid #dbe7f4;border-radius:8px;padding:14px}
+    .inventory-table-wrap{max-height:300px;margin-bottom:14px}
+    .inventory-table{min-width:1100px}
     .order-row{background:#fbfdff}
     .order-row.order-bought{box-shadow:inset 4px 0 0 #087443}
     .order-row.order-deposit{box-shadow:inset 4px 0 0 #f59e0b}
@@ -115,6 +120,8 @@
     .order-product-text{max-width:320px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
     .order-note{max-width:220px;line-height:1.35;color:#415a7c;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
     .money-cell{font-variant-numeric:tabular-nums;color:#062b24;font-size:15px}
+    .debt-positive{color:#a32016}
+    .paid-positive{color:#087443}
     .debt-cell{display:grid;gap:3px;font-size:12px;color:#526985;margin-top:4px}
     .debt-cell b{font-size:15px}
     .debt-cell .debt-positive{color:#a32016}
