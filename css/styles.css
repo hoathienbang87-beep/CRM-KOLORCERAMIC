@@ -71,7 +71,7 @@
     .task-title{font-weight:800}
     .task-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
     .report-toolbar{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(180px,1fr) minmax(260px,2fr)}
-    .report-metric-grid{display:grid;grid-template-columns:repeat(7,minmax(110px,1fr));gap:10px;margin:12px 0}
+    .report-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:12px 0}
     .report-metric{border:1px solid #dbe7f4;background:linear-gradient(145deg,#fff,#f7fbff);border-radius:8px;padding:10px;position:relative;overflow:hidden}
     .report-metric:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--brand)}
     .report-metric.bad{background:#fff1f0;border-color:#ffcbc7}
@@ -102,6 +102,11 @@
     .order-summary-card:after{content:"Chi tiết";position:absolute;right:10px;top:10px;border:1px solid #dbe7f4;background:#fff;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:800;color:#64748b;opacity:0;transition:opacity .12s ease}
     .order-summary-card:hover:after,.order-summary-card:focus:after{opacity:1}
     .order-table-wrap{max-height:620px}
+    .payment-section{margin:12px 0 14px;background:linear-gradient(145deg,#fff,#f8fcff);border:1px solid #dbe7f4;border-radius:8px;padding:14px}
+    .payment-section .pro-section-title{margin-bottom:10px}
+    .payment-title{font-size:15px;margin-top:14px}
+    .payment-table-wrap{max-height:260px}
+    .payment-table{min-width:1050px}
     .order-row{background:#fbfdff}
     .order-row.order-bought{box-shadow:inset 4px 0 0 #087443}
     .order-row.order-deposit{box-shadow:inset 4px 0 0 #f59e0b}
@@ -110,6 +115,10 @@
     .order-product-text{max-width:320px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
     .order-note{max-width:220px;line-height:1.35;color:#415a7c;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
     .money-cell{font-variant-numeric:tabular-nums;color:#062b24;font-size:15px}
+    .debt-cell{display:grid;gap:3px;font-size:12px;color:#526985;margin-top:4px}
+    .debt-cell b{font-size:15px}
+    .debt-cell .debt-positive{color:#a32016}
+    .debt-cell .paid-positive{color:#087443}
     .order-actions{display:grid;grid-template-columns:1fr;gap:7px;min-width:120px}
     .order-actions button{width:100%;min-height:34px}
     .product-table-wrap{max-height:700px}

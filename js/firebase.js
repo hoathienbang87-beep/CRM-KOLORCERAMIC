@@ -25,6 +25,7 @@ const tableMap = {
   quotes: "quotes",
   quoteItems: "quote_items",
   orderItems: "order_items",
+  payments: "payments",
   products: "products",
   kpiRules: "kpi_rules",
   kpiProposals: "kpi_proposals",
@@ -246,6 +247,29 @@ function rowFor(ref, input) {
         delivered_qty: first(data.deliveredQty, data.delivered_qty, 0),
         sort_order: first(data.sortOrder, data.sort_order, 0),
         note: first(data.note, null),
+        created_at: first(data.createdAt, data.created_at, null),
+        updated_at: first(data.updatedAt, data.updated_at, null)
+      };
+    case "payments":
+      return {
+        ...rowBase(ref, data),
+        payment_no: first(data.paymentNo, data.payment_no, null),
+        deal_id: first(data.dealId, data.deal_id, null),
+        quote_id: first(data.quoteId, data.quote_id, null),
+        customer_id: first(data.customerId, data.customer_id, null),
+        customer_name: first(data.customerName, data.customer_name, null),
+        owner: first(data.owner, null),
+        owner_email: first(data.ownerEmail, data.owner_email, null),
+        amount: first(data.amount, 0),
+        method: first(data.method, null),
+        status: first(data.status, "paid"),
+        payment_date: first(data.paymentDate, data.payment_date, null),
+        received_by_email: first(data.receivedByEmail, data.received_by_email, null),
+        note: first(data.note, null),
+        is_deleted: first(data.isDeleted, data.is_deleted, false),
+        deleted_at: first(data.deletedAt, data.deleted_at, null),
+        deleted_by_email: first(data.deletedByEmail, data.deleted_by_email, null),
+        created_by_email: first(data.createdByEmail, data.created_by_email, null),
         created_at: first(data.createdAt, data.created_at, null),
         updated_at: first(data.updatedAt, data.updated_at, null)
       };

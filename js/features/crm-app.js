@@ -71,6 +71,8 @@ let allQuotes = [];
 let quotes = [];
 let quoteItems = [];
 let orderItems = [];
+let allPayments = [];
+let payments = [];
 let products = [];
 let users = [];
 let onlineSessions = [];
@@ -1460,6 +1462,10 @@ function setCollectionState(targetName, docs) {
   else if (targetName === "orderItems") {
     orderItems = docs.sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
   }
+  else if (targetName === "payments") {
+    allPayments = docs;
+    payments = docs.filter(p => !p.isDeleted && clean(p.status) !== "void");
+  }
   else if (targetName === "products") {
     products = docs.filter(d => !d.isDeleted).sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"));
   }
@@ -1496,6 +1502,8 @@ function watchData() {
   allQuotes = [];
   quoteItems = [];
   orderItems = [];
+  payments = [];
+  allPayments = [];
   products = [];
   users = [];
   kpiRules = [];
@@ -1503,7 +1511,7 @@ function watchData() {
   auditLogs = [];
 
   const applySnap = (targetName, snap, filterDeleted=false, scopeKey="") => {
-    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","orderItems","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
+    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","orderItems","payments","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
     if (scopeKey) setScopedDocs(targetName, scopeKey, docs);
     else replaceDocs(targetName, docs);
     scheduleRenderAll();
@@ -1534,6 +1542,7 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "payments"), snap => applySnap("payments", snap, false), err => notice("Lỗi tải thanh toán: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "auditLogs"), snap => {
       auditLogs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byDateDesc);
@@ -1559,6 +1568,7 @@ function watchData() {
   unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "payments"), snap => applySnap("payments", snap, false), err => notice("Lỗi tải thanh toán được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI của bạn: " + authMessage(err), true)));
 }
 
@@ -2190,7 +2200,13 @@ function dealDetailRows(rows) {
           ${d.completedAt ? `<span>Ngày mua: ${esc(fmtDate(d.completedAt))}</span>` : ""}
           ${d.deliveryDate ? `<span>Hẹn giao: ${esc(fmtDate(d.deliveryDate))}</span>` : ""}
         </div>
-        <div><b>${esc(money(dealAmount(d)))}</b>${orderProductText(d) ? ` · ${esc(orderProductText(d))}` : ""}</div>
+        <div>
+          <b>${esc(money(dealAmount(d)))}</b>${orderProductText(d) ? ` · ${esc(orderProductText(d))}` : ""}
+          <div class="detail-meta">
+            <span>Đã thu: ${esc(money(dealPaidAmount(d.id)))}</span>
+            <span>Còn nợ: ${esc(money(dealDebtAmount(d)))}</span>
+          </div>
+        </div>
         ${d.note ? `<div class="detail-note">${esc(d.note)}</div>` : ""}
       </div>
     `;
@@ -5232,6 +5248,36 @@ function orderProductText(d) {
   return items.length ? items.join("; ") : clean(d.product);
 }
 
+function paymentNo() {
+  return `TT-${todayIso().replaceAll("-", "")}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+}
+
+function paymentDateValue(p) {
+  return clean(p.paymentDate || p.createdAt);
+}
+
+function dealPayments(dealId, includeDeleted=false) {
+  const source = includeDeleted ? allPayments : payments;
+  return source
+    .filter(p => p.dealId === dealId)
+    .filter(p => includeDeleted || (!p.isDeleted && clean(p.status) !== "void"))
+    .sort((a,b) => String(paymentDateValue(b)).localeCompare(String(paymentDateValue(a))) || byDateDesc(a,b));
+}
+
+function dealPaidAmount(dealId) {
+  return dealPayments(dealId).reduce((sum,p) => sum + Number(p.amount || 0), 0);
+}
+
+function dealDebtAmount(d) {
+  return Math.max(0, dealAmount(d) - dealPaidAmount(d.id));
+}
+
+function canManagePayment(p = {}) {
+  const d = p.dealId ? deals.find(item => item.id === p.dealId) : null;
+  const c = d?.customerId ? customerById(d.customerId) : null;
+  return isManager() || sameIdentity(p.createdByEmail, ownerEmail()) || sameIdentity(p.ownerEmail, ownerEmail()) || ownerMatchesCurrentUser(d) || ownerMatchesCurrentUser(c);
+}
+
 function orderCustomerName(d) {
   const c = customerById(d.customerId);
   return clean(d.orderCustomerName || d.customerName || c.name || c.companyName);
@@ -5338,6 +5384,8 @@ function openOrderSummaryDetail(type) {
   const depositRows = rows.filter(d => orderStatusKey(d) === "deposit");
   const boughtRows = rows.filter(d => orderStatusKey(d) === "bought");
   const canceledRows = rows.filter(d => orderStatusKey(d) === "canceled");
+  const paidRows = rows.filter(d => dealPaidAmount(d.id) > 0);
+  const debtRows = rows.filter(d => dealDebtAmount(d) > 0);
   const customerIds = new Set();
   rows.forEach(d => {
     const key = d.customerId || `${orderCustomerPhone(d)}:${orderCustomerName(d)}`;
@@ -5354,17 +5402,153 @@ function openOrderSummaryDetail(type) {
     depositValue: ["Giá trị đang cọc", depositRows],
     openValue: ["Giá trị đang xử lý", openRows],
     customers: ["Khách đã giao dịch", rows],
-    avgValue: ["Giá trị trung bình / đơn", rows]
+    avgValue: ["Giá trị trung bình / đơn", rows],
+    paidValue: ["Đã thu", paidRows],
+    debtValue: ["Còn nợ", debtRows]
   }[type];
   if (!config) return;
   const [title, detailRows] = config;
-  const total = detailRows.reduce((sum,d) => sum + dealAmount(d), 0);
+  const total = type === "paidValue"
+    ? detailRows.reduce((sum,d) => sum + dealPaidAmount(d.id), 0)
+    : type === "debtValue"
+      ? detailRows.reduce((sum,d) => sum + dealDebtAmount(d), 0)
+      : detailRows.reduce((sum,d) => sum + dealAmount(d), 0);
   const extra = type === "customers" ? ` · ${customerIds.size} khách` : total ? ` · Tổng ${money(total)}` : "";
   openDetailModal(
     title,
     `${detailRows.length} đơn${extra} · ${activeOrderFilterLabel()}`,
     dealDetailRows([...detailRows].sort((a,b) => String(orderDate(b)).localeCompare(String(orderDate(a))) || byDateDesc(a,b)))
   );
+}
+
+function hydratePaymentDealOptions() {
+  const el = $("paymentDeal");
+  if (!el) return;
+  const current = el.value;
+  const rows = filteredOrderDeals();
+  el.innerHTML = `<option value="">-- Chọn đơn hàng --</option>` + rows.map(d => {
+    const debt = dealDebtAmount(d);
+    const label = `${orderCustomerName(d) || "Không tên"} · ${money(dealAmount(d))} · Còn nợ ${money(debt)}`;
+    return `<option value="${esc(d.id)}">${esc(label)}</option>`;
+  }).join("");
+  if (rows.some(d => d.id === current)) el.value = current;
+}
+
+function clearPaymentForm() {
+  if (!$("paymentDeal")) return;
+  $("paymentDeal").value = "";
+  $("paymentDate").value = todayIso();
+  $("paymentAmount").value = "";
+  $("paymentMethod").value = "Chuyển khoản";
+  $("paymentNote").value = "";
+}
+
+function selectPaymentDeal(dealId) {
+  const d = deals.find(item => item.id === dealId);
+  if (!d || !$("paymentDeal")) return;
+  hydratePaymentDealOptions();
+  $("paymentDeal").value = d.id;
+  $("paymentDate").value = $("paymentDate").value || todayIso();
+  const debt = dealDebtAmount(d);
+  $("paymentAmount").value = debt > 0 ? debt : dealAmount(d);
+  $("paymentNote").focus();
+  $("paymentDeal").scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+function filteredPayments() {
+  const dealIds = new Set(filteredOrderDeals().map(d => d.id));
+  return payments
+    .filter(p => dealIds.has(p.dealId))
+    .sort((a,b) => String(paymentDateValue(b)).localeCompare(String(paymentDateValue(a))) || byDateDesc(a,b));
+}
+
+function renderPayments() {
+  if (!$("paymentRows")) return;
+  hydratePaymentDealOptions();
+  if (!$("paymentDate").value) $("paymentDate").value = todayIso();
+  const orderRows = filteredOrderDeals();
+  const totalDebt = orderRows.reduce((sum,d) => sum + dealDebtAmount(d), 0);
+  const totalPaid = orderRows.reduce((sum,d) => sum + dealPaidAmount(d.id), 0);
+  $("paymentSummaryText").textContent = `${orderRows.length} đơn · Đã thu ${money(totalPaid)} · Còn nợ ${money(totalDebt)}`;
+  const rows = filteredPayments();
+  $("paymentRows").innerHTML = rows.length ? rows.map(p => {
+    const d = deals.find(item => item.id === p.dealId) || {};
+    return `
+      <tr>
+        <td><b>${esc(p.paymentNo || p.id)}</b></td>
+        <td>${esc(p.customerName || orderCustomerName(d) || "Không tên")}</td>
+        <td>${esc(orderProductText(d) || d.id || "")}</td>
+        <td>${esc(fmtDate(p.paymentDate || p.createdAt) || "")}</td>
+        <td><b class="money-cell">${esc(money(p.amount || 0))}</b></td>
+        <td>${esc(p.method || "")}</td>
+        <td>${esc(p.receivedByEmail || p.createdByEmail || "")}</td>
+        <td>${esc(p.note || "")}</td>
+        <td>${canManagePayment(p) ? `<button class="small danger" type="button" data-delete-payment="${esc(p.id)}">Xóa mềm</button>` : ""}</td>
+      </tr>
+    `;
+  }).join("") : `<tr><td colspan="9" class="muted">Chưa có thanh toán phù hợp với bộ lọc.</td></tr>`;
+}
+
+async function savePayment() {
+  const dealId = clean($("paymentDeal")?.value);
+  const d = deals.find(item => item.id === dealId);
+  if (!d) return notice("Hãy chọn đơn hàng cần ghi nhận thanh toán.", true);
+  const c = customerById(d.customerId);
+  if (!isManager() && !ownerMatchesCurrentUser(d) && !ownerMatchesCurrentUser(c)) {
+    return notice("Bạn không có quyền ghi nhận thanh toán cho đơn này.", true);
+  }
+  const amount = Number($("paymentAmount")?.value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return notice("Số tiền thanh toán phải lớn hơn 0.", true);
+  const id = doc(collection(db, "payments")).id;
+  const payload = {
+    paymentNo: paymentNo(),
+    dealId: d.id,
+    quoteId: d.quoteId || "",
+    customerId: d.customerId || "",
+    customerName: orderCustomerName(d),
+    owner: orderOwnerName(d),
+    ownerEmail: orderOwnerEmail(d),
+    amount,
+    method: clean($("paymentMethod")?.value) || "Chuyển khoản",
+    status: "paid",
+    paymentDate: clean($("paymentDate")?.value) || todayIso(),
+    receivedByEmail: ownerEmail(),
+    note: clean($("paymentNote")?.value),
+    isDeleted: false,
+    createdByEmail: ownerEmail(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  await setDoc(doc(db, "payments", id), payload);
+  await logAudit("createPayment", "payments", id, {
+    dealId: d.id,
+    customerId: d.customerId || "",
+    amount,
+    paymentDate: payload.paymentDate
+  }).catch(() => {});
+  clearPaymentForm();
+  renderOrders();
+  notice("Đã ghi nhận thanh toán.");
+}
+
+async function softDeletePayment(id) {
+  const p = allPayments.find(item => item.id === id) || payments.find(item => item.id === id);
+  if (!p) return;
+  if (!canManagePayment(p)) return notice("Bạn không có quyền xóa khoản thanh toán này.", true);
+  if (!confirm("Xóa mềm khoản thanh toán này? Khoản này sẽ không còn được tính vào đã thu.")) return;
+  await setDoc(doc(db, "payments", id), {
+    ...p,
+    status: "void",
+    isDeleted: true,
+    deletedAt: serverTimestamp(),
+    deletedByEmail: ownerEmail(),
+    updatedAt: serverTimestamp()
+  }, {merge:true});
+  await logAudit("softDeletePayment", "payments", id, {
+    dealId: p.dealId || "",
+    amount: p.amount || 0
+  }).catch(() => {});
+  notice("Đã xóa mềm khoản thanh toán.");
 }
 
 function renderOrders() {
@@ -5380,6 +5564,8 @@ function renderOrders() {
   const boughtValue = boughtRows.reduce((sum,d) => sum + dealAmount(d), 0);
   const depositValue = depositRows.reduce((sum,d) => sum + dealAmount(d), 0);
   const openValue = openRows.reduce((sum,d) => sum + dealAmount(d), 0);
+  const paidValue = rows.reduce((sum,d) => sum + dealPaidAmount(d.id), 0);
+  const debtValue = rows.reduce((sum,d) => sum + dealDebtAmount(d), 0);
   const avgValue = rows.length ? Math.round(totalValue / rows.length) : 0;
   const cards = [
     ["Tổng đơn", rows.length, "", "all"],
@@ -5391,6 +5577,8 @@ function renderOrders() {
     ["Giá trị đã mua", money(boughtValue), "", "boughtValue"],
     ["Giá trị đang cọc", money(depositValue), depositValue ? "warn" : "", "depositValue"],
     ["Giá trị đang xử lý", money(openValue), openValue ? "warn" : "", "openValue"],
+    ["Đã thu", money(paidValue), "", "paidValue"],
+    ["Còn nợ", money(debtValue), debtValue ? "bad" : "", "debtValue"],
     ["Khách đã giao dịch", customersSet.size, "", "customers"],
     ["Giá trị TB/đơn", money(avgValue), "", "avgValue"]
   ];
@@ -5405,6 +5593,8 @@ function renderOrders() {
     const statusKey = orderStatusKey(d);
     const statusClass = statusKey === "bought" ? "green" : statusKey === "canceled" ? "red" : statusKey === "deposit" ? "orange" : "blue";
     const productText = orderProductText(d);
+    const paidAmount = dealPaidAmount(d.id);
+    const debtAmount = dealDebtAmount(d);
     const dateMeta = [
       `Đơn: ${fmtDate(d.dealDate || d.createdAt) || "-"}`,
       d.completedAt ? `Mua: ${fmtDate(d.completedAt)}` : "",
@@ -5426,12 +5616,19 @@ function renderOrders() {
         <td><span class="pill ${statusClass}">${esc(orderStatusLabel(d))}</span></td>
         <td colspan="3"><div class="order-date-stack">${esc(dateMeta)}</div></td>
         <td><div class="order-product-text">${esc(productText || "Chưa có sản phẩm")}</div></td>
-        <td><b class="money-cell">${esc(money(d.amount || 0))}</b></td>
+        <td>
+          <b class="money-cell">${esc(money(d.amount || 0))}</b>
+          <div class="debt-cell">
+            <span class="paid-positive">Đã thu: ${esc(money(paidAmount))}</span>
+            <span class="${debtAmount ? "debt-positive" : ""}">Còn nợ: ${esc(money(debtAmount))}</span>
+          </div>
+        </td>
         <td><div class="order-note">${esc(d.note || "")}</div></td>
         <td>
           <div class="order-actions">
             <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
             <button class="small" type="button" data-review-deal="${esc(d.id)}">Chi tiết</button>
+            <button class="small" type="button" data-pay-deal="${esc(d.id)}">Thanh toán</button>
             ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa</button>` : ""}
             ${isActiveDeal(d) || statusKey === "deposit" ? `<button class="small primary" type="button" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" type="button" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
             ${isManager() ? `<button class="small danger" type="button" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
@@ -5440,6 +5637,7 @@ function renderOrders() {
       </tr>
     `;
   }).join("") : `<tr><td colspan="11" class="muted">Chưa có đơn hàng phù hợp với bộ lọc.</td></tr>`;
+  renderPayments();
 }
 
 function renderReportCenter() {
@@ -5598,6 +5796,28 @@ function saleActivityRows() {
       });
     });
 
+  payments
+    .filter(p => !p.isDeleted && inDateRange(p.paymentDate || p.createdAt, range) && ownerMatchesKey(p, ownerFilter))
+    .forEach(p => {
+      const d = deals.find(item => item.id === p.dealId) || {};
+      const c = customerById(p.customerId || d.customerId);
+      rows.push({
+        date: isoFromAny(p.paymentDate || p.createdAt),
+        type: "Thu thanh toán",
+        owner: p.owner || orderOwnerName(d),
+        ownerEmail: p.ownerEmail || orderOwnerEmail(d),
+        customer: p.customerName || orderCustomerName(d),
+        phone: c.phoneRaw || c.phoneNormalized || orderCustomerPhone(d),
+        companyName: c.companyName || "",
+        channel: c.channel || "",
+        status: p.method || "Thanh toán",
+        amount: p.amount || 0,
+        note: p.note || p.paymentNo || "",
+        bucket: "payment",
+        customerId: p.customerId || d.customerId
+      });
+    });
+
   const filtered = key ? rows.filter(r => normalizeKey([r.type,r.owner,r.ownerEmail,r.customer,r.phone,r.companyName,r.channel,r.status,r.note].join(" ")).includes(key)) : rows;
   return {range, rows: filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || String(a.owner).localeCompare(String(b.owner), "vi"))};
 }
@@ -5606,7 +5826,7 @@ function saleActivitySummary(rows) {
   const map = new Map();
   rows.forEach(r => {
     const id = clean(r.ownerEmail || r.owner || "Không rõ");
-    const cur = map.get(id) || {owner: r.owner || id, ownerEmail: r.ownerEmail || "", taskOpen:0, taskOverdue:0, care:0, quote:0, deal:0, completed:0, revenue:0};
+    const cur = map.get(id) || {owner: r.owner || id, ownerEmail: r.ownerEmail || "", taskOpen:0, taskOverdue:0, care:0, quote:0, deal:0, completed:0, payment:0, revenue:0};
     if (r.bucket === "task") {
       cur.taskOpen += 1;
       if (r.taskType === "overdue") cur.taskOverdue += 1;
@@ -5614,6 +5834,7 @@ function saleActivitySummary(rows) {
     if (r.bucket === "care") cur.care += 1;
     if (r.bucket === "quote") cur.quote += 1;
     if (r.bucket === "deal") cur.deal += 1;
+    if (r.bucket === "payment") cur.payment += 1;
     if (r.bucket === "completed") {
       cur.completed += 1;
       cur.revenue += Number(r.amount || 0);
@@ -5634,6 +5855,7 @@ function renderSaleActivityReport() {
     care: rows.filter(r => r.bucket === "care").length,
     quote: rows.filter(r => r.bucket === "quote").length,
     deal: rows.filter(r => r.bucket === "deal").length,
+    payment: rows.filter(r => r.bucket === "payment").length,
     completed: rows.filter(r => r.bucket === "completed").length,
     revenue: rows.filter(r => r.bucket === "completed").reduce((sum,r) => sum + Number(r.amount || 0), 0)
   };
@@ -5644,6 +5866,7 @@ function renderSaleActivityReport() {
       ["Chăm sóc", metrics.care, ""],
       ["Báo giá", metrics.quote, ""],
       ["Deal tạo", metrics.deal, ""],
+      ["Thanh toán", metrics.payment, ""],
       ["Đơn hoàn thành", metrics.completed, ""],
       ["Doanh số", money(metrics.revenue), ""]
     ].map(([label,value,cls]) => `
@@ -5655,7 +5878,7 @@ function renderSaleActivityReport() {
   }
   $("saleActivitySummary").innerHTML = summary.length ? `
     <table class="admin-table">
-      <thead><tr><th>Nhân viên</th><th>Task mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Báo giá</th><th>Deal tạo</th><th>Đơn hoàn thành</th><th>Doanh số</th></tr></thead>
+      <thead><tr><th>Nhân viên</th><th>Task mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Báo giá</th><th>Deal tạo</th><th>Thanh toán</th><th>Đơn hoàn thành</th><th>Doanh số</th></tr></thead>
       <tbody>${summary.map(s => `
         <tr>
           <td><b>${esc(s.owner)}</b><div class="muted">${esc(s.ownerEmail)}</div></td>
@@ -5664,6 +5887,7 @@ function renderSaleActivityReport() {
           <td>${esc(s.care)}</td>
           <td>${esc(s.quote)}</td>
           <td>${esc(s.deal)}</td>
+          <td>${esc(s.payment)}</td>
           <td>${esc(s.completed)}</td>
           <td><b>${esc(money(s.revenue))}</b></td>
         </tr>
@@ -5671,7 +5895,7 @@ function renderSaleActivityReport() {
     </table>
   ` : `<div class="muted" style="padding:12px">Không có hoạt động trong khoảng ${esc(range.label)}.</div>`;
   $("saleActivityTimeline").innerHTML = rows.length ? rows.slice(0, 80).map(r => {
-    const cls = r.bucket === "deal" || r.bucket === "completed" ? "deal" : r.bucket === "quote" ? "kpi" : r.taskType === "overdue" ? "bad" : "care";
+    const cls = r.bucket === "deal" || r.bucket === "completed" || r.bucket === "payment" ? "deal" : r.bucket === "quote" ? "kpi" : r.taskType === "overdue" ? "bad" : "care";
     return `
     <div class="activity-mini report-activity ${esc(cls)}">
       <div class="activity-mini-head">
@@ -5696,9 +5920,9 @@ async function exportOrders() {
   if (!canExportData()) return notice("Bạn chưa có quyền xuất file.", true);
   const rows = filteredOrderDeals();
   if (!rows.length) return notice("Không có đơn hàng phù hợp với bộ lọc hiện tại.", true);
-  const header = ["Khách hàng","Tên công ty","SĐT","Nhân viên / Email","Trạng thái","Ngày đơn","Ngày mua","Hẹn giao","Sản phẩm","Giá trị","Ghi chú"];
+  const header = ["Khách hàng","Tên công ty","SĐT","Nhân viên / Email","Trạng thái","Ngày đơn","Ngày mua","Hẹn giao","Sản phẩm","Giá trị","Đã thu","Còn nợ","Ghi chú"];
   const dataRows = [
-    [`Báo cáo đơn hàng - ${activeOrderFilterLabel()}`, "", "", "", "", "", "", "", "", "", ""],
+    [`Báo cáo đơn hàng - ${activeOrderFilterLabel()}`, "", "", "", "", "", "", "", "", "", "", "", ""],
     header,
     ...rows.map(d => {
       const c = customerById(d.customerId);
@@ -5713,6 +5937,8 @@ async function exportOrders() {
         fmtDate(d.deliveryDate),
         orderProductText(d),
         d.amount || 0,
+        dealPaidAmount(d.id),
+        dealDebtAmount(d),
         d.note || ""
       ];
     })
@@ -6010,6 +6236,8 @@ document.addEventListener("click", e => {
   const editQuoteId = e.target.closest("[data-edit-quote]")?.dataset.editQuote;
   const deleteQuoteId = e.target.closest("[data-delete-quote]")?.dataset.deleteQuote;
   const convertQuoteId = e.target.closest("[data-convert-quote]")?.dataset.convertQuote;
+  const payDealId = e.target.closest("[data-pay-deal]")?.dataset.payDeal;
+  const deletePaymentId = e.target.closest("[data-delete-payment]")?.dataset.deletePayment;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   if (channelQuick) {
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
@@ -6035,6 +6263,8 @@ document.addEventListener("click", e => {
   if (editQuoteId) editQuote(editQuoteId);
   if (deleteQuoteId) softDeleteQuote(deleteQuoteId);
   if (convertQuoteId) convertQuoteToDeal(convertQuoteId);
+  if (payDealId) selectPaymentDeal(payDealId);
+  if (deletePaymentId) softDeletePayment(deletePaymentId);
   if (taskSnoozeBtn) snoozeTask(taskSnoozeBtn.dataset.taskSnooze, Number(taskSnoozeBtn.dataset.days || 1));
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
@@ -6124,6 +6354,14 @@ on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => setMainView("admin"));
 ["orderFilterYear","orderFilterMonth","orderFilterOwner","orderFilterStatus"].forEach(id => on(id, "change", renderOrders));
 on("resetOrderFilterBtn", "click", resetOrderFilters);
+on("savePaymentBtn", "click", () => runAction("savePaymentBtn", "savePayment", "Đang lưu...", savePayment));
+on("clearPaymentBtn", "click", clearPaymentForm);
+on("paymentDeal", "change", () => {
+  const d = deals.find(item => item.id === $("paymentDeal").value);
+  if (!d) return;
+  $("paymentAmount").value = dealDebtAmount(d) || dealAmount(d);
+  if (!$("paymentDate").value) $("paymentDate").value = todayIso();
+});
 ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => on(id, "input", renderProducts));
 on("resetProductFilterBtn", "click", () => {
   ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).value = "");

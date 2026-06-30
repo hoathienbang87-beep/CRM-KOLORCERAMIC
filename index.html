@@ -108,6 +108,37 @@
             <div class="field"><label>&nbsp;</label><button id="resetOrderFilterBtn" type="button">Xóa lọc</button></div>
           </div>
           <div id="orderSummaryGrid" class="executive-grid order-summary-grid"></div>
+          <div class="section payment-section">
+            <div class="pro-section-title">
+              <h3>Công nợ / Thanh toán</h3>
+              <span id="paymentSummaryText" class="muted"></span>
+            </div>
+            <div class="grid4">
+              <div class="field"><label>Đơn hàng</label><select id="paymentDeal"></select></div>
+              <div class="field"><label>Ngày thu</label><input id="paymentDate" type="date"></div>
+              <div class="field"><label>Số tiền</label><input id="paymentAmount" type="number" min="0" step="1000" placeholder="0"></div>
+              <div class="field"><label>Hình thức</label><select id="paymentMethod">
+                <option>Chuyển khoản</option>
+                <option>Tiền mặt</option>
+                <option>Quẹt thẻ</option>
+                <option>Khác</option>
+              </select></div>
+            </div>
+            <div class="field"><label>Ghi chú</label><input id="paymentNote" placeholder="Mã giao dịch, nội dung chuyển khoản, người nhận..."></div>
+            <div class="actions">
+              <button id="savePaymentBtn" class="primary" type="button">Lưu thanh toán</button>
+              <button id="clearPaymentBtn" type="button">Xóa form</button>
+            </div>
+            <div class="table-title payment-title">Lịch sử thanh toán</div>
+            <div class="table-wrap payment-table-wrap">
+              <table class="admin-table payment-table">
+                <thead>
+                  <tr><th>Mã thu</th><th>Khách hàng</th><th>Đơn hàng</th><th>Ngày thu</th><th>Số tiền</th><th>Hình thức</th><th>Người ghi nhận</th><th>Ghi chú</th><th>Thao tác</th></tr>
+                </thead>
+                <tbody id="paymentRows"></tbody>
+              </table>
+            </div>
+          </div>
           <div class="table-title">Thông tin đơn hàng / deal</div>
           <div class="table-wrap order-table-wrap">
             <table class="admin-table">
