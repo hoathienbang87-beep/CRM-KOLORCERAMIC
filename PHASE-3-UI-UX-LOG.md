@@ -24,6 +24,7 @@ Muc tieu: nang giao dien CRM chuyen nghiep hon nhung giu workflow quen thuoc cho
 - San pham, ghi chu va gia tri don duoc dinh dang de de scan hon.
 - Nut thao tac trong bang deal xep doc gon hon, tranh tran ngang.
 - Chi tiet don hang chuyen tu alert dai sang modal co thong tin, san pham, ghi chu va hanh dong tiep theo.
+- Card thong ke don hang co the click de mo modal danh sach don tuong ung theo bo loc hien tai.
 
 ## Dot 4 - Man KPI
 

@@ -89,6 +89,10 @@
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
     .customer-table-wrap{max-height:760px}
     .order-summary-grid{margin:12px 0 14px}
+    .order-summary-card{cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+    .order-summary-card:hover,.order-summary-card:focus{transform:translateY(-1px);box-shadow:0 12px 28px rgba(15,23,42,.12);border-color:#95b8f6;outline:none}
+    .order-summary-card:after{content:"Chi tiết";position:absolute;right:10px;top:10px;border:1px solid #dbe7f4;background:#fff;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:800;color:#64748b;opacity:0;transition:opacity .12s ease}
+    .order-summary-card:hover:after,.order-summary-card:focus:after{opacity:1}
     .order-table-wrap{max-height:620px}
     .order-row{background:#fbfdff}
     .order-row.order-bought{box-shadow:inset 4px 0 0 #087443}

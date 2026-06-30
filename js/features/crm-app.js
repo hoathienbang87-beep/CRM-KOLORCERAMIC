@@ -4803,6 +4803,41 @@ function activeOrderFilterLabel() {
   return parts.length ? parts.join(" | ") : "Tất cả đơn hàng";
 }
 
+function openOrderSummaryDetail(type) {
+  const rows = filteredOrderDeals();
+  const openRows = rows.filter(d => orderStatusKey(d) === "open");
+  const depositRows = rows.filter(d => orderStatusKey(d) === "deposit");
+  const boughtRows = rows.filter(d => orderStatusKey(d) === "bought");
+  const canceledRows = rows.filter(d => orderStatusKey(d) === "canceled");
+  const customerIds = new Set();
+  rows.forEach(d => {
+    const key = d.customerId || `${orderCustomerPhone(d)}:${orderCustomerName(d)}`;
+    if (key) customerIds.add(key);
+  });
+  const config = {
+    all: ["Tất cả đơn hàng", rows],
+    open: ["Đơn đang xử lý", openRows],
+    deposit: [systemLabel("depositStatus"), depositRows],
+    bought: [systemLabel("boughtStatus"), boughtRows],
+    canceled: [systemLabel("canceledStatus"), canceledRows],
+    totalValue: ["Tổng giá trị đơn hàng", rows],
+    boughtValue: ["Giá trị đã mua", boughtRows],
+    depositValue: ["Giá trị đang cọc", depositRows],
+    openValue: ["Giá trị đang xử lý", openRows],
+    customers: ["Khách đã giao dịch", rows],
+    avgValue: ["Giá trị trung bình / đơn", rows]
+  }[type];
+  if (!config) return;
+  const [title, detailRows] = config;
+  const total = detailRows.reduce((sum,d) => sum + dealAmount(d), 0);
+  const extra = type === "customers" ? ` · ${customerIds.size} khách` : total ? ` · Tổng ${money(total)}` : "";
+  openDetailModal(
+    title,
+    `${detailRows.length} đơn${extra} · ${activeOrderFilterLabel()}`,
+    dealDetailRows([...detailRows].sort((a,b) => String(orderDate(b)).localeCompare(String(orderDate(a))) || byDateDesc(a,b)))
+  );
+}
+
 function renderOrders() {
   if (!$("ordersPanel")) return;
   hydrateOrderFilters();
@@ -4818,20 +4853,20 @@ function renderOrders() {
   const openValue = openRows.reduce((sum,d) => sum + dealAmount(d), 0);
   const avgValue = rows.length ? Math.round(totalValue / rows.length) : 0;
   const cards = [
-    ["Tổng đơn", rows.length, ""],
-    ["Đang xử lý", openRows.length, openRows.length ? "warn" : ""],
-    [systemLabel("depositStatus"), depositRows.length, depositRows.length ? "warn" : ""],
-    [systemLabel("boughtStatus"), boughtRows.length, ""],
-    [systemLabel("canceledStatus"), canceledRows.length, canceledRows.length ? "bad" : ""],
-    ["Tổng giá trị", money(totalValue), ""],
-    ["Giá trị đã mua", money(boughtValue), ""],
-    ["Giá trị đang cọc", money(depositValue), depositValue ? "warn" : ""],
-    ["Giá trị đang xử lý", money(openValue), openValue ? "warn" : ""],
-    ["Khách đã giao dịch", customersSet.size, ""],
-    ["Giá trị TB/đơn", money(avgValue), ""]
+    ["Tổng đơn", rows.length, "", "all"],
+    ["Đang xử lý", openRows.length, openRows.length ? "warn" : "", "open"],
+    [systemLabel("depositStatus"), depositRows.length, depositRows.length ? "warn" : "", "deposit"],
+    [systemLabel("boughtStatus"), boughtRows.length, "", "bought"],
+    [systemLabel("canceledStatus"), canceledRows.length, canceledRows.length ? "bad" : "", "canceled"],
+    ["Tổng giá trị", money(totalValue), "", "totalValue"],
+    ["Giá trị đã mua", money(boughtValue), "", "boughtValue"],
+    ["Giá trị đang cọc", money(depositValue), depositValue ? "warn" : "", "depositValue"],
+    ["Giá trị đang xử lý", money(openValue), openValue ? "warn" : "", "openValue"],
+    ["Khách đã giao dịch", customersSet.size, "", "customers"],
+    ["Giá trị TB/đơn", money(avgValue), "", "avgValue"]
   ];
-  $("orderSummaryGrid").innerHTML = cards.map(([label,value,cls]) => `
-    <div class="executive-card ${esc(cls)}">
+  $("orderSummaryGrid").innerHTML = cards.map(([label,value,cls,type]) => `
+    <div class="executive-card order-summary-card clickable ${esc(cls)}" role="button" tabindex="0" data-order-summary="${esc(type)}">
       <span class="muted">${esc(label)}</span>
       <b>${esc(value)}</b>
     </div>
@@ -5430,7 +5465,9 @@ document.addEventListener("click", e => {
   const saveUserId = e.target.closest("[data-save-user]")?.dataset.saveUser;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
+  const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
+  if (orderSummary) openOrderSummaryDetail(orderSummary);
   if (careWorkDetail) openCareWorkDetail(careWorkDetail);
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
   if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
@@ -5484,9 +5521,11 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   if (e.key !== "Enter" && e.key !== " ") return;
   const dashboardAction = e.target.closest?.("[data-dashboard-action]")?.dataset.dashboardAction;
+  const orderSummary = e.target.closest?.("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest?.("[data-care-work-detail]")?.dataset.careWorkDetail;
-  if (!dashboardAction && !careWorkDetail) return;
+  if (!dashboardAction && !careWorkDetail && !orderSummary) return;
   e.preventDefault();
+  if (orderSummary) openOrderSummaryDetail(orderSummary);
   if (careWorkDetail) openCareWorkDetail(careWorkDetail);
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
   if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
