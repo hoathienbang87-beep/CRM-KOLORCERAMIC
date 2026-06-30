@@ -242,6 +242,28 @@ create trigger inventory_movements_touch_updated_at
 before update on public.inventory_movements
 for each row execute function public.crm_touch_updated_at();
 
+create or replace function public.crm_guard_product_soft_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(old.is_deleted, false) is distinct from coalesce(new.is_deleted, false)
+    and not public.crm_is_admin()
+  then
+    raise exception 'Only admin can hide or restore products';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists products_guard_soft_delete on public.products;
+create trigger products_guard_soft_delete
+before update on public.products
+for each row execute function public.crm_guard_product_soft_delete();
+
 -- ---------------------------------------------------------------------------
 -- 4. Indexes
 -- ---------------------------------------------------------------------------
@@ -443,14 +465,8 @@ drop policy if exists "payments manager update" on public.payments;
 create policy "payments manager update" on public.payments
 for update
 to authenticated
-using (
-  public.crm_is_manager()
-  or public.crm_is_owner(owner_email, created_by_email)
-)
-with check (
-  public.crm_is_manager()
-  or public.crm_is_owner(owner_email, created_by_email)
-);
+using (public.crm_is_manager())
+with check (public.crm_is_manager());
 
 drop policy if exists "payments admin delete" on public.payments;
 create policy "payments admin delete" on public.payments

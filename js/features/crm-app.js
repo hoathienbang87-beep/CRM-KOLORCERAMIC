@@ -1048,7 +1048,7 @@ function renderProducts() {
     const stock = productInventoryQty(p);
     const stockClass = stock < 0 ? "red" : stock === 0 ? "orange" : "green";
     const action = isManager()
-      ? `<div class="actions"><button class="small primary" type="button" data-save-product="${esc(p.id)}">Lưu</button><button class="small" type="button" data-inventory-product="${esc(p.id)}">Nhập/Xuất</button><button class="small danger" type="button" data-delete-product="${esc(p.id)}">Xóa</button></div>`
+      ? `<div class="actions"><button class="small primary" type="button" data-save-product="${esc(p.id)}">Lưu</button><button class="small" type="button" data-inventory-product="${esc(p.id)}">Nhập/Xuất</button>${isAdmin() ? `<button class="small danger" type="button" data-delete-product="${esc(p.id)}">Xóa</button>` : ""}</div>`
       : `<span class="muted">Chỉ xem</span>`;
     return `
       <tr>
@@ -1105,7 +1105,7 @@ async function saveProduct(productId) {
 }
 
 async function deleteProduct(productId) {
-  if (!isManager()) return notice("Chỉ admin/manager được xóa sản phẩm.", true);
+  if (!isAdmin()) return notice("Chỉ admin được ẩn sản phẩm.", true);
   const p = products.find(x => x.id === productId);
   if (!p) return;
   if (!confirm(`Ẩn sản phẩm "${p.name || p.code}" khỏi danh mục?`)) return;
@@ -5682,10 +5682,14 @@ function dealDebtAmount(d) {
   return Math.max(0, dealAmount(d) - dealPaidAmount(d.id));
 }
 
-function canManagePayment(p = {}) {
+function canSeePayment(p = {}) {
   const d = p.dealId ? deals.find(item => item.id === p.dealId) : null;
   const c = d?.customerId ? customerById(d.customerId) : null;
   return isManager() || sameIdentity(p.createdByEmail, ownerEmail()) || sameIdentity(p.ownerEmail, ownerEmail()) || ownerMatchesCurrentUser(d) || ownerMatchesCurrentUser(c);
+}
+
+function canVoidPayment() {
+  return isManager();
 }
 
 function printDocStyle() {
@@ -5745,7 +5749,7 @@ function printHeader(title, docNo) {
 async function printPaymentReceipt(paymentId) {
   const p = payments.find(item => item.id === paymentId) || allPayments.find(item => item.id === paymentId);
   if (!p) return notice("Không tìm thấy thanh toán để in phiếu thu.", true);
-  if (!canManagePayment(p)) return notice("Bạn không có quyền in phiếu thu này.", true);
+  if (!canSeePayment(p)) return notice("Bạn không có quyền in phiếu thu này.", true);
   const d = deals.find(item => item.id === p.dealId) || {};
   const c = customerById(p.customerId || d.customerId);
   const docNo = p.paymentNo || p.id;
@@ -6050,7 +6054,7 @@ function renderPayments() {
         <td>
           <div class="actions">
             <button class="small" type="button" data-print-payment="${esc(p.id)}">In phiếu thu</button>
-            ${canManagePayment(p) ? `<button class="small danger" type="button" data-delete-payment="${esc(p.id)}">Xóa mềm</button>` : ""}
+            ${canVoidPayment(p) ? `<button class="small danger" type="button" data-delete-payment="${esc(p.id)}">Xóa mềm</button>` : ""}
           </div>
         </td>
       </tr>
@@ -6103,7 +6107,7 @@ async function savePayment() {
 async function softDeletePayment(id) {
   const p = allPayments.find(item => item.id === id) || payments.find(item => item.id === id);
   if (!p) return;
-  if (!canManagePayment(p)) return notice("Bạn không có quyền xóa khoản thanh toán này.", true);
+  if (!canVoidPayment(p)) return notice("Chỉ admin/manager được xóa mềm khoản thanh toán.", true);
   if (!confirm("Xóa mềm khoản thanh toán này? Khoản này sẽ không còn được tính vào đã thu.")) return;
   await setDoc(doc(db, "payments", id), {
     ...p,
