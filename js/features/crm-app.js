@@ -1521,6 +1521,14 @@ function updateChannelReportCustomControls() {
   if (isCustom) ensureChannelReportCustomDates();
 }
 
+function resetChannelReportFilters() {
+  $("channelReportRange").value = "year";
+  $("channelReportStartDate").value = "";
+  $("channelReportEndDate").value = "";
+  updateChannelReportCustomControls();
+  requestChartRender();
+}
+
 function inReportRange(c, range) {
   const d = toDate(c.createdAt);
   if (!d) return false;
@@ -2349,6 +2357,11 @@ function renderMyKpiProposalPanel() {
   ` : `<div class="muted">Bạn chưa gửi đề xuất KPI nào.</div>`;
 }
 
+function resetMyKpiProposalFilter() {
+  $("myKpiProposalStatus").value = "";
+  renderMyKpiProposalPanel();
+}
+
 function kpiReportData() {
   const week = clean($("filterWeek").value);
   const month = clean($("kpiRuleMonth").value) || currentMonth();
@@ -2784,6 +2797,11 @@ function renderKpiApprovalPanel() {
     </div>
     ${proposalHtml}
   ` : proposalHtml;
+}
+
+function resetKpiApprovalFilter() {
+  $("kpiApprovalScope").value = "all";
+  renderKpiApprovalPanel();
 }
 
 function evidenceLinks(value) {
@@ -5617,6 +5635,8 @@ on("filterMonth", "change", scheduleRenderAll);
 on("kpiRuleMonth", "change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
 on("myKpiProposalStatus", "change", renderMyKpiProposalPanel);
 on("kpiApprovalScope", "change", renderKpiApprovalPanel);
+on("resetMyKpiProposalFilterBtn", "click", resetMyKpiProposalFilter);
+on("resetKpiApprovalFilterBtn", "click", resetKpiApprovalFilter);
 on("crmViewBtn", "click", () => setMainView("crm"));
 on("customersViewBtn", "click", () => setMainView("customers"));
 on("ordersViewBtn", "click", () => setMainView("orders"));
@@ -5710,6 +5730,7 @@ on("channelReportRange", "change", () => {
 });
 on("channelReportStartDate", "change", scheduleRenderChart);
 on("channelReportEndDate", "change", scheduleRenderChart);
+on("resetChannelReportFilterBtn", "click", resetChannelReportFilters);
 on("channelReportChart", "click", handleChannelReportClick);
 on("channelReportChart", "mousemove", handleChannelReportPointer);
 

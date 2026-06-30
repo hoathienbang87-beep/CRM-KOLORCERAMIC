@@ -198,6 +198,7 @@
                   <span>đến</span>
                   <input id="channelReportEndDate" type="date" aria-label="Ngày kết thúc báo cáo kênh chi tiết">
                 </div>
+                <button id="resetChannelReportFilterBtn" class="small" type="button">Xóa lọc</button>
               </div>
             </div>
             <div class="chart-wrap channel-chart-wrap"><canvas id="channelReportChart"></canvas></div>
@@ -318,6 +319,7 @@
                 <option value="month">Tháng đang xem</option>
                 <option value="old">Tồn tháng cũ</option>
               </select>
+              <button id="resetKpiApprovalFilterBtn" class="small" type="button">Xóa lọc</button>
             </div>
           </div>
           <div class="muted" style="margin-bottom:8px">KPI chỉ được tính sau khi admin/manager duyệt. Đề xuất tồn tháng cũ vẫn hiện ở đây để xử lý tiếp.</div>
@@ -348,6 +350,7 @@
                   <option value="approved">Đã duyệt</option>
                   <option value="rejected">Từ chối</option>
                 </select>
+                <button id="resetMyKpiProposalFilterBtn" class="small" type="button">Xóa lọc</button>
               </div>
             </div>
             <div class="muted" style="margin-bottom:8px">Chờ duyệt được sửa/xóa; đã duyệt hoặc từ chối sẽ khóa để giữ log.</div>
