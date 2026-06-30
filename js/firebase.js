@@ -24,6 +24,7 @@ const tableMap = {
   deals: "deals",
   quotes: "quotes",
   quoteItems: "quote_items",
+  orderItems: "order_items",
   products: "products",
   kpiRules: "kpi_rules",
   kpiProposals: "kpi_proposals",
@@ -224,6 +225,25 @@ function rowFor(ref, input) {
         unit_price: first(data.unitPrice, data.unit_price, 0),
         discount_amount: first(data.discountAmount, data.discount_amount, 0),
         line_total: first(data.lineTotal, data.line_total, 0),
+        sort_order: first(data.sortOrder, data.sort_order, 0),
+        note: first(data.note, null),
+        created_at: first(data.createdAt, data.created_at, null),
+        updated_at: first(data.updatedAt, data.updated_at, null)
+      };
+    case "orderItems":
+      return {
+        ...rowBase(ref, data),
+        deal_id: first(data.dealId, data.deal_id, null),
+        customer_id: first(data.customerId, data.customer_id, null),
+        product_id: first(data.productId, data.product_id, null),
+        product_sku: first(data.productSku, data.product_sku, data.code, null),
+        product_name: first(data.productName, data.product_name, data.product, null),
+        unit: first(data.unit, null),
+        qty: first(data.qty, 1),
+        unit_price: first(data.unitPrice, data.unit_price, 0),
+        discount_amount: first(data.discountAmount, data.discount_amount, 0),
+        line_total: first(data.lineTotal, data.line_total, 0),
+        delivered_qty: first(data.deliveredQty, data.delivered_qty, 0),
         sort_order: first(data.sortOrder, data.sort_order, 0),
         note: first(data.note, null),
         created_at: first(data.createdAt, data.created_at, null),

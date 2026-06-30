@@ -70,6 +70,7 @@ let deals = [];
 let allQuotes = [];
 let quotes = [];
 let quoteItems = [];
+let orderItems = [];
 let products = [];
 let users = [];
 let onlineSessions = [];
@@ -1137,6 +1138,7 @@ function renderQuotes() {
       <td>${esc(q.note || "")}</td>
       <td><div class="row-actions">
         <button class="small primary" type="button" data-open-quote="${esc(q.id)}">Chi tiết</button>
+        ${q.convertedDealId ? `<button class="small" type="button" data-review-deal="${esc(q.convertedDealId)}">Mở đơn</button>` : `<button class="small primary" type="button" data-convert-quote="${esc(q.id)}">Chuyển đơn</button>`}
         <button class="small" type="button" data-edit-quote="${esc(q.id)}">Sửa</button>
         <button class="small danger" type="button" data-delete-quote="${esc(q.id)}">Xóa mềm</button>
       </div></td>
@@ -1271,6 +1273,104 @@ async function softDeleteQuote(quoteId) {
   }
 }
 
+function quoteOrderItems(q, items) {
+  return items.map((item, index) => ({
+    customerId: q.customerId || "",
+    productId: item.productId || "",
+    productSku: item.productSku || "",
+    productName: item.productName || item.productLabel || "",
+    product: item.productName || item.productLabel || "",
+    productLabel: item.productLabel || item.productName || "",
+    code: item.productSku || "",
+    unit: item.unit || "",
+    qty: Number(item.qty || 0),
+    unitPrice: Number(item.unitPrice || 0),
+    price: Number(item.unitPrice || 0),
+    discountAmount: Number(item.discountAmount || 0),
+    lineTotal: Number(item.lineTotal || 0),
+    sortOrder: index,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }));
+}
+
+async function convertQuoteToDeal(quoteId) {
+  const q = quotes.find(item => item.id === quoteId);
+  if (!q) return notice("Không tìm thấy báo giá.", true);
+  if (q.convertedDealId) return notice("Báo giá này đã được chuyển thành đơn hàng.", true);
+  const c = customerById(q.customerId);
+  if (!c?.id || !canEditCustomer(c)) return notice("Không tìm thấy khách hàng hoặc bạn không có quyền tạo đơn.", true);
+  const items = quoteItemsForQuote(quoteId);
+  if (!items.length) return notice("Báo giá chưa có dòng sản phẩm để chuyển đơn.", true);
+  if (!confirm(`Chuyển báo giá ${q.quoteNo || q.id} thành đơn hàng đang xử lý?`)) return;
+
+  const dealRef = doc(collection(db, "deals"));
+  const orderRows = quoteOrderItems(q, items);
+  const productSummary = orderRows
+    .map(item => [item.productName || item.product, item.productSku ? `(${item.productSku})` : "", item.unit].filter(Boolean).join(" "))
+    .join("; ");
+  const deal = {
+    customerId: c.id,
+    customerName: c.name || q.customerName || "",
+    phoneNormalized: c.phoneNormalized || "",
+    phoneRaw: c.phoneRaw || q.customerPhone || "",
+    source: c.source || "",
+    channel: c.channel || "",
+    owner: q.owner || customerOwnerName(c),
+    ownerEmail: q.ownerEmail || customerOwnerKey(c),
+    dealStatus: "Đang xử lý",
+    orderCustomerName: q.customerName || c.name || "",
+    orderPhone: q.customerPhone || c.phoneRaw || c.phoneNormalized || "",
+    dealDate: todayIso(),
+    items: orderRows,
+    product: productSummary,
+    amount: Number(q.totalAmount || 0),
+    revenue: 0,
+    depositPercent: 0,
+    completed: false,
+    completedAt: null,
+    canceled: false,
+    canceledAt: null,
+    quoteId,
+    quoteNo: q.quoteNo || "",
+    note: [`Chuyển từ báo giá ${q.quoteNo || q.id}`, q.note || ""].filter(Boolean).join("\n"),
+    isDeleted: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  try {
+    const batch = writeBatch(db);
+    batch.set(dealRef, deal);
+    orderRows.forEach((item, index) => batch.set(doc(collection(db, "orderItems")), {
+      ...item,
+      dealId: dealRef.id,
+      customerId: c.id,
+      sortOrder: index
+    }));
+    batch.set(doc(db, "quotes", quoteId), {
+      status: "converted",
+      convertedDealId: dealRef.id,
+      convertedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, {merge:true});
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: "convertQuoteToDeal",
+      entity: "quotes",
+      entityId: quoteId,
+      email: currentUser?.email || "",
+      payloadJson: JSON.stringify({quoteNo: q.quoteNo || "", dealId: dealRef.id, totalAmount: q.totalAmount || 0, items: orderRows.length}),
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    notice("Đã chuyển báo giá thành đơn hàng đang xử lý.");
+    renderQuotes();
+    renderOrders();
+  } catch (err) {
+    notice("Không chuyển được báo giá thành đơn: " + authMessage(err), true);
+  }
+}
+
 function resetQuoteFilters() {
   $("quoteSearchBox").value = "";
   $("quoteFilterStatus").value = "";
@@ -1357,6 +1457,9 @@ function setCollectionState(targetName, docs) {
   else if (targetName === "quoteItems") {
     quoteItems = docs.sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
   }
+  else if (targetName === "orderItems") {
+    orderItems = docs.sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  }
   else if (targetName === "products") {
     products = docs.filter(d => !d.isDeleted).sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"));
   }
@@ -1392,6 +1495,7 @@ function watchData() {
   quotes = [];
   allQuotes = [];
   quoteItems = [];
+  orderItems = [];
   products = [];
   users = [];
   kpiRules = [];
@@ -1399,7 +1503,7 @@ function watchData() {
   auditLogs = [];
 
   const applySnap = (targetName, snap, filterDeleted=false, scopeKey="") => {
-    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
+    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","orderItems","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
     if (scopeKey) setScopedDocs(targetName, scopeKey, docs);
     else replaceDocs(targetName, docs);
     scheduleRenderAll();
@@ -1429,6 +1533,7 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "auditLogs"), snap => {
       auditLogs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byDateDesc);
@@ -1453,6 +1558,7 @@ function watchData() {
   unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI của bạn: " + authMessage(err), true)));
 }
 
@@ -5121,7 +5227,8 @@ function orderDate(d) {
 }
 
 function orderProductText(d) {
-  const items = Array.isArray(d.items) ? d.items.map(item => [item.product, item.code, item.qty ? `SL: ${item.qty}` : ""].filter(Boolean).join(" - ")).filter(Boolean) : [];
+  const sourceItems = Array.isArray(d.items) && d.items.length ? d.items : orderItems.filter(item => item.dealId === d.id);
+  const items = sourceItems.map(item => [item.product || item.productName, item.code || item.productSku, item.qty ? `SL: ${item.qty}` : ""].filter(Boolean).join(" - ")).filter(Boolean);
   return items.length ? items.join("; ") : clean(d.product);
 }
 
@@ -5902,6 +6009,7 @@ document.addEventListener("click", e => {
   const openQuoteId = e.target.closest("[data-open-quote]")?.dataset.openQuote;
   const editQuoteId = e.target.closest("[data-edit-quote]")?.dataset.editQuote;
   const deleteQuoteId = e.target.closest("[data-delete-quote]")?.dataset.deleteQuote;
+  const convertQuoteId = e.target.closest("[data-convert-quote]")?.dataset.convertQuote;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   if (channelQuick) {
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
@@ -5926,6 +6034,7 @@ document.addEventListener("click", e => {
   if (openQuoteId) openQuoteDetail(openQuoteId);
   if (editQuoteId) editQuote(editQuoteId);
   if (deleteQuoteId) softDeleteQuote(deleteQuoteId);
+  if (convertQuoteId) convertQuoteToDeal(convertQuoteId);
   if (taskSnoozeBtn) snoozeTask(taskSnoozeBtn.dataset.taskSnooze, Number(taskSnoozeBtn.dataset.days || 1));
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
