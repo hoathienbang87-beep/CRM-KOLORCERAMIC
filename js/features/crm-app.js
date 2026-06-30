@@ -2023,6 +2023,13 @@ function hydrateTaskFilters() {
   }
 }
 
+function resetTaskFilters() {
+  $("taskScopeFilter").value = "priority";
+  $("taskSearchBox").value = "";
+  $("taskOwnerFilter").value = isManager() ? "" : ownerEmail();
+  renderTaskBoard();
+}
+
 function taskTypeForCustomer(c) {
   if (isCareOverdue(c)) return "overdue";
   if (clean(c.nextCareDate) === todayIso()) return "today";
@@ -4827,6 +4834,12 @@ function filteredOrderDeals() {
   });
 }
 
+function resetOrderFilters() {
+  ["orderFilterYear","orderFilterMonth","orderFilterStatus"].forEach(id => $(id).value = "");
+  $("orderFilterOwner").value = isManager() ? "" : ownerEmail();
+  renderOrders();
+}
+
 function activeOrderFilterLabel() {
   const parts = [
     selectedOptionText("orderFilterYear") ? `Năm: ${selectedOptionText("orderFilterYear")}` : "",
@@ -4978,6 +4991,14 @@ function hydrateSaleActivityFilters() {
   const currentOwner = $("reportActivityOwner").value;
   fillSelect("reportActivityOwner", ownerOptions(), "", "Tất cả nhân viên");
   if (ownerOptions().some(o => clean(o.email) === currentOwner || clean(o.name) === currentOwner) || currentOwner === "") $("reportActivityOwner").value = currentOwner;
+}
+
+function resetSaleActivityFilters() {
+  $("reportActivityWeek").value = "";
+  $("reportActivityMonth").value = currentMonth();
+  $("reportActivitySearch").value = "";
+  $("reportActivityOwner").value = "";
+  renderSaleActivityReport();
 }
 
 function saleActivityRows() {
@@ -5586,6 +5607,8 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 ["taskScopeFilter","taskOwnerFilter"].forEach(id => on(id, "change", renderTaskBoard));
 ["reportActivityWeek","reportActivityMonth","reportActivityOwner","reportActivitySearch"].forEach(id => on(id, "input", renderSaleActivityReport));
 ["reportActivityWeek","reportActivityMonth","reportActivityOwner"].forEach(id => on(id, "change", renderSaleActivityReport));
+on("resetTaskFilterBtn", "click", resetTaskFilters);
+on("resetReportActivityFilterBtn", "click", resetSaleActivityFilters);
 on("filterChannel", "change", () => {
   activeChannelQuickFilter = "";
   scheduleRenderAll();
@@ -5602,6 +5625,7 @@ on("kpiViewBtn", "click", () => setMainView("kpi"));
 on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => setMainView("admin"));
 ["orderFilterYear","orderFilterMonth","orderFilterOwner","orderFilterStatus"].forEach(id => on(id, "change", renderOrders));
+on("resetOrderFilterBtn", "click", resetOrderFilters);
 ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => on(id, "input", renderProducts));
 on("resetProductFilterBtn", "click", () => {
   ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).value = "");

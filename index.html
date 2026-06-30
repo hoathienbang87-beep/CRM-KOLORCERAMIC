@@ -105,6 +105,7 @@
             <div class="field"><label>Tháng</label><select id="orderFilterMonth"></select></div>
             <div class="field"><label>Nhân viên</label><select id="orderFilterOwner"></select></div>
             <div class="field"><label>Tình trạng đơn</label><select id="orderFilterStatus"></select></div>
+            <div class="field"><label>&nbsp;</label><button id="resetOrderFilterBtn" type="button">Xóa lọc</button></div>
           </div>
           <div id="orderSummaryGrid" class="executive-grid order-summary-grid"></div>
           <div class="table-title">Thông tin đơn hàng / deal</div>
@@ -169,6 +170,7 @@
               <div><label>Tháng</label><input id="reportActivityMonth" type="month"></div>
               <div><label>Nhân viên</label><select id="reportActivityOwner"></select></div>
               <div class="toolbar-search"><label>Tìm hoạt động</label><input id="reportActivitySearch" placeholder="Tên KH, SĐT, ghi chú, loại hoạt động..."></div>
+              <div class="toolbar-actions"><button id="resetReportActivityFilterBtn" type="button">Xóa lọc</button></div>
             </div>
             <div id="saleActivityMetrics" class="report-metric-grid"></div>
             <div id="saleActivitySummary" class="table-wrap" style="margin-top:10px"></div>
@@ -219,6 +221,7 @@
             </select></div>
             <div><label>Nhân viên</label><select id="taskOwnerFilter"></select></div>
             <div class="toolbar-search"><label>Tìm task</label><input id="taskSearchBox" placeholder="Tên, SĐT, công ty, ghi chú..."></div>
+            <div class="toolbar-actions"><button id="resetTaskFilterBtn" type="button">Xóa lọc</button></div>
           </div>
           <div id="needCareList" class="care-empty">Không có khách cần chăm.</div>
         </div>
