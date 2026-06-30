@@ -4766,6 +4766,7 @@ function openDeliveryModal(dealId) {
       </div>
       <div class="actions">
         <button class="small" type="button" data-review-deal="${esc(deal.id)}">Quay lại chi tiết</button>
+        <button class="small" type="button" data-print-delivery="${esc(deal.id)}">In phiếu giao</button>
         ${canSave ? `<button class="small primary" type="button" data-save-delivery="${esc(deal.id)}">Lưu bàn giao</button>` : `<span class="muted">Chỉ admin/manager được cập nhật bàn giao.</span>`}
       </div>
     `
@@ -4956,6 +4957,7 @@ function reviewDeal(dealId) {
       <div class="actions">
         <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
         <button class="small primary" type="button" data-delivery-deal="${esc(d.id)}">Giao hàng</button>
+        <button class="small" type="button" data-print-delivery="${esc(d.id)}">In phiếu giao</button>
         ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa đơn</button>` : ""}
       </div>
     `
@@ -5686,6 +5688,154 @@ function canManagePayment(p = {}) {
   return isManager() || sameIdentity(p.createdByEmail, ownerEmail()) || sameIdentity(p.ownerEmail, ownerEmail()) || ownerMatchesCurrentUser(d) || ownerMatchesCurrentUser(c);
 }
 
+function printDocStyle() {
+  return `
+    <style>
+      *{box-sizing:border-box}
+      body{font-family:Arial,"Segoe UI",sans-serif;color:#061633;margin:0;background:#fff;font-size:13px;line-height:1.45}
+      .page{width:210mm;min-height:297mm;margin:0 auto;padding:18mm}
+      .top{display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #147a68;padding-bottom:12px;margin-bottom:18px}
+      .brand{font-size:22px;font-weight:800;color:#147a68}
+      .muted{color:#64748b}
+      h1{text-align:center;margin:18px 0 4px;font-size:24px;text-transform:uppercase}
+      .doc-no{text-align:center;color:#64748b;margin-bottom:18px}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;margin:14px 0}
+      .box{border:1px solid #d8e1ee;border-radius:8px;padding:12px;margin:12px 0}
+      .line{display:flex;justify-content:space-between;gap:16px;padding:5px 0;border-bottom:1px dashed #e5edf7}
+      .line:last-child{border-bottom:0}
+      table{width:100%;border-collapse:collapse;margin-top:12px}
+      th,td{border:1px solid #d8e1ee;padding:8px;text-align:left;vertical-align:top}
+      th{background:#eef7ff}
+      .total{font-size:18px;font-weight:800;color:#087443;text-align:right}
+      .signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:44px;text-align:center}
+      .signatures b{display:block;margin-bottom:54px}
+      @page{size:A4;margin:0}
+      @media print{.page{margin:0;box-shadow:none}.no-print{display:none}}
+    </style>
+  `;
+}
+
+function openPrintDocument(title, bodyHtml) {
+  const win = window.open("", "_blank", "width=920,height=720");
+  if (!win) return notice("Trình duyệt đang chặn cửa sổ in. Hãy cho phép popup rồi thử lại.", true);
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${printDocStyle()}</head><body>${bodyHtml}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 350);
+}
+
+function printHeader(title, docNo) {
+  return `
+    <div class="top">
+      <div>
+        <div class="brand">Kolorceraic THT</div>
+        <div class="muted">CRM nội bộ · Chứng từ bán hàng</div>
+      </div>
+      <div style="text-align:right">
+        <b>Ngày in: ${esc(new Date().toLocaleString("vi-VN"))}</b>
+        <div class="muted">Người in: ${esc(ownerName() || ownerEmail())}</div>
+      </div>
+    </div>
+    <h1>${esc(title)}</h1>
+    <div class="doc-no">Số chứng từ: ${esc(docNo || "-")}</div>
+  `;
+}
+
+async function printPaymentReceipt(paymentId) {
+  const p = payments.find(item => item.id === paymentId) || allPayments.find(item => item.id === paymentId);
+  if (!p) return notice("Không tìm thấy thanh toán để in phiếu thu.", true);
+  if (!canManagePayment(p)) return notice("Bạn không có quyền in phiếu thu này.", true);
+  const d = deals.find(item => item.id === p.dealId) || {};
+  const c = customerById(p.customerId || d.customerId);
+  const docNo = p.paymentNo || p.id;
+  openPrintDocument(`Phiếu thu ${docNo}`, `
+    <div class="page">
+      ${printHeader("Phiếu thu", docNo)}
+      <div class="box">
+        <div class="grid">
+          <div><b>Khách hàng:</b> ${esc(p.customerName || orderCustomerName(d) || c.name || "")}</div>
+          <div><b>SĐT:</b> ${esc(c.phoneRaw || c.phoneNormalized || orderCustomerPhone(d) || "")}</div>
+          <div><b>Công ty:</b> ${esc(c.companyName || "")}</div>
+          <div><b>Nhân viên:</b> ${esc(p.owner || orderOwnerName(d) || "")}</div>
+          <div><b>Ngày thu:</b> ${esc(fmtDate(p.paymentDate || p.createdAt) || "")}</div>
+          <div><b>Hình thức:</b> ${esc(p.method || "")}</div>
+        </div>
+      </div>
+      <div class="box">
+        <div class="line"><span>Đơn hàng</span><b>${esc(orderProductText(d) || d.id || "")}</b></div>
+        <div class="line"><span>Giá trị đơn</span><b>${esc(money(dealAmount(d)))}</b></div>
+        <div class="line"><span>Số tiền thu</span><b>${esc(money(p.amount || 0))}</b></div>
+        <div class="line"><span>Ghi chú</span><span>${esc(p.note || "")}</span></div>
+      </div>
+      <div class="total">Đã thu: ${esc(money(p.amount || 0))}</div>
+      <div class="signatures">
+        <div><b>Người lập phiếu</b><span>(Ký, ghi rõ họ tên)</span></div>
+        <div><b>Người nộp tiền</b><span>(Ký, ghi rõ họ tên)</span></div>
+        <div><b>Quản lý</b><span>(Ký, ghi rõ họ tên)</span></div>
+      </div>
+    </div>
+  `);
+  await logAudit("printPaymentReceipt", "payments", paymentId, {paymentNo: docNo, amount: p.amount || 0}).catch(() => {});
+}
+
+async function printDeliveryNote(dealId) {
+  const d = deals.find(item => item.id === dealId);
+  if (!d) return notice("Không tìm thấy đơn hàng để in phiếu giao.", true);
+  if (!isManager() && !ownerMatchesCurrentUser(d) && !ownerMatchesCurrentUser(customerById(d.customerId))) {
+    return notice("Bạn không có quyền in phiếu giao đơn này.", true);
+  }
+  const c = customerById(d.customerId);
+  const stats = deliveryStats(d);
+  const docNo = `PG-${String(d.id || "").slice(0, 8).toUpperCase()}`;
+  const rows = dealOrderItems(d);
+  openPrintDocument(`Phiếu giao ${docNo}`, `
+    <div class="page">
+      ${printHeader("Phiếu giao hàng", docNo)}
+      <div class="box">
+        <div class="grid">
+          <div><b>Khách hàng:</b> ${esc(orderCustomerName(d) || c.name || "")}</div>
+          <div><b>SĐT:</b> ${esc(orderCustomerPhone(d) || c.phoneRaw || c.phoneNormalized || "")}</div>
+          <div><b>Công ty:</b> ${esc(c.companyName || "")}</div>
+          <div><b>Nhân viên:</b> ${esc(orderOwnerName(d) || "")}</div>
+          <div><b>Địa chỉ giao:</b> ${esc(d.deliveryAddress || c.address || "")}</div>
+          <div><b>Ngày hẹn/giao:</b> ${esc(fmtDate(d.deliveryDate || d.deliveredAt) || "")}</div>
+          <div><b>Trạng thái:</b> ${esc(deliveryStatusLabel(stats.status))}</div>
+          <div><b>Tiến độ:</b> ${esc(`${stats.delivered}/${stats.total || "-"}`)}</div>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>STT</th><th>Sản phẩm</th><th>Mã</th><th>SL đơn</th><th>Đã giao</th><th>Còn giao</th><th>Đơn vị</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map((item, index) => {
+            const qty = Math.max(0, qtyNumber(item.qty));
+            const delivered = Math.max(0, Number(item.deliveredQty || 0));
+            return `<tr>
+              <td>${esc(index + 1)}</td>
+              <td>${esc(item.productName || item.product || item.productLabel || "Sản phẩm")}</td>
+              <td>${esc(item.productSku || item.code || "")}</td>
+              <td>${esc(qty || item.qty || 0)}</td>
+              <td>${esc(delivered)}</td>
+              <td>${esc(Math.max(0, qty - delivered))}</td>
+              <td>${esc(item.unit || item.size || "")}</td>
+            </tr>`;
+          }).join("") : `<tr><td colspan="7">Chưa có sản phẩm.</td></tr>`}
+        </tbody>
+      </table>
+      <div class="box">
+        <b>Ghi chú:</b>
+        <div>${esc(d.deliveryNote || d.note || "")}</div>
+      </div>
+      <div class="signatures">
+        <div><b>Người giao</b><span>(Ký, ghi rõ họ tên)</span></div>
+        <div><b>Người nhận</b><span>(Ký, ghi rõ họ tên)</span></div>
+        <div><b>Quản lý</b><span>(Ký, ghi rõ họ tên)</span></div>
+      </div>
+    </div>
+  `);
+  await logAudit("printDeliveryNote", "deals", dealId, {docNo, deliveryStatus: stats.status}).catch(() => {});
+}
+
 function orderCustomerName(d) {
   const c = customerById(d.customerId);
   return clean(d.orderCustomerName || d.customerName || c.name || c.companyName);
@@ -5897,7 +6047,12 @@ function renderPayments() {
         <td>${esc(p.method || "")}</td>
         <td>${esc(p.receivedByEmail || p.createdByEmail || "")}</td>
         <td>${esc(p.note || "")}</td>
-        <td>${canManagePayment(p) ? `<button class="small danger" type="button" data-delete-payment="${esc(p.id)}">Xóa mềm</button>` : ""}</td>
+        <td>
+          <div class="actions">
+            <button class="small" type="button" data-print-payment="${esc(p.id)}">In phiếu thu</button>
+            ${canManagePayment(p) ? `<button class="small danger" type="button" data-delete-payment="${esc(p.id)}">Xóa mềm</button>` : ""}
+          </div>
+        </td>
       </tr>
     `;
   }).join("") : `<tr><td colspan="9" class="muted">Chưa có thanh toán phù hợp với bộ lọc.</td></tr>`;
@@ -6057,6 +6212,7 @@ function renderOrders() {
             <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
             <button class="small" type="button" data-review-deal="${esc(d.id)}">Chi tiết</button>
             <button class="small" type="button" data-delivery-deal="${esc(d.id)}">Giao hàng</button>
+            <button class="small" type="button" data-print-delivery="${esc(d.id)}">Phiếu giao</button>
             <button class="small" type="button" data-pay-deal="${esc(d.id)}">Thanh toán</button>
             ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa</button>` : ""}
             ${isActiveDeal(d) || statusKey === "deposit" ? `<button class="small primary" type="button" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" type="button" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
@@ -6674,6 +6830,8 @@ document.addEventListener("click", e => {
   const convertQuoteId = e.target.closest("[data-convert-quote]")?.dataset.convertQuote;
   const payDealId = e.target.closest("[data-pay-deal]")?.dataset.payDeal;
   const deletePaymentId = e.target.closest("[data-delete-payment]")?.dataset.deletePayment;
+  const printPaymentId = e.target.closest("[data-print-payment]")?.dataset.printPayment;
+  const printDeliveryId = e.target.closest("[data-print-delivery]")?.dataset.printDelivery;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   if (channelQuick) {
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
@@ -6701,6 +6859,8 @@ document.addEventListener("click", e => {
   if (convertQuoteId) convertQuoteToDeal(convertQuoteId);
   if (payDealId) selectPaymentDeal(payDealId);
   if (deletePaymentId) softDeletePayment(deletePaymentId);
+  if (printPaymentId) printPaymentReceipt(printPaymentId);
+  if (printDeliveryId) printDeliveryNote(printDeliveryId);
   if (taskSnoozeBtn) snoozeTask(taskSnoozeBtn.dataset.taskSnooze, Number(taskSnoozeBtn.dataset.days || 1));
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
