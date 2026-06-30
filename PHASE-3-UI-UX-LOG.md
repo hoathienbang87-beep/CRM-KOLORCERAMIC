@@ -39,6 +39,7 @@ Muc tieu: nang giao dien CRM chuyen nghiep hon nhung giu workflow quen thuoc cho
 - Timeline hoat dong sale chuyen sang card ro nhan vien, SĐT, kenh, noi dung va tien neu co.
 - Card bao cao tong quan co class rieng de dong bo UI voi dashboard.
 - Task qua han trong timeline duoc nhan mau canh bao de manager de thay.
+- Timeline hoat dong sale duoc boc vao khung scroll de danh sach dai khong keo trang qua lau.
 
 ## Dot 6 - Man Quan tri
 
@@ -48,6 +49,12 @@ Muc tieu: nang giao dien CRM chuyen nghiep hon nhung giu workflow quen thuoc cho
 - Audit action doi thanh badge de doc nhanh hanh dong.
 - Thung rac hien thanh card co thong tin SĐT, nhan vien, ngay xoa, so care logs va deals lien quan.
 - Them ghi chu ngan cho health check va thung rac de admin biet thao tac nao nhay cam.
+
+## Dot 7 - Khung scroll cho danh sach dai
+
+- Tab CRM: danh sach Tasks / Lich hen cong viec co khung scroll rieng.
+- Tab Bao cao: timeline Hoat dong sale co khung scroll rieng.
+- Filter, metric va summary van nam ngoai vung scroll de nguoi dung doi loc nhanh hon.
 
 ## Cac man hinh con lai nen lam tiep
 

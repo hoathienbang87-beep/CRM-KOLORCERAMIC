@@ -61,6 +61,9 @@
     .care-work-card.quiet{background:#f8fbff}
     .task-toolbar{grid-template-columns:minmax(170px,1fr) minmax(170px,1fr) minmax(260px,2fr);margin-top:10px}
     .task-board{display:grid;gap:8px;margin-top:10px}
+    #needCareList{border:1px solid #dbe7f4;background:#fff;border-radius:8px;max-height:min(560px,58vh);overflow:auto;padding:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
+    #needCareList.task-board{align-content:start}
+    #needCareList.care-empty{min-height:58px;display:flex;align-items:center}
     .task-row{border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:8px;background:#fff;display:grid;grid-template-columns:minmax(220px,1.3fr) minmax(140px,.8fr) minmax(170px,1fr) auto;gap:10px;align-items:center;padding:10px}
     .task-row.bad{background:#fff1f0;border-color:#ffcbc7;border-left-color:var(--rose)}
     .task-row.warn{background:#fff8df;border-color:#f6c65b;border-left-color:var(--sun)}
@@ -179,6 +182,9 @@
     .report-activity-meta{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0}
     .report-activity-meta span{border:1px solid #e2eaf5;background:#f8fbff;border-radius:999px;padding:3px 8px;color:#415a7c;font-size:12px;font-weight:800}
     .report-activity-body{line-height:1.35}
+    #saleActivityTimeline{border:1px solid #dbe7f4;background:#fff;border-radius:8px;max-height:min(620px,62vh);overflow:auto;padding:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
+    #needCareList::-webkit-scrollbar,#saleActivityTimeline::-webkit-scrollbar{width:10px;height:10px}
+    #needCareList::-webkit-scrollbar-thumb,#saleActivityTimeline::-webkit-scrollbar-thumb{background:#c8d6e8;border-radius:999px;border:2px solid #fff}
     .online-panel{margin-top:14px}
     .online-item{border:1px solid #e5edf6;background:#f8fafc;border-radius:7px;padding:9px;margin-top:8px}
     .online-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:6px}
