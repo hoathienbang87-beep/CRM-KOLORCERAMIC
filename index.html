@@ -149,6 +149,55 @@
           </div>
         </div>
 
+        <div id="quotesPanel" class="panel hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Báo giá / Đề xuất</h3>
+            <button id="exportQuotesBtn" class="small primary" type="button">Xuất báo giá</button>
+          </div>
+          <div class="section">
+            <h3 id="quoteFormTitle">Tạo báo giá</h3>
+            <div class="grid4">
+              <div class="field"><label>Khách hàng</label><select id="quoteCustomer"></select></div>
+              <div class="field"><label>Trạng thái</label><select id="quoteStatus"></select></div>
+              <div class="field"><label>Ngày báo giá</label><input id="quoteDate" type="date"></div>
+              <div class="field"><label>Hiệu lực đến</label><input id="quoteValidUntil" type="date"></div>
+            </div>
+            <div class="actions" style="justify-content:space-between;margin-bottom:8px">
+              <label style="margin:0">Sản phẩm báo giá</label>
+              <button id="addQuoteItemBtn" class="small" type="button">Thêm SP</button>
+            </div>
+            <div id="quoteItems"></div>
+            <div class="grid3 quote-total-grid">
+              <div><span>Tạm tính</span><b id="quoteSubtotal">0</b></div>
+              <div><span>Chiết khấu</span><b id="quoteDiscountTotal">0</b></div>
+              <div><span>Tổng báo giá</span><b id="quoteTotalAmount">0</b></div>
+            </div>
+            <div class="field"><label>Ghi chú</label><textarea id="quoteNote" placeholder="Điều kiện báo giá, phương án đề xuất, ghi chú nội bộ..."></textarea></div>
+            <div class="actions">
+              <button id="saveQuoteBtn" class="primary" type="button">Lưu báo giá</button>
+              <button id="clearQuoteBtn" type="button">Xóa form</button>
+              <button id="cancelEditQuoteBtn" class="hide" type="button">Hủy sửa</button>
+            </div>
+          </div>
+          <div class="toolbar quote-toolbar">
+            <div class="toolbar-search"><label>Tìm báo giá</label><input id="quoteSearchBox" placeholder="Mã, khách hàng, SĐT, ghi chú..."></div>
+            <div><label>Nhân viên</label><select id="quoteFilterOwner"></select></div>
+            <div><label>Trạng thái</label><select id="quoteFilterStatus"></select></div>
+            <div class="toolbar-actions"><button id="resetQuoteFilterBtn" type="button">Xóa lọc</button></div>
+          </div>
+          <div class="table-title">Danh sách báo giá</div>
+          <div class="table-wrap quote-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Mã BG</th><th>Khách hàng</th><th>Nhân viên</th><th>Trạng thái</th><th>Ngày</th><th>Hiệu lực</th><th>Giá trị</th><th>Ghi chú</th><th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="quoteRows"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div id="reportsPanel" class="panel hide" style="margin-bottom:14px">
           <div class="pro-section-title">
             <h3>Báo cáo</h3>

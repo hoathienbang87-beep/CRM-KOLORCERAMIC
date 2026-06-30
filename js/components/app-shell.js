@@ -7,6 +7,7 @@ export function renderViewTabs() {
       <button id="customersViewBtn" type="button">Khách hàng</button>
       <button id="ordersViewBtn" type="button">Đơn hàng</button>
       <button id="productsViewBtn" type="button">Sản phẩm</button>
+      <button id="quotesViewBtn" type="button">Báo giá</button>
       <button id="kpiViewBtn" type="button">KPI</button>
       <button id="reportsViewBtn" class="hide" type="button">Báo cáo</button>
       <button id="adminViewBtn" class="hide" type="button">Quản trị</button>

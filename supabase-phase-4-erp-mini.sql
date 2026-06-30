@@ -509,4 +509,31 @@ group by
 
 grant select on public.product_inventory_balance to authenticated;
 
+-- ---------------------------------------------------------------------------
+-- 12. Realtime publication
+-- ---------------------------------------------------------------------------
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'quotes'
+    ) then
+      alter publication supabase_realtime add table public.quotes;
+    end if;
+
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = 'quote_items'
+    ) then
+      alter publication supabase_realtime add table public.quote_items;
+    end if;
+  end if;
+end $$;
+
 commit;

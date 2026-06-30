@@ -67,6 +67,9 @@ let allCareLogs = [];
 let careLogs = [];
 let allDeals = [];
 let deals = [];
+let allQuotes = [];
+let quotes = [];
+let quoteItems = [];
 let products = [];
 let users = [];
 let onlineSessions = [];
@@ -83,6 +86,7 @@ let activeChannelQuickFilter = "";
 let editingKpiRuleId = "";
 let editingKpiProposalId = "";
 let editingDealId = "";
+let editingQuoteId = "";
 let kpiProposalCustomerContext = null;
 let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
@@ -953,6 +957,340 @@ async function deleteProduct(productId) {
   }
 }
 
+const quoteStatusOptions = [
+  {value:"draft", label:"Nháp"},
+  {value:"sent", label:"Đã gửi"},
+  {value:"accepted", label:"Khách đồng ý"},
+  {value:"rejected", label:"Từ chối"},
+  {value:"converted", label:"Đã chuyển đơn"}
+];
+
+function quoteStatusLabel(value) {
+  const key = clean(value) || "draft";
+  return quoteStatusOptions.find(s => s.value === key)?.label || key;
+}
+
+function quoteStatusClass(value) {
+  const key = clean(value) || "draft";
+  if (key === "accepted" || key === "converted") return "green";
+  if (key === "rejected") return "red";
+  if (key === "sent") return "orange";
+  return "";
+}
+
+function quoteItemsForQuote(quoteId) {
+  return quoteItems.filter(item => item.quoteId === quoteId).sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+function quoteNo() {
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  return `BG-${stamp}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+
+function hydrateQuoteSelects() {
+  if (!$("quoteCustomer")) return;
+  const currentCustomer = $("quoteCustomer").value;
+  const customerOptions = customers
+    .filter(canSeeCustomer)
+    .sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"))
+    .map(c => ({value:c.id, label:[c.name || "Không tên", c.phoneRaw || c.phoneNormalized, c.companyName].filter(Boolean).join(" · ")}));
+  fillSelect("quoteCustomer", customerOptions, "-- Chọn khách hàng --");
+  if (customerOptions.some(o => o.value === currentCustomer)) $("quoteCustomer").value = currentCustomer;
+  fillSelect("quoteStatus", quoteStatusOptions, "");
+  fillSelect("quoteFilterStatus", quoteStatusOptions, "", "Tất cả trạng thái");
+  fillSelect("quoteFilterOwner", ownerOptions(), "", "Tất cả nhân viên");
+  if (!isManager()) {
+    $("quoteFilterOwner").value = ownerEmail();
+    $("quoteFilterOwner").disabled = true;
+  } else {
+    $("quoteFilterOwner").disabled = false;
+  }
+}
+
+function quoteItemTemplate(item={}) {
+  const product = item.productId ? productByAnyValue(item.productId) : productByAnyValue(item.productName || item.productSku || item.product || "");
+  const productText = item.productLabel || item.productName || item.product || (product ? productLabel(product) : "");
+  const unitPrice = Number(item.unitPrice ?? item.price ?? product?.price ?? 0);
+  return `<div class="quote-item-row" data-quote-item>
+    <input type="hidden" data-quote-product-id value="${esc(item.productId || product?.id || "")}">
+    <div class="field"><label>Sản phẩm</label><input data-quote-product list="productOptions" value="${esc(productText)}" placeholder="Gõ tên/mã sản phẩm"></div>
+    <div class="field"><label>SL</label><input data-quote-qty type="number" min="0" step="0.01" value="${esc(item.qty || 1)}"></div>
+    <div class="field"><label>Đơn giá</label><input data-quote-price type="number" min="0" step="1000" value="${esc(unitPrice || 0)}"></div>
+    <div class="field"><label>Chiết khấu</label><input data-quote-discount type="number" min="0" step="1000" value="${esc(item.discountAmount || 0)}"></div>
+    <div class="field"><label>Thành tiền</label><input data-quote-line-total value="${esc(money(Number(item.lineTotal || 0)))}" disabled></div>
+    <button class="small" type="button" data-remove-quote-item>Xóa</button>
+  </div>`;
+}
+
+function addQuoteItem(item={}) {
+  $("quoteItems").insertAdjacentHTML("beforeend", quoteItemTemplate(item));
+  updateQuoteTotals();
+}
+
+function clearQuoteForm() {
+  editingQuoteId = "";
+  $("quoteFormTitle").textContent = "Tạo báo giá";
+  $("saveQuoteBtn").textContent = "Lưu báo giá";
+  $("cancelEditQuoteBtn").classList.add("hide");
+  $("quoteCustomer").value = "";
+  $("quoteStatus").value = "draft";
+  $("quoteDate").value = todayIso();
+  $("quoteValidUntil").value = "";
+  $("quoteNote").value = "";
+  $("quoteItems").innerHTML = "";
+  addQuoteItem();
+  updateQuoteTotals();
+}
+
+function collectQuoteItems() {
+  return [...document.querySelectorAll("[data-quote-item]")].map((row, index) => {
+    const productValue = clean(row.querySelector("[data-quote-product]").value);
+    const selected = productByAnyValue(clean(row.querySelector("[data-quote-product-id]").value) || productValue);
+    const qty = Number(row.querySelector("[data-quote-qty]").value || 0);
+    const unitPrice = Number(row.querySelector("[data-quote-price]").value || selected?.price || 0);
+    const discountAmount = Number(row.querySelector("[data-quote-discount]").value || 0);
+    const lineTotal = Math.max(0, qty * unitPrice - discountAmount);
+    return {
+      productId: selected?.id || clean(row.querySelector("[data-quote-product-id]").value),
+      productSku: selected?.code || selected?.sku || "",
+      productName: selected?.name || productValue,
+      productLabel: selected ? productLabel(selected) : productValue,
+      unit: selected?.unit || selected?.size || "",
+      qty,
+      unitPrice,
+      discountAmount,
+      lineTotal,
+      sortOrder: index
+    };
+  }).filter(item => item.productName || item.productSku);
+}
+
+function quoteTotals(items = collectQuoteItems()) {
+  return {
+    subtotal: items.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.unitPrice || 0), 0),
+    discountAmount: items.reduce((sum, item) => sum + Number(item.discountAmount || 0), 0),
+    totalAmount: items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0)
+  };
+}
+
+function updateQuoteTotals() {
+  const items = collectQuoteItems();
+  document.querySelectorAll("[data-quote-item]").forEach(row => {
+    const qty = Number(row.querySelector("[data-quote-qty]")?.value || 0);
+    const unitPrice = Number(row.querySelector("[data-quote-price]")?.value || 0);
+    const discountAmount = Number(row.querySelector("[data-quote-discount]")?.value || 0);
+    const line = row.querySelector("[data-quote-line-total]");
+    if (line) line.value = money(Math.max(0, qty * unitPrice - discountAmount));
+  });
+  const totals = quoteTotals(items);
+  $("quoteSubtotal").textContent = money(totals.subtotal);
+  $("quoteDiscountTotal").textContent = money(totals.discountAmount);
+  $("quoteTotalAmount").textContent = money(totals.totalAmount);
+}
+
+function applyProductToQuoteInput(input) {
+  const row = input.closest("[data-quote-item]");
+  if (!row) return;
+  const p = productByAnyValue(input.value);
+  if (!p) {
+    row.querySelector("[data-quote-product-id]").value = "";
+    updateQuoteTotals();
+    return;
+  }
+  input.value = productLabel(p);
+  row.querySelector("[data-quote-product-id]").value = p.id || "";
+  row.querySelector("[data-quote-price]").value = Number(p.price || 0);
+  updateQuoteTotals();
+}
+
+function visibleQuotes() {
+  const q = normalizeKey($("quoteSearchBox")?.value || "");
+  const owner = clean($("quoteFilterOwner")?.value);
+  const status = clean($("quoteFilterStatus")?.value);
+  return quotes
+    .filter(item => isManager() || sameIdentity(item.ownerEmail, ownerEmail()) || sameIdentity(item.createdByEmail, ownerEmail()))
+    .filter(item => {
+      if (owner && !sameIdentity(item.ownerEmail, owner) && !sameIdentity(item.owner, owner)) return false;
+      if (status && clean(item.status) !== status) return false;
+      if (!q) return true;
+      return normalizeKey([item.quoteNo, item.customerName, item.customerPhone, item.customerCompanyName, item.owner, item.ownerEmail, item.status, item.note].join(" ")).includes(q);
+    })
+    .sort((a,b) => String(b.quoteDate || b.createdAt || "").localeCompare(String(a.quoteDate || a.createdAt || "")) || byDateDesc(a,b));
+}
+
+function renderQuotes() {
+  if (!$("quotesPanel")) return;
+  hydrateQuoteSelects();
+  if (!$("quoteItems").children.length) clearQuoteForm();
+  const rows = visibleQuotes();
+  $("quoteRows").innerHTML = rows.length ? rows.map(q => {
+    const items = quoteItemsForQuote(q.id);
+    return `<tr>
+      <td><b>${esc(q.quoteNo || q.id)}</b><br><small>${esc(items.length)} dòng SP</small></td>
+      <td><b>${esc(q.customerName || "Khách hàng")}</b>${q.customerCompanyName ? `<br><small>${esc(q.customerCompanyName)}</small>` : ""}<br><small>${esc(q.customerPhone || "")}</small></td>
+      <td>${esc(q.owner || q.ownerEmail || "")}</td>
+      <td><span class="pill ${quoteStatusClass(q.status)}">${esc(quoteStatusLabel(q.status))}</span></td>
+      <td>${esc(fmtDate(q.quoteDate || q.createdAt))}</td>
+      <td>${esc(fmtDate(q.validUntil))}</td>
+      <td><b>${esc(money(q.totalAmount || 0))}</b></td>
+      <td>${esc(q.note || "")}</td>
+      <td><div class="row-actions">
+        <button class="small primary" type="button" data-open-quote="${esc(q.id)}">Chi tiết</button>
+        <button class="small" type="button" data-edit-quote="${esc(q.id)}">Sửa</button>
+        <button class="small danger" type="button" data-delete-quote="${esc(q.id)}">Xóa mềm</button>
+      </div></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="9" class="muted">Không có báo giá phù hợp.</td></tr>`;
+}
+
+async function saveQuote() {
+  const c = customers.find(item => item.id === clean($("quoteCustomer").value));
+  if (!c || !canEditCustomer(c)) return notice("Vui lòng chọn khách hàng bạn có quyền báo giá.", true);
+  const items = collectQuoteItems();
+  if (!items.length) return notice("Vui lòng thêm ít nhất 1 sản phẩm báo giá.", true);
+  const totals = quoteTotals(items);
+  const oldQuote = editingQuoteId ? quotes.find(q => q.id === editingQuoteId) : null;
+  const status = clean($("quoteStatus").value) || "draft";
+  const quoteId = editingQuoteId || doc(collection(db, "quotes")).id;
+  const quote = {
+    quoteNo: oldQuote?.quoteNo || quoteNo(),
+    customerId: c.id,
+    customerName: c.name || "",
+    customerPhone: c.phoneRaw || c.phoneNormalized || "",
+    customerCompanyName: c.companyName || "",
+    owner: customerOwnerName(c),
+    ownerEmail: customerOwnerKey(c),
+    createdByEmail: oldQuote?.createdByEmail || currentUser?.email || "",
+    status,
+    quoteDate: clean($("quoteDate").value) || todayIso(),
+    validUntil: clean($("quoteValidUntil").value),
+    subtotal: totals.subtotal,
+    discountAmount: totals.discountAmount,
+    totalAmount: totals.totalAmount,
+    note: clean($("quoteNote").value),
+    sentAt: status === "sent" && oldQuote?.status !== "sent" ? serverTimestamp() : oldQuote?.sentAt || null,
+    acceptedAt: status === "accepted" && oldQuote?.status !== "accepted" ? serverTimestamp() : oldQuote?.acceptedAt || null,
+    rejectedAt: status === "rejected" && oldQuote?.status !== "rejected" ? serverTimestamp() : oldQuote?.rejectedAt || null,
+    isDeleted: false,
+    updatedAt: serverTimestamp()
+  };
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "quotes", quoteId), quote, {merge:true});
+    quoteItemsForQuote(quoteId).forEach(item => batch.delete(doc(db, "quoteItems", item.id)));
+    items.forEach((item, index) => batch.set(doc(collection(db, "quoteItems")), {...item, quoteId, sortOrder:index, createdAt:serverTimestamp(), updatedAt:serverTimestamp()}));
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: editingQuoteId ? "updateQuote" : "createQuote",
+      entity: "quotes",
+      entityId: quoteId,
+      email: currentUser?.email || "",
+      payloadJson: JSON.stringify({quoteNo: quote.quoteNo, customerName: quote.customerName, totalAmount: quote.totalAmount, items: items.length}),
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    notice(editingQuoteId ? "Đã cập nhật báo giá." : "Đã tạo báo giá.");
+    clearQuoteForm();
+    renderQuotes();
+  } catch (err) {
+    notice("Không lưu được báo giá: " + authMessage(err), true);
+  }
+}
+
+function editQuote(quoteId) {
+  const q = quotes.find(item => item.id === quoteId);
+  if (!q) return notice("Không tìm thấy báo giá.", true);
+  editingQuoteId = quoteId;
+  $("quoteFormTitle").textContent = `Sửa báo giá ${q.quoteNo || ""}`;
+  $("saveQuoteBtn").textContent = "Cập nhật báo giá";
+  $("cancelEditQuoteBtn").classList.remove("hide");
+  $("quoteCustomer").value = q.customerId || "";
+  $("quoteStatus").value = q.status || "draft";
+  $("quoteDate").value = dateInputValue(q.quoteDate || q.createdAt);
+  $("quoteValidUntil").value = dateInputValue(q.validUntil);
+  $("quoteNote").value = q.note || "";
+  $("quoteItems").innerHTML = "";
+  const items = quoteItemsForQuote(quoteId);
+  (items.length ? items : [{}]).forEach(addQuoteItem);
+  updateQuoteTotals();
+  $("quotesPanel")?.scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function openQuoteDetail(quoteId) {
+  const q = quotes.find(item => item.id === quoteId);
+  if (!q) return notice("Không tìm thấy báo giá.", true);
+  const items = quoteItemsForQuote(quoteId);
+  openDetailModal(
+    `Báo giá ${q.quoteNo || ""}`,
+    `${q.customerName || "Khách hàng"} · ${quoteStatusLabel(q.status)}`,
+    `<div class="detail-list">
+      <div class="detail-row">
+        <div class="detail-meta">
+          <span>Ngày: ${esc(fmtDate(q.quoteDate || q.createdAt))}</span>
+          <span>Hiệu lực: ${esc(fmtDate(q.validUntil) || "Chưa đặt")}</span>
+          <span>Phụ trách: ${esc(q.owner || q.ownerEmail || "")}</span>
+        </div>
+        ${q.customerCompanyName ? `<div>Công ty: ${esc(q.customerCompanyName)}</div>` : ""}
+        <div>SĐT: ${esc(q.customerPhone || "")}</div>
+        ${q.note ? `<div class="detail-note">${esc(q.note)}</div>` : ""}
+      </div>
+      ${items.map(item => `<div class="detail-row">
+        <b>${esc(item.productName || item.productSku || "Sản phẩm")}</b>
+        <div class="detail-meta">
+          <span>SL: ${esc(item.qty || 0)}</span>
+          <span>Đơn giá: ${esc(money(item.unitPrice || 0))}</span>
+          <span>CK: ${esc(money(item.discountAmount || 0))}</span>
+          <span>Thành tiền: ${esc(money(item.lineTotal || 0))}</span>
+        </div>
+      </div>`).join("") || `<div class="muted">Chưa có dòng sản phẩm.</div>`}
+      <div class="detail-row"><b>Tổng báo giá: ${esc(money(q.totalAmount || 0))}</b></div>
+    </div>`
+  );
+}
+
+async function softDeleteQuote(quoteId) {
+  const q = quotes.find(item => item.id === quoteId);
+  if (!q) return notice("Không tìm thấy báo giá.", true);
+  if (!confirm(`Xóa mềm báo giá ${q.quoteNo || q.id}? Dữ liệu vẫn giữ trong hệ thống.`)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "quotes", quoteId), {
+      isDeleted: true,
+      deletedAt: serverTimestamp(),
+      deletedByEmail: currentUser?.email || "",
+      updatedAt: serverTimestamp()
+    }, {merge:true});
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: "deleteQuote", entity: "quotes", entityId: quoteId, email: currentUser?.email || "",
+      payloadJson: JSON.stringify({quoteNo: q.quoteNo || "", customerName: q.customerName || ""}), createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    notice("Đã xóa mềm báo giá.");
+  } catch (err) {
+    notice("Không xóa được báo giá: " + authMessage(err), true);
+  }
+}
+
+function resetQuoteFilters() {
+  $("quoteSearchBox").value = "";
+  $("quoteFilterStatus").value = "";
+  $("quoteFilterOwner").value = isManager() ? "" : ownerEmail();
+  renderQuotes();
+}
+
+function exportQuotes() {
+  if (!canExportData()) return notice("Bạn chưa có quyền xuất file.", true);
+  const rows = visibleQuotes();
+  if (!rows.length) return notice("Không có báo giá phù hợp để xuất.", true);
+  exportXlsx([{
+    name:"Bao gia",
+    rows:[
+      ["Mã BG","Khách hàng","SĐT","Công ty","Nhân viên","Trạng thái","Ngày","Hiệu lực","Tạm tính","Chiết khấu","Tổng","Ghi chú"],
+      ...rows.map(q => [q.quoteNo || q.id, q.customerName || "", q.customerPhone || "", q.customerCompanyName || "", q.owner || q.ownerEmail || "", quoteStatusLabel(q.status), fmtDate(q.quoteDate || q.createdAt), fmtDate(q.validUntil), q.subtotal || 0, q.discountAmount || 0, q.totalAmount || 0, q.note || ""])
+    ]
+  }], `crm-bao-gia-${todayIso()}`);
+}
+
 function applyProductToDealInput(input) {
   const row = input.closest("[data-deal-item]");
   if (!row) return;
@@ -1012,6 +1350,13 @@ function setCollectionState(targetName, docs) {
     allDeals = docs;
     deals = docs.filter(d => !d.isDeleted);
   }
+  else if (targetName === "quotes") {
+    allQuotes = docs;
+    quotes = docs.filter(q => !q.isDeleted);
+  }
+  else if (targetName === "quoteItems") {
+    quoteItems = docs.sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  }
   else if (targetName === "products") {
     products = docs.filter(d => !d.isDeleted).sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"));
   }
@@ -1044,6 +1389,9 @@ function watchData() {
   allCareLogs = [];
   deals = [];
   allDeals = [];
+  quotes = [];
+  allQuotes = [];
+  quoteItems = [];
   products = [];
   users = [];
   kpiRules = [];
@@ -1051,7 +1399,7 @@ function watchData() {
   auditLogs = [];
 
   const applySnap = (targetName, snap, filterDeleted=false, scopeKey="") => {
-    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
+    const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
     if (scopeKey) setScopedDocs(targetName, scopeKey, docs);
     else replaceDocs(targetName, docs);
     scheduleRenderAll();
@@ -1079,6 +1427,8 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "auditLogs"), snap => {
       auditLogs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byDateDesc);
@@ -1101,6 +1451,8 @@ function watchData() {
   unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI của bạn: " + authMessage(err), true)));
 }
 
@@ -1234,6 +1586,7 @@ const customerViewIds = ["customerSearchPanel"];
 const kpiViewIds = ["kpiSummaryPanel","kpiRulePanel","kpiApprovalPanel"];
 const ordersViewIds = ["ordersPanel"];
 const productsViewIds = ["productsPanel"];
+const quotesViewIds = ["quotesPanel"];
 const reportsViewIds = ["reportsPanel"];
 
 function renderCrmView() {
@@ -1245,19 +1598,20 @@ function renderCrmView() {
 }
 
 function setMainView(view) {
-  activeMainView = ["customers","kpi","orders","products","reports","admin"].includes(view) ? view : "crm";
+  activeMainView = ["customers","kpi","orders","products","quotes","reports","admin"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   if (activeMainView === "admin" && !isAdmin()) activeMainView = "crm";
   const isCustomerView = activeMainView === "customers";
   const isKpiView = activeMainView === "kpi";
   const isOrdersView = activeMainView === "orders";
   const isProductsView = activeMainView === "products";
+  const isQuotesView = activeMainView === "quotes";
   const isReportsView = activeMainView === "reports";
   const isAdminView = activeMainView === "admin";
   crmViewIds.forEach(id => {
-    if (isCustomerView || isKpiView || isOrdersView || isProductsView || isReportsView || isAdminView) $(id)?.classList.add("hide");
+    if (isCustomerView || isKpiView || isOrdersView || isProductsView || isQuotesView || isReportsView || isAdminView) $(id)?.classList.add("hide");
   });
-  if (!isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isReportsView && !isAdminView) {
+  if (!isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isQuotesView && !isReportsView && !isAdminView) {
     $("needCarePanel")?.classList.remove("hide");
     $("executiveDashboard")?.classList.toggle("hide", !isManager());
     $("pipelinePanel")?.classList.toggle("hide", !isManager());
@@ -1272,23 +1626,25 @@ function setMainView(view) {
     $("trashPanel")?.classList.toggle("hide", !isAdmin());
   }
   customerViewIds.forEach(id => $(id)?.classList.toggle("hide", !isCustomerView));
-  document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isOrdersView || isProductsView || isReportsView || isAdminView);
+  document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isOrdersView || isProductsView || isQuotesView || isReportsView || isAdminView);
   $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView);
   $("kpiRulePanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpiApprovalPanel")?.classList.toggle("hide", !isKpiView || !isManager());
   ordersViewIds.forEach(id => $(id)?.classList.toggle("hide", !isOrdersView));
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
+  quotesViewIds.forEach(id => $(id)?.classList.toggle("hide", !isQuotesView));
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
   $("adminViewBtn")?.classList.toggle("hide", !isAdmin());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
-  $("crmViewBtn")?.classList.toggle("primary", !isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isReportsView && !isAdminView);
+  $("crmViewBtn")?.classList.toggle("primary", !isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isQuotesView && !isReportsView && !isAdminView);
   $("customersViewBtn")?.classList.toggle("primary", isCustomerView);
   $("ordersViewBtn")?.classList.toggle("primary", isOrdersView);
   $("productsViewBtn")?.classList.toggle("primary", isProductsView);
+  $("quotesViewBtn")?.classList.toggle("primary", isQuotesView);
   $("kpiViewBtn")?.classList.toggle("primary", isKpiView);
   $("reportsViewBtn")?.classList.toggle("primary", isReportsView);
   $("adminViewBtn")?.classList.toggle("primary", isAdminView);
-  if (!isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isReportsView && !isAdminView) renderCrmView();
+  if (!isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isQuotesView && !isReportsView && !isAdminView) renderCrmView();
   if (isCustomerView) renderCustomers();
   if (isKpiView) {
     renderKpiTable();
@@ -1298,6 +1654,7 @@ function setMainView(view) {
   }
   if (isOrdersView) renderOrders();
   if (isProductsView) renderProducts();
+  if (isQuotesView) renderQuotes();
   if (isReportsView) renderReportCenter();
   if (isAdminView) {
     renderHealthCheck();
@@ -5542,6 +5899,9 @@ document.addEventListener("click", e => {
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
+  const openQuoteId = e.target.closest("[data-open-quote]")?.dataset.openQuote;
+  const editQuoteId = e.target.closest("[data-edit-quote]")?.dataset.editQuote;
+  const deleteQuoteId = e.target.closest("[data-delete-quote]")?.dataset.deleteQuote;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   if (channelQuick) {
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
@@ -5563,6 +5923,9 @@ document.addEventListener("click", e => {
   if (quoteCreateDealId) createDealFromQuote(quoteCreateDealId);
   if (quoteOpenTemplateId) openQuoteTemplate(quoteOpenTemplateId);
   if (quoteCopyId) copyQuoteCustomerInfo(quoteCopyId);
+  if (openQuoteId) openQuoteDetail(openQuoteId);
+  if (editQuoteId) editQuote(editQuoteId);
+  if (deleteQuoteId) softDeleteQuote(deleteQuoteId);
   if (taskSnoozeBtn) snoozeTask(taskSnoozeBtn.dataset.taskSnooze, Number(taskSnoozeBtn.dataset.days || 1));
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
@@ -5596,6 +5959,11 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-remove-deal-item]")) {
     e.target.closest("[data-deal-item]")?.remove();
     if (!document.querySelector("[data-deal-item]")) addDealItem();
+  }
+  if (e.target.closest("[data-remove-quote-item]")) {
+    e.target.closest("[data-quote-item]")?.remove();
+    if (!document.querySelector("[data-quote-item]")) addQuoteItem();
+    updateQuoteTotals();
   }
 });
 
@@ -5641,6 +6009,7 @@ on("crmViewBtn", "click", () => setMainView("crm"));
 on("customersViewBtn", "click", () => setMainView("customers"));
 on("ordersViewBtn", "click", () => setMainView("orders"));
 on("productsViewBtn", "click", () => setMainView("products"));
+on("quotesViewBtn", "click", () => setMainView("quotes"));
 on("kpiViewBtn", "click", () => setMainView("kpi"));
 on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => setMainView("admin"));
@@ -5651,6 +6020,10 @@ on("resetProductFilterBtn", "click", () => {
   ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).value = "");
   renderProducts();
 });
+["quoteSearchBox","quoteFilterOwner","quoteFilterStatus"].forEach(id => on(id, "input", renderQuotes));
+["quoteFilterOwner","quoteFilterStatus"].forEach(id => on(id, "change", renderQuotes));
+on("resetQuoteFilterBtn", "click", resetQuoteFilters);
+on("exportQuotesBtn", "click", exportQuotes);
 on("kpiRuleTarget", "input", () => {
   document.querySelectorAll("[data-kpi-target-email]").forEach(input => {
     if (!clean(input.value)) input.value = $("kpiRuleTarget").value;
@@ -5710,11 +6083,23 @@ on("cancelEditDealBtn", "click", clearDealEditMode);
 on("saveKpiRuleBtn", "click", () => runAction("saveKpiRuleBtn", "saveKpiRule", "Đang lưu...", saveKpiRule));
 on("cancelEditKpiRuleBtn", "click", resetKpiRuleForm);
 on("addDealItemBtn", "click", () => addDealItem());
+on("saveQuoteBtn", "click", () => runAction("saveQuoteBtn", "saveQuote", "Đang lưu...", saveQuote));
+on("clearQuoteBtn", "click", clearQuoteForm);
+on("cancelEditQuoteBtn", "click", clearQuoteForm);
+on("addQuoteItemBtn", "click", () => addQuoteItem());
 on("dealItems", "input", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
 });
 on("dealItems", "change", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
+});
+on("quoteItems", "input", e => {
+  if (e.target.matches("[data-quote-product]")) applyProductToQuoteInput(e.target);
+  if (e.target.matches("[data-quote-qty],[data-quote-price],[data-quote-discount]")) updateQuoteTotals();
+});
+on("quoteItems", "change", e => {
+  if (e.target.matches("[data-quote-product]")) applyProductToQuoteInput(e.target);
+  updateQuoteTotals();
 });
 on("showPendingDealsBtn", "click", () => showDealList("pending"));
 on("showCompletedDealsBtn", "click", () => showDealList("completed"));

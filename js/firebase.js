@@ -22,6 +22,8 @@ const tableMap = {
   customers: "customers",
   careLogs: "care_logs",
   deals: "deals",
+  quotes: "quotes",
+  quoteItems: "quote_items",
   products: "products",
   kpiRules: "kpi_rules",
   kpiProposals: "kpi_proposals",
@@ -179,6 +181,52 @@ function rowFor(ref, input) {
         note: first(data.note, null),
         is_deleted: first(data.isDeleted, data.is_deleted, false),
         created_at: first(data.createdAt, data.dealDate, data.created_at, null),
+        updated_at: first(data.updatedAt, data.updated_at, null)
+      };
+    case "quotes":
+      return {
+        ...rowBase(ref, data),
+        quote_no: first(data.quoteNo, data.quote_no, null),
+        customer_id: first(data.customerId, data.customer_id, null),
+        customer_name: first(data.customerName, data.customer_name, null),
+        customer_phone: first(data.customerPhone, data.customer_phone, null),
+        customer_company_name: first(data.customerCompanyName, data.customer_company_name, null),
+        owner: first(data.owner, null),
+        owner_email: first(data.ownerEmail, data.owner_email, null),
+        status: first(data.status, "draft"),
+        quote_date: first(data.quoteDate, data.quote_date, null),
+        valid_until: first(data.validUntil, data.valid_until, null),
+        subtotal: first(data.subtotal, 0),
+        discount_amount: first(data.discountAmount, data.discount_amount, 0),
+        tax_amount: first(data.taxAmount, data.tax_amount, 0),
+        total_amount: first(data.totalAmount, data.total_amount, 0),
+        note: first(data.note, null),
+        sent_at: first(data.sentAt, data.sent_at, null),
+        accepted_at: first(data.acceptedAt, data.accepted_at, null),
+        rejected_at: first(data.rejectedAt, data.rejected_at, null),
+        converted_deal_id: first(data.convertedDealId, data.converted_deal_id, null),
+        is_deleted: first(data.isDeleted, data.is_deleted, false),
+        deleted_at: first(data.deletedAt, data.deleted_at, null),
+        deleted_by_email: first(data.deletedByEmail, data.deleted_by_email, null),
+        created_by_email: first(data.createdByEmail, data.created_by_email, null),
+        created_at: first(data.createdAt, data.created_at, null),
+        updated_at: first(data.updatedAt, data.updated_at, null)
+      };
+    case "quoteItems":
+      return {
+        ...rowBase(ref, data),
+        quote_id: first(data.quoteId, data.quote_id, null),
+        product_id: first(data.productId, data.product_id, null),
+        product_sku: first(data.productSku, data.product_sku, data.code, null),
+        product_name: first(data.productName, data.product_name, data.product, null),
+        unit: first(data.unit, null),
+        qty: first(data.qty, 1),
+        unit_price: first(data.unitPrice, data.unit_price, 0),
+        discount_amount: first(data.discountAmount, data.discount_amount, 0),
+        line_total: first(data.lineTotal, data.line_total, 0),
+        sort_order: first(data.sortOrder, data.sort_order, 0),
+        note: first(data.note, null),
+        created_at: first(data.createdAt, data.created_at, null),
         updated_at: first(data.updatedAt, data.updated_at, null)
       };
     case "products":
