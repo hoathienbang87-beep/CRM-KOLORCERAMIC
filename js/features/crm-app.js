@@ -79,6 +79,7 @@ let scopedSnapshots = {customers:{}, careLogs:{}, deals:{}, kpiProposals:{}};
 let presenceTimer = null;
 let channelReportHitAreas = [];
 let activeMainView = "crm";
+let activeChannelQuickFilter = "";
 let editingKpiRuleId = "";
 let editingKpiProposalId = "";
 let editingDealId = "";
@@ -1122,10 +1123,26 @@ function visibleCustomers() {
     if (dealStatus && !customerDeals(c.id).some(d => normalizeKey(normalizeDealStatus(d.dealStatus)) === normalizeKey(dealStatus))) return false;
     if (!followMatchesFilter(c, follow)) return false;
     if (channel && normalizeKey(canonicalChannel(c.channel)) !== normalizeKey(channel)) return false;
+    if (!customerMatchesChannelQuick(c)) return false;
     if (week && weekOf(c.createdAt) !== week) return false;
     if (!week && month && monthOf(c.createdAt) !== month) return false;
     return true;
   });
+}
+
+const SOCIAL_CHANNEL_KEYS = ["zalo","facebook","tiktok","website"];
+function channelQuickType(channelValue) {
+  const key = normalizeKey(canonicalChannel(channelValue));
+  if (key === normalizeKey("Công ty TK/XD")) return "company";
+  if (SOCIAL_CHANNEL_KEYS.includes(key)) return "social";
+  return "other";
+}
+function customerMatchesChannelQuick(c, quick = activeChannelQuickFilter) {
+  if (!quick) return true;
+  return channelQuickType(c.channel) === quick;
+}
+function channelQuickLabel(quick = activeChannelQuickFilter) {
+  return {company:"Công ty XD", social:"Mạng XH", other:"Kênh khác"}[quick] || "";
 }
 
 const customerDeals = id => deals.filter(d => d.customerId === id).sort((a,b) => String(b.dealDate || "").localeCompare(String(a.dealDate || "")) || byDateDesc(a,b));
@@ -2167,7 +2184,24 @@ async function enableBrowserNotifications() {
   notice("Đã bật nhắc lịch hẹn trên trình duyệt.");
 }
 
+function renderChannelQuickFilters() {
+  const box = $("channelQuickFilters");
+  if (!box) return;
+  const counts = customers.filter(canSeeCustomer).reduce((acc, c) => {
+    const type = channelQuickType(c.channel);
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {company:0, social:0, other:0});
+  $("quickCompanyCount").textContent = counts.company || 0;
+  $("quickSocialCount").textContent = counts.social || 0;
+  $("quickOtherCount").textContent = counts.other || 0;
+  box.querySelectorAll("[data-channel-quick]").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.channelQuick === activeChannelQuickFilter);
+  });
+}
+
 function renderCustomers() {
+  renderChannelQuickFilters();
   const rows = visibleCustomers();
   $("customerRows").innerHTML = rows.length ? rows.map(c => {
     const counts = dealCounts(c.id);
@@ -5308,6 +5342,7 @@ function activeCustomerFilterLabel() {
     selectedOptionText("filterDealStatus") ? `Đơn hàng: ${selectedOptionText("filterDealStatus")}` : "",
     selectedOptionText("filterFollow") ? `Tình trạng chăm: ${selectedOptionText("filterFollow")}` : "",
     selectedOptionText("filterChannel") ? `Kênh chi tiết: ${selectedOptionText("filterChannel")}` : "",
+    channelQuickLabel() ? `Lọc nhanh: ${channelQuickLabel()}` : "",
     clean($("filterWeek").value) ? `Tuần: ${clean($("filterWeek").value)}` : "",
     !clean($("filterWeek").value) && clean($("filterMonth").value) ? `Tháng: ${clean($("filterMonth").value)}` : ""
   ].filter(Boolean);
@@ -5421,6 +5456,7 @@ async function reloadApp() {
 }
 
 function resetFilters() {
+  activeChannelQuickFilter = "";
   ["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType"].forEach(id => {
     if (!(id === "filterOwner" && !isManager())) $(id).value = "";
   });
@@ -5467,6 +5503,12 @@ document.addEventListener("click", e => {
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
+  const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
+  if (channelQuick) {
+    activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
+    $("filterChannel").value = "";
+    renderCustomers();
+  }
   if (orderSummary) openOrderSummaryDetail(orderSummary);
   if (careWorkDetail) openCareWorkDetail(careWorkDetail);
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
@@ -5544,6 +5586,10 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 ["taskScopeFilter","taskOwnerFilter"].forEach(id => on(id, "change", renderTaskBoard));
 ["reportActivityWeek","reportActivityMonth","reportActivityOwner","reportActivitySearch"].forEach(id => on(id, "input", renderSaleActivityReport));
 ["reportActivityWeek","reportActivityMonth","reportActivityOwner"].forEach(id => on(id, "change", renderSaleActivityReport));
+on("filterChannel", "change", () => {
+  activeChannelQuickFilter = "";
+  scheduleRenderAll();
+});
 on("filterMonth", "change", scheduleRenderAll);
 on("kpiRuleMonth", "change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
 on("myKpiProposalStatus", "change", renderMyKpiProposalPanel);
