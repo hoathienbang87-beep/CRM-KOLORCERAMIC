@@ -72,6 +72,10 @@
     .task-title{font-weight:800}
     .task-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
     .report-toolbar{grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(180px,1fr) minmax(260px,2fr)}
+    .erp-report-toolbar{grid-template-columns:minmax(180px,1fr) minmax(220px,1fr)}
+    .erp-report-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+    .erp-report-card{margin:0}
+    .erp-report-card .table-wrap{max-height:360px}
     .report-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:12px 0}
     .report-metric{border:1px solid #dbe7f4;background:linear-gradient(145deg,#fff,#f7fbff);border-radius:8px;padding:10px;position:relative;overflow:hidden}
     .report-metric:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--brand)}

@@ -6247,7 +6247,162 @@ function renderReportCenter() {
       <b>${esc(value)}</b>
     </div>
   `).join("");
+  renderErpReport();
   renderSaleActivityReport();
+}
+
+function hydrateErpReportFilters() {
+  if (!$("erpReportMonth")) return;
+  if (!$("erpReportMonth").dataset.ready) {
+    $("erpReportMonth").value ||= currentMonth();
+    $("erpReportMonth").dataset.ready = "1";
+  }
+  const ownerCurrent = $("erpReportOwner").value;
+  fillSelect("erpReportOwner", ownerOptions(), "", "Tất cả nhân viên");
+  if (ownerOptions().some(o => clean(o.email) === ownerCurrent || clean(o.name) === ownerCurrent) || ownerCurrent === "") $("erpReportOwner").value = ownerCurrent;
+}
+
+function resetErpReportFilters() {
+  $("erpReportMonth").value = "";
+  $("erpReportOwner").value = "";
+  renderErpReport();
+}
+
+function selectedErpReportRange() {
+  const month = clean($("erpReportMonth")?.value);
+  return month ? monthRange(month) : null;
+}
+
+function erpOwnerMatches(item, ownerFilter) {
+  if (!ownerFilter) return true;
+  return sameIdentity(item.ownerEmail, ownerFilter) || sameIdentity(item.owner, ownerFilter) || sameIdentity(item.createdByEmail, ownerFilter);
+}
+
+function erpReportDeals() {
+  const range = selectedErpReportRange();
+  const ownerFilter = clean($("erpReportOwner")?.value);
+  return currentReportDeals()
+    .filter(d => !d.isDeleted)
+    .filter(d => !range || inDateRange(d.dealDate || d.createdAt, range) || inDateRange(d.completedAt, range))
+    .filter(d => erpOwnerMatches(d, ownerFilter));
+}
+
+function erpReportPayments() {
+  const range = selectedErpReportRange();
+  const ownerFilter = clean($("erpReportOwner")?.value);
+  return payments
+    .filter(p => !range || inDateRange(p.paymentDate || p.createdAt, range))
+    .filter(p => erpOwnerMatches(p, ownerFilter));
+}
+
+function erpReportLabel() {
+  const range = selectedErpReportRange();
+  const owner = selectedOptionText("erpReportOwner");
+  return [range ? range.label : "tất cả thời gian", owner ? `nhân viên ${owner}` : ""].filter(Boolean).join(" · ");
+}
+
+function productSalesRows(dealRows) {
+  const map = new Map();
+  dealRows
+    .filter(d => !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus))
+    .forEach(d => {
+      dealOrderItems(d).forEach(item => {
+        const key = clean(item.productId) || normalizeKey(item.productSku || item.productName || item.product || item.productLabel || "Khác");
+        const cur = map.get(key) || {productId:item.productId || "", name:item.productName || item.product || item.productLabel || "Khác", sku:item.productSku || item.code || "", qty:0, delivered:0, revenue:0, deals:new Set()};
+        cur.qty += Math.max(0, qtyNumber(item.qty));
+        cur.delivered += Math.max(0, Number(item.deliveredQty || 0));
+        cur.revenue += Number(item.lineTotal || 0);
+        cur.deals.add(d.id);
+        map.set(key, cur);
+      });
+    });
+  return [...map.values()].map(r => ({...r, deals:r.deals.size})).sort((a,b) => b.qty - a.qty || b.revenue - a.revenue).slice(0, 12);
+}
+
+function erpRiskRows(dealRows) {
+  const rows = [];
+  dealRows.filter(d => dealDebtAmount(d) > 0).slice(0, 20).forEach(d => rows.push({
+    type:"Công nợ",
+    title: orderCustomerName(d) || "Khách hàng",
+    note: `Còn nợ ${money(dealDebtAmount(d))}`,
+    action: d.id
+  }));
+  dealRows.filter(d => deliveryStats(d).status === "partial").slice(0, 20).forEach(d => rows.push({
+    type:"Giao thiếu",
+    title: orderCustomerName(d) || "Khách hàng",
+    note: `Còn giao ${deliveryStats(d).remaining}`,
+    action: d.id
+  }));
+  products.filter(p => productInventoryQty(p) <= 0).slice(0, 20).forEach(p => rows.push({
+    type: productInventoryQty(p) < 0 ? "Âm kho" : "Hết tồn",
+    title: p.name || productSku(p) || "Sản phẩm",
+    note: `Tồn ${productInventoryQty(p)}`,
+    productId: p.id
+  }));
+  return rows.slice(0, 30);
+}
+
+function renderErpReport() {
+  if (!$("erpReportGrid")) return;
+  hydrateErpReportFilters();
+  const dealRows = erpReportDeals();
+  const paymentRows = erpReportPayments();
+  const completed = dealRows.filter(isCompletedDeal);
+  const active = dealRows.filter(isActiveDeal);
+  const paid = paymentRows.reduce((sum,p) => sum + Number(p.amount || 0), 0);
+  const totalValue = dealRows.reduce((sum,d) => sum + dealAmount(d), 0);
+  const completedValue = completed.reduce((sum,d) => sum + dealAmount(d), 0);
+  const debt = dealRows.reduce((sum,d) => sum + dealDebtAmount(d), 0);
+  const partialDelivery = dealRows.filter(d => deliveryStats(d).status === "partial");
+  const pendingDelivery = dealRows.filter(d => deliveryStats(d).status === "none" && orderStatusKey(d) !== "canceled");
+  const stockNegative = products.filter(p => productInventoryQty(p) < 0);
+  const stockZero = products.filter(p => productInventoryQty(p) === 0);
+  $("erpReportRangeText").textContent = erpReportLabel();
+  $("erpReportGrid").innerHTML = [
+    ["Tổng giá trị đơn", money(totalValue), ""],
+    ["Doanh thu hoàn thành", money(completedValue), ""],
+    ["Đã thu", money(paid), ""],
+    ["Còn công nợ", money(debt), debt ? "bad" : ""],
+    ["Đơn đang xử lý", active.length, active.length ? "warn" : ""],
+    ["Giao thiếu", partialDelivery.length, partialDelivery.length ? "warn" : ""],
+    ["Chờ giao", pendingDelivery.length, pendingDelivery.length ? "warn" : ""],
+    ["Âm kho / Hết tồn", `${stockNegative.length} / ${stockZero.length}`, stockNegative.length || stockZero.length ? "bad" : ""]
+  ].map(([label,value,cls]) => `
+    <div class="executive-card report-card ${esc(cls)}">
+      <span class="muted">${esc(label)}</span>
+      <b>${esc(value)}</b>
+    </div>
+  `).join("");
+
+  const topProducts = productSalesRows(dealRows);
+  $("topProductSummary").textContent = `${topProducts.length} sản phẩm`;
+  $("topProductTable").innerHTML = topProducts.length ? `
+    <table class="admin-table">
+      <thead><tr><th>Sản phẩm</th><th>SL bán</th><th>Đã giao</th><th>Số đơn</th><th>Tồn hiện tại</th></tr></thead>
+      <tbody>${topProducts.map(p => {
+        const product = products.find(item => item.id === p.productId || normalizeKey(productSku(item)) === normalizeKey(p.sku) || normalizeKey(item.name) === normalizeKey(p.name));
+        return `<tr>
+          <td><b>${esc(p.name)}</b><div class="muted">${esc(p.sku || "")}</div></td>
+          <td>${esc(p.qty)}</td>
+          <td>${esc(p.delivered)}</td>
+          <td>${esc(p.deals)}</td>
+          <td>${esc(product ? productInventoryQty(product) : "")}</td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table>
+  ` : `<div class="muted" style="padding:12px">Chưa có dữ liệu sản phẩm bán trong kỳ.</div>`;
+
+  const risks = erpRiskRows(dealRows);
+  $("erpRiskSummary").textContent = `${risks.length} cảnh báo`;
+  $("erpRiskList").innerHTML = risks.length ? risks.map(r => `
+    <div class="activity-mini ${r.type === "Công nợ" || r.type === "Âm kho" ? "bad" : "deal"}">
+      <div class="activity-mini-head">
+        <b>${esc(r.type)} · ${esc(r.title)}</b>
+        ${r.action ? `<button class="small" type="button" data-review-deal="${esc(r.action)}">Mở đơn</button>` : r.productId ? `<button class="small" type="button" data-inventory-product="${esc(r.productId)}">Mở kho</button>` : ""}
+      </div>
+      <div class="muted">${esc(r.note)}</div>
+    </div>
+  `).join("") : `<div class="muted">Không có cảnh báo vận hành trong dữ liệu hiện tại.</div>`;
 }
 
 function hydrateSaleActivityFilters() {
@@ -6538,6 +6693,76 @@ async function exportOrders() {
     await logAudit("exportOrders", "exports", "orders", {
       rows: rows.length,
       filter: activeOrderFilterLabel()
+    }).catch(err => notice("File đã xuất, nhưng chưa ghi được audit log: " + authMessage(err), true));
+  }
+}
+
+async function exportErpReport() {
+  if (!isManager()) return notice("Chỉ admin/manager được xuất báo cáo ERP mini.", true);
+  const dealRows = erpReportDeals();
+  const paymentRows = erpReportPayments();
+  const completed = dealRows.filter(isCompletedDeal);
+  const active = dealRows.filter(isActiveDeal);
+  const paid = paymentRows.reduce((sum,p) => sum + Number(p.amount || 0), 0);
+  const totalValue = dealRows.reduce((sum,d) => sum + dealAmount(d), 0);
+  const completedValue = completed.reduce((sum,d) => sum + dealAmount(d), 0);
+  const debt = dealRows.reduce((sum,d) => sum + dealDebtAmount(d), 0);
+  const partialDelivery = dealRows.filter(d => deliveryStats(d).status === "partial");
+  const pendingDelivery = dealRows.filter(d => deliveryStats(d).status === "none" && orderStatusKey(d) !== "canceled");
+  const stockNegative = products.filter(p => productInventoryQty(p) < 0);
+  const stockZero = products.filter(p => productInventoryQty(p) === 0);
+  const summaryRows = [
+    ["Báo cáo ERP mini", erpReportLabel()],
+    ["Thời điểm xuất", new Date().toLocaleString("vi-VN")],
+    ["Người xuất", currentUser?.email || ""],
+    ["Tổng giá trị đơn", totalValue],
+    ["Doanh thu hoàn thành", completedValue],
+    ["Đã thu", paid],
+    ["Còn công nợ", debt],
+    ["Đơn đang xử lý", active.length],
+    ["Giao thiếu", partialDelivery.length],
+    ["Chờ giao", pendingDelivery.length],
+    ["Âm kho", stockNegative.length],
+    ["Hết tồn", stockZero.length]
+  ];
+  const productRows = [
+    ["Sản phẩm", "Mã", "SL bán", "Đã giao", "Số đơn", "Tồn hiện tại"],
+    ...productSalesRows(dealRows).map(p => {
+      const product = products.find(item => item.id === p.productId || normalizeKey(productSku(item)) === normalizeKey(p.sku) || normalizeKey(item.name) === normalizeKey(p.name));
+      return [p.name, p.sku, p.qty, p.delivered, p.deals, product ? productInventoryQty(product) : ""];
+    })
+  ];
+  const riskRows = [
+    ["Loại", "Tên", "Ghi chú"],
+    ...erpRiskRows(dealRows).map(r => [r.type, r.title, r.note])
+  ];
+  const debtRows = [
+    ["Khách hàng", "SĐT", "Nhân viên", "Trạng thái giao", "Giá trị", "Đã thu", "Còn nợ", "Còn giao"],
+    ...dealRows.filter(d => dealDebtAmount(d) > 0 || deliveryStats(d).status !== "done").map(d => {
+      const ship = deliveryStats(d);
+      return [
+        orderCustomerName(d),
+        orderCustomerPhone(d),
+        orderOwnerName(d),
+        deliveryStatusLabel(ship.status),
+        dealAmount(d),
+        dealPaidAmount(d.id),
+        dealDebtAmount(d),
+        ship.remaining
+      ];
+    })
+  ];
+  const exported = exportXlsx([
+    {name:"Tong quan ERP", rows:summaryRows},
+    {name:"San pham ban chay", rows:productRows},
+    {name:"Canh bao", rows:riskRows},
+    {name:"Cong no giao hang", rows:debtRows}
+  ], `crm-erp-mini-${clean($("erpReportMonth")?.value) || "tat-ca"}`);
+  if (exported) {
+    await logAudit("exportErpReport", "exports", "erpReport", {
+      label: erpReportLabel(),
+      deals: dealRows.length,
+      payments: paymentRows.length
     }).catch(err => notice("File đã xuất, nhưng chưa ghi được audit log: " + authMessage(err), true));
   }
 }
@@ -6890,7 +7115,10 @@ document.addEventListener("click", e => {
   const deleteInventoryId = e.target.closest("[data-delete-inventory]")?.dataset.deleteInventory;
   if (saveProductId) runAction(`saveProduct:${saveProductId}`, "saveProduct", "Đang lưu...", () => saveProduct(saveProductId));
   if (deleteProductId) runAction(`deleteProduct:${deleteProductId}`, "deleteProduct", "Đang xóa...", () => deleteProduct(deleteProductId));
-  if (inventoryProductId) selectInventoryProduct(inventoryProductId);
+  if (inventoryProductId) {
+    setMainView("products");
+    selectInventoryProduct(inventoryProductId);
+  }
   if (deleteInventoryId) softDeleteInventoryMovement(deleteInventoryId);
   if (editCareLogId) editCareLog(editCareLogId);
   if (deleteCareLogId) deleteCareLog(deleteCareLogId);
@@ -6934,8 +7162,11 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 ["taskScopeFilter","taskOwnerFilter"].forEach(id => on(id, "change", renderTaskBoard));
 ["reportActivityWeek","reportActivityMonth","reportActivityOwner","reportActivitySearch"].forEach(id => on(id, "input", renderSaleActivityReport));
 ["reportActivityWeek","reportActivityMonth","reportActivityOwner"].forEach(id => on(id, "change", renderSaleActivityReport));
+["erpReportMonth","erpReportOwner"].forEach(id => on(id, "input", renderErpReport));
+["erpReportMonth","erpReportOwner"].forEach(id => on(id, "change", renderErpReport));
 on("resetTaskFilterBtn", "click", resetTaskFilters);
 on("resetReportActivityFilterBtn", "click", resetSaleActivityFilters);
+on("resetErpReportFilterBtn", "click", resetErpReportFilters);
 on("filterChannel", "change", () => {
   activeChannelQuickFilter = "";
   scheduleRenderAll();
@@ -7016,6 +7247,7 @@ on("reportExportManagementBtn", "click", () => runAction("reportExportManagement
 on("reportExportKpiBtn", "click", () => runAction("reportExportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
 on("reportExportOrdersBtn", "click", () => runAction("reportExportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
 on("reportExportActivityBtn", "click", () => runAction("reportExportActivityBtn", "exportSaleActivity", "Đang xuất...", exportSaleActivityReport));
+on("reportExportErpBtn", "click", () => runAction("reportExportErpBtn", "exportErpReport", "Đang xuất...", exportErpReport));
 on("openKpiProposalBtn", "click", () => openKpiProposalModal());
 on("openKpiProposalBtnTop", "click", () => openKpiProposalModal());
 on("closeKpiProposalBtn", "click", closeKpiProposalModal);

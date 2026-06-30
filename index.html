@@ -280,6 +280,35 @@
             <button id="reportExportManagementBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
             <button id="reportExportKpiBtn" class="small primary" type="button">Xuất KPI</button>
             <button id="reportExportOrdersBtn" class="small primary" type="button">Xuất đơn hàng</button>
+            <button id="reportExportErpBtn" class="small primary" type="button">Xuất ERP mini</button>
+          </div>
+          <div class="section erp-report-section" style="margin-top:14px">
+            <div class="pro-section-title">
+              <h3>Báo cáo ERP mini</h3>
+              <span id="erpReportRangeText" class="muted"></span>
+            </div>
+            <div class="toolbar erp-report-toolbar">
+              <div><label>Tháng</label><input id="erpReportMonth" type="month"></div>
+              <div><label>Nhân viên</label><select id="erpReportOwner"></select></div>
+              <div class="toolbar-actions"><button id="resetErpReportFilterBtn" type="button">Xóa lọc</button></div>
+            </div>
+            <div id="erpReportGrid" class="executive-grid order-summary-grid"></div>
+            <div class="erp-report-grid">
+              <div class="section erp-report-card">
+                <div class="pro-section-title">
+                  <h3>Sản phẩm bán chạy</h3>
+                  <span id="topProductSummary" class="muted"></span>
+                </div>
+                <div id="topProductTable" class="table-wrap"></div>
+              </div>
+              <div class="section erp-report-card">
+                <div class="pro-section-title">
+                  <h3>Cảnh báo vận hành</h3>
+                  <span id="erpRiskSummary" class="muted"></span>
+                </div>
+                <div id="erpRiskList" class="detail-list"></div>
+              </div>
+            </div>
           </div>
           <div class="section" style="margin-top:14px">
             <div class="pro-section-title">
