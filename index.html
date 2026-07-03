@@ -552,8 +552,17 @@
         <div id="userAdminPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
             <h3>Quản lý nhân viên</h3>
-            <span class="muted">Chỉ admin được sửa role/trạng thái</span>
+            <span class="muted">Admin thêm, khóa hoặc xóa quyền nhân viên ngay trong CRM</span>
           </div>
+          <div class="admin-user-create">
+            <div class="field"><label>Email</label><input id="newUserEmail" type="email" placeholder="sale@congty.com"></div>
+            <div class="field"><label>Tên hiển thị</label><input id="newUserName" placeholder="Nguyễn Văn A"></div>
+            <div class="field"><label>Role</label><select id="newUserRole"><option value="sale">sale</option><option value="manager">manager</option><option value="admin">admin</option></select></div>
+            <div class="field"><label>Team</label><input id="newUserTeam" placeholder="Showroom / Sale"></div>
+            <div class="field"><label>Xuất file</label><select id="newUserExport"><option value="false">Không</option><option value="true">Có</option></select></div>
+            <div class="field action-field"><label>&nbsp;</label><button id="addUserBtn" class="primary" type="button">Thêm nhân viên</button></div>
+          </div>
+          <div class="muted" style="margin-bottom:10px">Nếu dùng Google login, hãy thêm email ở đây trước. Nhân viên đăng nhập Google lần đầu bằng đúng email đó để Supabase Auth tự tạo phiên đăng nhập.</div>
           <div class="table-wrap">
             <table class="admin-table">
               <thead><tr><th>Nhân viên</th><th>Role</th><th>Active</th><th>Team</th><th>Can Export</th><th>Thao tác</th></tr></thead>

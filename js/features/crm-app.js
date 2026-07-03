@@ -4194,7 +4194,13 @@ function renderUserAdmin() {
       <td><select data-user-active="${esc(u.uid)}"><option value="true" ${active ? "selected" : ""}>active</option><option value="false" ${!active ? "selected" : ""}>locked</option></select></td>
       <td><input data-user-team="${esc(u.uid)}" value="${esc(u.team || "")}" placeholder="Team"></td>
       <td><select data-user-export="${esc(u.uid)}"><option value="false" ${u.canExport !== true ? "selected" : ""}>Không</option><option value="true" ${u.canExport === true ? "selected" : ""}>Có</option></select></td>
-      <td><button class="small primary" data-save-user="${esc(u.uid)}">Lưu</button></td>
+      <td>
+        <div class="actions">
+          <button class="small primary" data-save-user="${esc(u.uid)}">Lưu</button>
+          <button class="small" data-toggle-user="${esc(u.uid)}">${active ? "Khóa" : "Mở"}</button>
+          <button class="small danger" data-delete-user="${esc(u.uid)}">Xóa</button>
+        </div>
+      </td>
     </tr>`;
   }).join("") : `<tr><td colspan="6" class="muted">Chưa có user.</td></tr>`;
 }
@@ -4249,6 +4255,9 @@ async function saveUserAdmin(uid) {
   const active = document.querySelector(`[data-user-active="${CSS.escape(uid)}"]`)?.value === "true";
   const team = clean(document.querySelector(`[data-user-team="${CSS.escape(uid)}"]`)?.value);
   const canExport = document.querySelector(`[data-user-export="${CSS.escape(uid)}"]`)?.value === "true";
+  if (sameIdentity(user.email, currentUser?.email) && (!active || role !== "admin")) {
+    return notice("Không thể tự khóa hoặc hạ quyền admin của chính bạn.", true);
+  }
   try {
     const batch = writeBatch(db);
     batch.set(doc(db, "users", uid), {role, active, team, canExport, updatedByEmail: currentUser?.email || "", updatedAt: serverTimestamp()}, {merge:true});
@@ -4260,6 +4269,108 @@ async function saveUserAdmin(uid) {
     notice("Đã cập nhật nhân viên.");
   } catch (err) {
     notice("Không cập nhật được nhân viên: " + authMessage(err), true);
+  }
+}
+
+function newUserFormData() {
+  return {
+    email: clean($("newUserEmail")?.value).toLowerCase(),
+    name: clean($("newUserName")?.value),
+    role: clean($("newUserRole")?.value) || "sale",
+    team: clean($("newUserTeam")?.value),
+    canExport: $("newUserExport")?.value === "true"
+  };
+}
+
+function clearNewUserForm() {
+  ["newUserEmail","newUserName","newUserTeam"].forEach(id => { if ($(id)) $(id).value = ""; });
+  if ($("newUserRole")) $("newUserRole").value = "sale";
+  if ($("newUserExport")) $("newUserExport").value = "false";
+}
+
+async function addUserAdmin() {
+  if (!isAdmin()) return notice("Chỉ admin được thêm nhân viên.", true);
+  const data = newUserFormData();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return notice("Email nhân viên chưa hợp lệ.", true);
+  if (users.some(u => sameIdentity(u.email, data.email))) return notice("Email này đã có trong danh sách nhân viên.", true);
+  const uid = doc(collection(db, "users")).id;
+  const payload = {
+    email: data.email,
+    name: data.name || data.email,
+    role: data.role,
+    active: true,
+    team: data.team,
+    canExport: data.canExport,
+    createdByEmail: currentUser?.email || "",
+    updatedByEmail: currentUser?.email || "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "users", uid), payload, {merge:true});
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: "addUser",
+      entity: "users",
+      entityId: uid,
+      email: currentUser?.email || "",
+      payloadJson: JSON.stringify({targetEmail: payload.email, role: payload.role, team: payload.team, canExport: payload.canExport}),
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    clearNewUserForm();
+    notice("Đã thêm nhân viên. Nhân viên có thể đăng nhập Google bằng email này.");
+  } catch (err) {
+    notice("Không thêm được nhân viên: " + authMessage(err), true);
+  }
+}
+
+async function toggleUserAdmin(uid) {
+  if (!isAdmin()) return notice("Chỉ admin được khóa/mở nhân viên.", true);
+  const user = users.find(u => u.uid === uid);
+  if (!user) return notice("Không tìm thấy user.", true);
+  const nextActive = user.active === false;
+  if (!nextActive && sameIdentity(user.email, currentUser?.email)) return notice("Không thể tự khóa tài khoản của chính bạn.", true);
+  if (!confirm(`${nextActive ? "Mở lại" : "Khóa"} nhân viên ${user.email || user.name || uid}?`)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "users", uid), {active: nextActive, updatedByEmail: currentUser?.email || "", updatedAt: serverTimestamp()}, {merge:true});
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: nextActive ? "unlockUser" : "lockUser",
+      entity: "users",
+      entityId: uid,
+      email: currentUser?.email || "",
+      payloadJson: JSON.stringify({targetEmail: user.email || "", active: nextActive}),
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    notice(nextActive ? "Đã mở lại nhân viên." : "Đã khóa nhân viên.");
+  } catch (err) {
+    notice("Không cập nhật trạng thái nhân viên: " + authMessage(err), true);
+  }
+}
+
+async function deleteUserAdmin(uid) {
+  if (!isAdmin()) return notice("Chỉ admin được xóa nhân viên.", true);
+  const user = users.find(u => u.uid === uid);
+  if (!user) return notice("Không tìm thấy user.", true);
+  if (sameIdentity(user.email, currentUser?.email)) return notice("Không thể xóa tài khoản của chính bạn.", true);
+  if (!confirm(`Xóa quyền truy cập của ${user.email || user.name || uid}? Hành động này không xóa dữ liệu khách/đơn đã tạo.`)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "users", uid));
+    batch.set(doc(collection(db, "auditLogs")), {
+      action: "deleteUser",
+      entity: "users",
+      entityId: uid,
+      email: currentUser?.email || "",
+      payloadJson: JSON.stringify({targetEmail: user.email || "", role: user.role || ""}),
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+    notice("Đã xóa quyền truy cập nhân viên.");
+  } catch (err) {
+    notice("Không xóa được nhân viên: " + authMessage(err), true);
   }
 }
 
@@ -7109,6 +7220,8 @@ document.addEventListener("click", e => {
   const restoreCustomerId = e.target.closest("[data-restore-customer]")?.dataset.restoreCustomer;
   const permanentDeleteCustomerId = e.target.closest("[data-permanent-delete-customer]")?.dataset.permanentDeleteCustomer;
   const saveUserId = e.target.closest("[data-save-user]")?.dataset.saveUser;
+  const toggleUserId = e.target.closest("[data-toggle-user]")?.dataset.toggleUser;
+  const deleteUserId = e.target.closest("[data-delete-user]")?.dataset.deleteUser;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
@@ -7189,6 +7302,8 @@ document.addEventListener("click", e => {
   if (restoreCustomerId) restoreCustomer(restoreCustomerId);
   if (permanentDeleteCustomerId) permanentlyDeleteCustomer(permanentDeleteCustomerId);
   if (saveUserId) runAction(`saveUser:${saveUserId}`, "saveUser", "Đang lưu...", () => saveUserAdmin(saveUserId));
+  if (toggleUserId) runAction(`toggleUser:${toggleUserId}`, "toggleUser", "Đang cập nhật...", () => toggleUserAdmin(toggleUserId));
+  if (deleteUserId) runAction(`deleteUser:${deleteUserId}`, "deleteUser", "Đang xóa...", () => deleteUserAdmin(deleteUserId));
   if (e.target.closest("[data-remove-deal-item]")) {
     e.target.closest("[data-deal-item]")?.remove();
     if (!document.querySelector("[data-deal-item]")) addDealItem();
@@ -7231,6 +7346,10 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 on("resetTaskFilterBtn", "click", resetTaskFilters);
 on("resetReportActivityFilterBtn", "click", resetSaleActivityFilters);
 on("resetErpReportFilterBtn", "click", resetErpReportFilters);
+on("addUserBtn", "click", () => runAction("addUserBtn", "addUser", "Đang thêm...", addUserAdmin));
+["newUserEmail","newUserName"].forEach(id => on(id, "keydown", e => {
+  if (e.key === "Enter") runAction("addUserBtn", "addUser", "Đang thêm...", addUserAdmin);
+}));
 on("filterChannel", "change", () => {
   activeChannelQuickFilter = "";
   scheduleRenderAll();
