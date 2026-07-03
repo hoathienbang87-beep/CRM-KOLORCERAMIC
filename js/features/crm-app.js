@@ -4651,6 +4651,7 @@ async function updateDeal(dealId) {
 async function completeDeal(dealId) {
   const deal = deals.find(d => d.id === dealId);
   if (!deal || deal.completed) return;
+  if (!canEditDeal(deal)) return notice("Bạn không có quyền hoàn thành đơn hàng này.", true);
   if (isFailStatus(deal.dealStatus) || isCanceledDeal(deal.dealStatus)) return notice("Đơn đã hủy/rớt không thể hoàn thành.", true);
   try {
     const batch = writeBatch(db);
@@ -4684,6 +4685,7 @@ async function completeDeal(dealId) {
 async function cancelDeal(dealId) {
   const deal = deals.find(d => d.id === dealId);
   if (!deal || deal.completed || isCanceledDeal(deal.dealStatus)) return;
+  if (!canEditDeal(deal)) return notice("Bạn không có quyền hủy đơn hàng này.", true);
   const ok = confirm("Hủy đơn hàng này vì khách đổi ý?");
   if (!ok) return;
   try {
@@ -5433,7 +5435,7 @@ function dealCard(d) {
       <div class="actions">
         <button class="small" data-review-deal="${esc(d.id)}">Xem lại</button>
         ${canEditDeal(d) ? `<button class="small primary" data-edit-deal="${esc(d.id)}">Sửa đơn</button>` : ""}
-        ${isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus") ? `<button class="small primary" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" data-cancel-deal="${esc(d.id)}">Hủy đơn</button>` : ""}
+        ${canEditDeal(d) && (isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")) ? `<button class="small primary" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" data-cancel-deal="${esc(d.id)}">Hủy đơn</button>` : ""}
         ${isManager() ? `<button class="small danger" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
       </div>
     </div>
@@ -6219,7 +6221,7 @@ function renderOrders() {
             <button class="small" type="button" data-print-delivery="${esc(d.id)}">Phiếu giao</button>
             <button class="small" type="button" data-pay-deal="${esc(d.id)}">Thanh toán</button>
             ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa</button>` : ""}
-            ${isActiveDeal(d) || statusKey === "deposit" ? `<button class="small primary" type="button" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" type="button" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
+            ${canEditDeal(d) && (isActiveDeal(d) || statusKey === "deposit") ? `<button class="small primary" type="button" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" type="button" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
             ${isManager() ? `<button class="small danger" type="button" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
           </div>
         </td>
@@ -6476,14 +6478,21 @@ function saleActivityRows() {
       });
     });
 
+  const quoteActivityActions = ["openQuoteProposal","openQuoteTemplate","createDealFromQuote","createQuote","updateQuote","convertQuoteToDeal"];
   auditLogs
-    .filter(a => inDateRange(a.createdAt, range) && ["openQuoteProposal","openQuoteTemplate","createDealFromQuote"].includes(clean(a.action)))
+    .filter(a => inDateRange(a.createdAt, range) && quoteActivityActions.includes(clean(a.action)))
     .forEach(a => {
-      const c = customerById(a.entityId);
+      const q = quotes.find(item => item.id === a.entityId) || {};
+      const c = customerById(q.customerId || a.entityId);
       if (!c.id || !canSeeCustomer(c) || !ownerMatchesKey({owner:c.owner, ownerEmail:c.ownerEmail}, ownerFilter)) return;
+      const action = clean(a.action);
       rows.push({
         date: isoFromAny(a.createdAt),
-        type: a.action === "createDealFromQuote" ? "Tạo đơn từ báo giá" : "Báo giá/Đề xuất",
+        type: action === "convertQuoteToDeal" || action === "createDealFromQuote"
+          ? "Chuyển báo giá thành đơn"
+          : action === "updateQuote"
+            ? "Cập nhật báo giá"
+            : "Báo giá/Đề xuất",
         owner: customerOwnerName(c),
         ownerEmail: customerOwnerKey(c),
         customer: c.name || "",
@@ -6492,7 +6501,7 @@ function saleActivityRows() {
         channel: c.channel || "",
         status: c.status || "",
         amount: "",
-        note: a.action || "",
+        note: q.quoteNo || action || "",
         bucket: "quote",
         customerId: c.id
       });
