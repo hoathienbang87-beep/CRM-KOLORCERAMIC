@@ -93,6 +93,7 @@ let editingKpiProposalId = "";
 let editingDealId = "";
 let editingQuoteId = "";
 let kpiProposalCustomerContext = null;
+let inventoryQtyCache = new Map();
 let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI_EVIDENCE_MAX_FILES = 6;
@@ -167,6 +168,18 @@ function notice(msg, bad=false, type="") {
 }
 
 const busyKeys = new Set();
+let busyActionCount = 0;
+function setSavingMaskVisible(visible) {
+  const mask = $("savingMask");
+  if (!mask) return;
+  if (visible) {
+    busyActionCount += 1;
+    mask.classList.remove("hide");
+    return;
+  }
+  busyActionCount = Math.max(0, busyActionCount - 1);
+  if (busyActionCount === 0) mask.classList.add("hide");
+}
 async function runAction(buttonId, key, label, fn) {
   if (busyKeys.has(key)) return;
   busyKeys.add(key);
@@ -178,7 +191,7 @@ async function runAction(buttonId, key, label, fn) {
     btn.dataset.oldText = oldText;
     if (label) btn.textContent = label;
   }
-  $("savingMask")?.classList.remove("hide");
+  setSavingMaskVisible(true);
   try {
     return await withActionTimeout(fn(), label || "Đang xử lý");
   } catch (err) {
@@ -190,7 +203,7 @@ async function runAction(buttonId, key, label, fn) {
       btn.classList.remove("loading");
       btn.textContent = btn.dataset.oldText || oldText;
     }
-    $("savingMask")?.classList.add("hide");
+    setSavingMaskVisible(false);
   }
 }
 
@@ -202,8 +215,38 @@ function withActionTimeout(promise, label, ms=45000) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+const dirtyCollections = new Set();
+const viewDependencies = {
+  crm: ["customers", "careLogs", "deals", "settings"],
+  customers: ["customers", "careLogs", "deals", "orderItems", "payments", "settings", "users"],
+  kpi: ["customers", "kpiRules", "kpiProposals", "settings", "users"],
+  orders: ["customers", "deals", "orderItems", "payments", "products", "settings", "users"],
+  products: ["products", "inventoryMovements", "settings"],
+  quotes: ["customers", "quotes", "quoteItems", "products", "settings", "users"],
+  reports: ["customers", "careLogs", "deals", "quotes", "quoteItems", "orderItems", "payments", "inventoryMovements", "products", "auditLogs", "settings", "users"],
+  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings"]
+};
 const scheduleRenderAll = debounce(() => renderAll(), 180);
 const scheduleRenderChart = debounce(() => requestChartRender(), 180);
+
+function markDirty(...names) {
+  names.flat().filter(Boolean).forEach(name => dirtyCollections.add(name));
+  scheduleRenderAll();
+}
+
+function activeViewKey() {
+  return ["customers","kpi","orders","products","quotes","reports","admin"].includes(activeMainView) ? activeMainView : "crm";
+}
+
+function activeViewNeedsRender() {
+  if (!dirtyCollections.size) return true;
+  const deps = viewDependencies[activeViewKey()] || viewDependencies.crm;
+  return deps.some(name => dirtyCollections.has(name));
+}
+
+function hasDirty(...names) {
+  return !dirtyCollections.size || names.some(name => dirtyCollections.has(name));
+}
 
 function authMessage(err) {
   const code = err?.code || "";
@@ -880,12 +923,14 @@ function productSku(p) {
 }
 
 function productInventoryQty(product) {
+  const cacheKey = clean(product?.id) || normalizeKey([productSku(product), product?.name].join("|"));
+  if (cacheKey && inventoryQtyCache.has(cacheKey)) return inventoryQtyCache.get(cacheKey);
   const keys = new Set([
     clean(product?.id),
     normalizeKey(productSku(product)),
     normalizeKey(product?.name)
   ].filter(Boolean));
-  return inventoryMovements.reduce((sum,m) => {
+  const qty = inventoryMovements.reduce((sum,m) => {
     const movementKeys = [
       clean(m.productId),
       normalizeKey(m.productSku),
@@ -893,6 +938,8 @@ function productInventoryQty(product) {
     ].filter(Boolean);
     return movementKeys.some(k => keys.has(k)) ? sum + Number(m.qty || 0) : sum;
   }, 0);
+  if (cacheKey) inventoryQtyCache.set(cacheKey, qty);
+  return qty;
 }
 
 function inventoryTypeLabel(type) {
@@ -1636,9 +1683,11 @@ function setCollectionState(targetName, docs) {
   else if (targetName === "inventoryMovements") {
     allInventoryMovements = docs;
     inventoryMovements = docs.filter(m => !m.isDeleted).sort(byDateDesc);
+    inventoryQtyCache = new Map();
   }
   else if (targetName === "products") {
     products = docs.filter(d => !d.isDeleted).sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"));
+    inventoryQtyCache = new Map();
   }
   else if (targetName === "kpiProposals") kpiProposals = docs;
 }
@@ -1687,19 +1736,19 @@ function watchData() {
     const docs = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(item => ["customers","careLogs","deals","quotes","quoteItems","orderItems","payments","inventoryMovements","products"].includes(targetName) || !filterDeleted || !item.isDeleted);
     if (scopeKey) setScopedDocs(targetName, scopeKey, docs);
     else replaceDocs(targetName, docs);
-    scheduleRenderAll();
+    markDirty(targetName);
   };
 
   unsubscribers.push(onSnapshot(doc(db, "settings", "crm"), snap => {
     applySettings(snap.exists() ? snap.data() : {});
     hydrateSelects();
-    scheduleRenderAll();
+    markDirty("settings");
   }, err => notice("Lỗi tải SETTINGS: " + authMessage(err), true)));
 
   unsubscribers.push(onSnapshot(collection(db, "kpiRules"), snap => {
     kpiRules = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => clean(a.name).localeCompare(clean(b.name)));
     hydrateProposalKpiOptions();
-    scheduleRenderAll();
+    markDirty("kpiRules");
   }, err => notice("Lỗi tải KPI: " + authMessage(err), true)));
 
   unsubscribers.push(onSnapshot(collection(db, "products"), snap => {
@@ -1720,12 +1769,12 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "auditLogs"), snap => {
       auditLogs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byDateDesc);
-      scheduleRenderAll();
+      markDirty("auditLogs");
     }, err => notice("Lỗi tải audit log: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "users"), snap => {
       users = snap.docs.map(d => ({uid:d.id, ...d.data()})).sort((a,b) => clean(a.email).localeCompare(clean(b.email)));
       hydrateSelects();
-      scheduleRenderAll();
+      markDirty("users");
     }, err => notice("Lỗi tải tài khoản nhân viên: " + authMessage(err), true)));
     if (isAdmin()) {
       unsubscribers.push(onSnapshot(collection(db, "userSessions"), snap => {
@@ -4216,14 +4265,16 @@ async function saveUserAdmin(uid) {
 
 function renderAll() {
   if (!$("appView") || $("appView").classList.contains("hide")) return;
-  renderTodayCare();
-  renderOnlineUsers();
-  if (selectedCustomerId) {
+  const shouldRenderView = activeViewNeedsRender();
+  if (hasDirty("customers", "settings")) renderTodayCare();
+  if (hasDirty("userSessions", "users")) renderOnlineUsers();
+  if (selectedCustomerId && hasDirty("customers", "careLogs", "deals", "orderItems", "payments", "settings")) {
     renderCustomerInfo(customers.find(c => c.id === selectedCustomerId));
     renderHistories(selectedCustomerId);
   }
-  setMainView(activeMainView);
-  notifyTodayCare();
+  if (shouldRenderView) setMainView(activeMainView);
+  if (hasDirty("customers", "settings")) notifyTodayCare();
+  dirtyCollections.clear();
 }
 
 function dealItemTemplate(item={}) {
