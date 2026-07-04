@@ -278,6 +278,7 @@ function fillSelect(id, values, placeholder="-- Chọn --", allLabel="") {
   else el.insertAdjacentHTML("beforeend", `<option value="">${esc(placeholder)}</option>`);
   items.forEach(item => el.insertAdjacentHTML("beforeend", `<option value="${esc(item.value)}">${esc(item.label)}</option>`));
   if (items.some(item => item.value === current) || current === "") el.value = current;
+  else el.value = "";
 }
 
 function ownerOptions() {
@@ -309,6 +310,28 @@ function reportOwnerKeys() {
 function ownerProfileByValue(value) {
   const key = clean(value);
   return ownerOptions().find(o => clean(o.email) === key || clean(o.name) === key) || {name:key, email:key};
+}
+
+function hydrateOwnerDependentFilters() {
+  const options = ownerOptions();
+  [
+    ["filterOwner", "Tất cả nhân viên"],
+    ["quoteFilterOwner", "Tất cả nhân viên"],
+    ["taskOwnerFilter", "Tất cả nhân viên"],
+    ["orderFilterOwner", "Tất cả nhân viên"],
+    ["reportActivityOwner", "Tất cả nhân viên"],
+    ["erpReportOwner", "Tất cả nhân viên"]
+  ].forEach(([id, label]) => {
+    const el = $(id);
+    if (!el) return;
+    const current = el.value;
+    fillSelect(id, options, "", label);
+    if (options.some(o => clean(o.email) === current || clean(o.name) === current)) el.value = current;
+  });
+  if (!isManager() && $("filterOwner")) {
+    $("filterOwner").value = ownerEmail();
+    $("filterOwner").disabled = true;
+  }
 }
 
 function customerOwnerKey(c) {
@@ -1774,6 +1797,7 @@ function watchData() {
     unsubscribers.push(onSnapshot(collection(db, "users"), snap => {
       users = snap.docs.map(d => ({uid:d.id, ...d.data()})).sort((a,b) => clean(a.email).localeCompare(clean(b.email)));
       hydrateSelects();
+      hydrateOwnerDependentFilters();
       markDirty("users");
     }, err => notice("Lỗi tải tài khoản nhân viên: " + authMessage(err), true)));
     if (isAdmin()) {
@@ -4266,6 +4290,9 @@ async function saveUserAdmin(uid) {
       payloadJson: JSON.stringify({targetEmail:user.email || "", role, active, team, canExport}), createdAt: serverTimestamp()
     });
     await batch.commit();
+    users = users.map(u => u.uid === uid ? {...u, role, active, team, canExport} : u);
+    hydrateOwnerDependentFilters();
+    renderUserAdmin();
     notice("Đã cập nhật nhân viên.");
   } catch (err) {
     notice("Không cập nhật được nhân viên: " + authMessage(err), true);
@@ -4318,7 +4345,10 @@ async function addUserAdmin() {
       createdAt: serverTimestamp()
     });
     await batch.commit();
+    users = [...users, {uid, ...payload}].sort((a,b) => clean(a.email).localeCompare(clean(b.email)));
     clearNewUserForm();
+    hydrateOwnerDependentFilters();
+    renderUserAdmin();
     notice("Đã thêm nhân viên. Nhân viên có thể đăng nhập Google bằng email này.");
   } catch (err) {
     notice("Không thêm được nhân viên: " + authMessage(err), true);
@@ -4344,6 +4374,9 @@ async function toggleUserAdmin(uid) {
       createdAt: serverTimestamp()
     });
     await batch.commit();
+    users = users.map(u => u.uid === uid ? {...u, active: nextActive} : u);
+    hydrateOwnerDependentFilters();
+    renderUserAdmin();
     notice(nextActive ? "Đã mở lại nhân viên." : "Đã khóa nhân viên.");
   } catch (err) {
     notice("Không cập nhật trạng thái nhân viên: " + authMessage(err), true);
@@ -4368,6 +4401,9 @@ async function deleteUserAdmin(uid) {
       createdAt: serverTimestamp()
     });
     await batch.commit();
+    users = users.filter(u => u.uid !== uid);
+    hydrateOwnerDependentFilters();
+    renderUserAdmin();
     notice("Đã xóa quyền truy cập nhân viên.");
   } catch (err) {
     notice("Không xóa được nhân viên: " + authMessage(err), true);
