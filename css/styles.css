@@ -161,6 +161,9 @@
     tbody tr.row-fail{background:#fff1f1}
     .row-actions{display:flex;flex-direction:column;gap:10px;align-items:stretch;width:148px}
     .row-actions button{width:100%;min-height:38px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:normal}
+    .list-pager{display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 0 2px;color:var(--muted);font-weight:700}
+    .list-pager.hide{display:none}
+    .list-pager button{min-width:132px}
     .customer-cell{display:grid;gap:4px;min-width:180px}
     .customer-cell b{font-size:15px;color:#031a3a}
     .customer-cell span{color:var(--muted);font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

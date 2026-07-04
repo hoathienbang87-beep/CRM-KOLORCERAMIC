@@ -94,6 +94,13 @@ let editingDealId = "";
 let editingQuoteId = "";
 let kpiProposalCustomerContext = null;
 let inventoryQtyCache = new Map();
+const pagingState = {
+  customers: {limit: 40, step: 40},
+  tasks: {limit: 30, step: 30},
+  products: {limit: 80, step: 80},
+  saleActivity: {limit: 80, step: 80},
+  audit: {limit: 80, step: 80}
+};
 let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI_EVIDENCE_MAX_FILES = 6;
@@ -246,6 +253,54 @@ function activeViewNeedsRender() {
 
 function hasDirty(...names) {
   return !dirtyCollections.size || names.some(name => dirtyCollections.has(name));
+}
+
+function pageRows(key, rows) {
+  const state = pagingState[key];
+  if (!state) return rows;
+  return rows.slice(0, state.limit);
+}
+
+function resetPaging(key) {
+  const state = pagingState[key];
+  if (!state) return;
+  state.limit = state.step;
+}
+
+function renderPager(id, key, total, label="dòng") {
+  const el = $(id);
+  const state = pagingState[key];
+  if (!el || !state) return;
+  const shown = Math.min(total, state.limit);
+  if (total <= shown) {
+    el.classList.add("hide");
+    el.innerHTML = total ? `<span>Đang hiển thị ${esc(total)} ${esc(label)}.</span>` : "";
+    return;
+  }
+  el.classList.remove("hide");
+  el.innerHTML = `
+    <span>Đang hiển thị ${esc(shown)}/${esc(total)} ${esc(label)}</span>
+    <button class="small" type="button" data-load-more="${esc(key)}">Hiển thị thêm</button>
+  `;
+}
+
+function loadMorePage(key) {
+  const state = pagingState[key];
+  if (!state) return;
+  state.limit += state.step;
+  const renderers = {
+    customers: renderCustomers,
+    tasks: renderTaskBoard,
+    products: renderProducts,
+    saleActivity: renderSaleActivityReport,
+    audit: renderAuditTrail
+  };
+  renderers[key]?.();
+}
+
+function resetPagingAndRender(keys, renderFn) {
+  (Array.isArray(keys) ? keys : [keys]).forEach(resetPaging);
+  renderFn();
 }
 
 function authMessage(err) {
@@ -1113,7 +1168,8 @@ function renderProducts() {
   renderProductOptions();
   renderInventory();
   const rows = visibleProducts();
-  $("productRows").innerHTML = rows.length ? rows.map(p => {
+  const page = pageRows("products", rows);
+  $("productRows").innerHTML = page.length ? page.map(p => {
     const readonly = isManager() ? "" : "disabled";
     const stock = productInventoryQty(p);
     const stockClass = stock < 0 ? "red" : stock === 0 ? "orange" : "green";
@@ -1135,6 +1191,7 @@ function renderProducts() {
       </tr>
     `;
   }).join("") : `<tr><td colspan="10" class="muted">Chưa có sản phẩm phù hợp. Manager/admin có thể import CSV từ Google Sheet PRODUCTS.</td></tr>`;
+  renderPager("productPager", "products", rows.length, "sản phẩm");
 }
 
 function productInputValue(row, field) {
@@ -2762,6 +2819,7 @@ function resetTaskFilters() {
   $("taskScopeFilter").value = "priority";
   $("taskSearchBox").value = "";
   $("taskOwnerFilter").value = isManager() ? "" : ownerEmail();
+  resetPaging("tasks");
   renderTaskBoard();
 }
 
@@ -2821,10 +2879,12 @@ function renderTaskBoard() {
   if (!rows.length) {
     list.className = "care-empty";
     list.textContent = "Không có công việc phù hợp với bộ lọc.";
+    renderPager("taskPager", "tasks", 0, "task");
     return;
   }
   list.className = "task-board";
-  list.innerHTML = rows.map(({customer: c, type, delta}) => {
+  const page = pageRows("tasks", rows);
+  list.innerHTML = page.map(({customer: c, type, delta}) => {
     const dateText = clean(c.nextCareDate) ? fmtDate(c.nextCareDate) : "Chưa đặt lịch";
     const overdueText = type === "overdue" ? ` · Quá ${esc(delta)} ngày` : "";
     return `
@@ -2851,6 +2911,7 @@ function renderTaskBoard() {
       </div>
     `;
   }).join("");
+  renderPager("taskPager", "tasks", rows.length, "task");
 }
 
 function openCareWorkDetail(type) {
@@ -2945,7 +3006,8 @@ function renderChannelQuickFilters() {
 function renderCustomers() {
   renderChannelQuickFilters();
   const rows = visibleCustomers();
-  $("customerRows").innerHTML = rows.length ? rows.map(c => {
+  const page = pageRows("customers", rows);
+  $("customerRows").innerHTML = page.length ? page.map(c => {
     const counts = dealCounts(c.id);
     const st = latestDealStatus(c) || c.status || "";
     const careStatus = computedFollowStatus(c);
@@ -2989,6 +3051,7 @@ function renderCustomers() {
       </div></td>
     </tr>`;
   }).join("") : `<tr><td colspan="11" class="muted">Không có dữ liệu phù hợp.</td></tr>`;
+  renderPager("customerPager", "customers", rows.length, "khách");
 }
 
 function renderKpiTable() {
@@ -4231,7 +4294,8 @@ function renderUserAdmin() {
 
 function renderAuditTrail() {
   if (!isAdmin()) return;
-  $("auditRows").innerHTML = auditLogs.length ? auditLogs.slice(0,60).map(a => `
+  const rows = pageRows("audit", auditLogs);
+  $("auditRows").innerHTML = rows.length ? rows.map(a => `
     <tr class="audit-row">
       <td>${esc(fmtDate(a.createdAt))}</td>
       <td><b>${esc(a.email || "")}</b></td>
@@ -4240,6 +4304,7 @@ function renderAuditTrail() {
       <td><div class="audit-payload">${esc(a.payloadJson || a.note || "")}</div></td>
     </tr>
   `).join("") : `<tr><td colspan="5" class="muted">Chưa có audit log hoặc chưa được cấp quyền đọc.</td></tr>`;
+  renderPager("auditPager", "audit", auditLogs.length, "log");
 }
 
 function renderTrash() {
@@ -6622,6 +6687,7 @@ function resetSaleActivityFilters() {
   $("reportActivityMonth").value = currentMonth();
   $("reportActivitySearch").value = "";
   $("reportActivityOwner").value = "";
+  resetPaging("saleActivity");
   renderSaleActivityReport();
 }
 
@@ -6845,7 +6911,8 @@ function renderSaleActivityReport() {
       `).join("")}</tbody>
     </table>
   ` : `<div class="muted" style="padding:12px">Không có hoạt động trong khoảng ${esc(range.label)}.</div>`;
-  $("saleActivityTimeline").innerHTML = rows.length ? rows.slice(0, 80).map(r => {
+  const timelinePage = pageRows("saleActivity", rows);
+  $("saleActivityTimeline").innerHTML = timelinePage.length ? timelinePage.map(r => {
     const cls = r.bucket === "deal" || r.bucket === "completed" || r.bucket === "payment" ? "deal" : r.bucket === "quote" ? "kpi" : r.taskType === "overdue" ? "bad" : "care";
     return `
     <div class="activity-mini report-activity ${esc(cls)}">
@@ -6865,6 +6932,7 @@ function renderSaleActivityReport() {
       ${r.customerId ? `<div class="actions"><button class="small" type="button" data-care-open="${esc(r.customerId)}">Mở khách</button></div>` : ""}
     </div>
   `;}).join("") : `<div class="muted">Không có timeline hoạt động phù hợp.</div>`;
+  renderPager("saleActivityPager", "saleActivity", rows.length, "hoạt động");
 }
 
 async function exportOrders() {
@@ -7219,6 +7287,7 @@ function resetFilters() {
   $("filterWeek").value = "";
   $("filterMonth").value = "";
   $("kpiRuleMonth").value = currentMonth();
+  resetPaging("customers");
   renderAll();
 }
 
@@ -7271,9 +7340,12 @@ document.addEventListener("click", e => {
   const printPaymentId = e.target.closest("[data-print-payment]")?.dataset.printPayment;
   const printDeliveryId = e.target.closest("[data-print-delivery]")?.dataset.printDelivery;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
+  const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
+  if (loadMoreKey) loadMorePage(loadMoreKey);
   if (channelQuick) {
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
     $("filterChannel").value = "";
+    resetPaging("customers");
     renderCustomers();
   }
   if (orderSummary) openOrderSummaryDetail(orderSummary);
@@ -7372,11 +7444,11 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
   if (e.key === "Enter") runAction("loginBtn", "login", "Đang đăng nhập...", loginEmailPassword);
 }));
 
-["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => on(id, "input", scheduleRenderAll));
-["taskScopeFilter","taskOwnerFilter","taskSearchBox"].forEach(id => on(id, "input", renderTaskBoard));
-["taskScopeFilter","taskOwnerFilter"].forEach(id => on(id, "change", renderTaskBoard));
-["reportActivityWeek","reportActivityMonth","reportActivityOwner","reportActivitySearch"].forEach(id => on(id, "input", renderSaleActivityReport));
-["reportActivityWeek","reportActivityMonth","reportActivityOwner"].forEach(id => on(id, "change", renderSaleActivityReport));
+["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType","filterWeek","filterMonth"].forEach(id => on(id, "input", () => resetPagingAndRender("customers", scheduleRenderAll)));
+["taskScopeFilter","taskOwnerFilter","taskSearchBox"].forEach(id => on(id, "input", () => resetPagingAndRender("tasks", renderTaskBoard)));
+["taskScopeFilter","taskOwnerFilter"].forEach(id => on(id, "change", () => resetPagingAndRender("tasks", renderTaskBoard)));
+["reportActivityWeek","reportActivityMonth","reportActivityOwner","reportActivitySearch"].forEach(id => on(id, "input", () => resetPagingAndRender("saleActivity", renderSaleActivityReport)));
+["reportActivityWeek","reportActivityMonth","reportActivityOwner"].forEach(id => on(id, "change", () => resetPagingAndRender("saleActivity", renderSaleActivityReport)));
 ["erpReportMonth","erpReportOwner"].forEach(id => on(id, "input", renderErpReport));
 ["erpReportMonth","erpReportOwner"].forEach(id => on(id, "change", renderErpReport));
 on("resetTaskFilterBtn", "click", resetTaskFilters);
@@ -7388,9 +7460,9 @@ on("addUserBtn", "click", () => runAction("addUserBtn", "addUser", "Đang thêm.
 }));
 on("filterChannel", "change", () => {
   activeChannelQuickFilter = "";
-  scheduleRenderAll();
+  resetPagingAndRender("customers", scheduleRenderAll);
 });
-on("filterMonth", "change", scheduleRenderAll);
+on("filterMonth", "change", () => resetPagingAndRender("customers", scheduleRenderAll));
 on("kpiRuleMonth", "change", () => { hydrateProposalKpiOptions(); scheduleRenderAll(); });
 on("myKpiProposalStatus", "change", renderMyKpiProposalPanel);
 on("kpiApprovalScope", "change", renderKpiApprovalPanel);
@@ -7414,9 +7486,10 @@ on("paymentDeal", "change", () => {
   $("paymentAmount").value = dealDebtAmount(d) || dealAmount(d);
   if (!$("paymentDate").value) $("paymentDate").value = todayIso();
 });
-["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => on(id, "input", renderProducts));
+["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => on(id, "input", () => resetPagingAndRender("products", renderProducts)));
 on("resetProductFilterBtn", "click", () => {
   ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).value = "");
+  resetPaging("products");
   renderProducts();
 });
 on("saveInventoryBtn", "click", () => runAction("saveInventoryBtn", "saveInventoryMovement", "Đang lưu...", saveInventoryMovement));
@@ -7434,7 +7507,7 @@ on("careStatus", "change", updateCareStatusVisual);
 on("source", "change", () => { hydrateChannelOptions(); togglePartnerFields(); });
 on("channel", "change", togglePartnerFields);
 on("customerType", "change", togglePartnerFields);
-on("filterSource", "change", () => { hydrateFilterChannelOptions(); scheduleRenderAll(); });
+on("filterSource", "change", () => { hydrateFilterChannelOptions(); resetPagingAndRender("customers", scheduleRenderAll); });
 on("editSource", "change", () => { hydrateEditChannelOptions(); toggleEditPartnerFields(); });
 on("editChannel", "change", toggleEditPartnerFields);
 on("editCustomerType", "change", toggleEditPartnerFields);
