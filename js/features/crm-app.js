@@ -305,13 +305,17 @@ function resetPagingAndRender(keys, renderFn) {
 
 function authMessage(err) {
   const code = err?.code || "";
+  const message = err?.message || "";
   if (code.includes("unauthorized-domain")) return "Domain này chưa được cho phép trong Supabase Authentication. Hãy kiểm tra Site URL/Redirect URLs trong Supabase.";
   if (code.includes("invalid-credential") || code.includes("wrong-password")) return "Email hoặc mật khẩu chưa đúng.";
   if (code.includes("user-not-found")) return "Chưa có tài khoản này trong Supabase Authentication.";
   if (code.includes("popup")) return "Trình duyệt đang chặn popup đăng nhập Google.";
-  if (/permission|row-level security|violates row-level security|infinite recursion/i.test(err?.message || "")) return "Bạn chưa có quyền đọc/ghi Supabase. Hãy kiểm tra RLS và role/active trong bảng app_users.";
-  if (err?.message?.includes("Chưa được cấp quyền")) return err.message;
-  return err?.message || "Không đăng nhập được.";
+  if (/upload ảnh|storage|bucket|object/i.test(message) && /permission|row-level security|violates row-level security/i.test(message)) {
+    return "Chưa upload được ảnh minh chứng. Hãy kiểm tra bucket kpi-evidence và policy Storage.";
+  }
+  if (/permission|row-level security|violates row-level security|infinite recursion/i.test(message)) return "Bạn chưa có quyền đọc/ghi Supabase. Hãy kiểm tra RLS và role/active trong bảng app_users.";
+  if (message.includes("Chưa được cấp quyền")) return message;
+  return message || "Không đăng nhập được.";
 }
 
 function on(id, eventName, handler, options) {
@@ -3967,6 +3971,10 @@ function storageSafePart(value, fallback = "file") {
   return text || fallback;
 }
 
+function storageEmailFolder(value) {
+  return normalizeKey(value).replace(/[^a-z0-9]+/g, "") || "sale";
+}
+
 function fileExtension(file) {
   const byName = clean(file?.name).split(".").pop();
   if (byName && byName.length <= 8) return byName.toLowerCase();
@@ -3980,7 +3988,7 @@ async function uploadKpiEvidenceFiles(proposalId) {
     throw new Error(`Chỉ được chọn tối đa ${KPI_EVIDENCE_MAX_FILES} ảnh minh chứng.`);
   }
 
-  const ownerFolder = storageSafePart(ownerEmail() || currentUser?.email || "sale");
+  const ownerFolder = storageEmailFolder(ownerEmail() || currentUser?.email || "sale");
   const monthFolder = storageSafePart(clean($("proposalKpiRule").selectedOptions?.[0]?.dataset.month) || currentMonth(), "month");
   const uploaded = [];
 
