@@ -2006,7 +2006,7 @@ function updateCareStatusVisual() {
 }
 
 const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel"];
-const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","userAdminPanel","trashPanel","auditPanel"];
+const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
 const customerViewIds = ["customerSearchPanel"];
 const kpiViewIds = ["kpiSummaryPanel","kpiRulePanel","kpiApprovalPanel"];
 const ordersViewIds = ["ordersPanel"];
@@ -2045,6 +2045,7 @@ function setMainView(view) {
   if (isAdminView) {
     $("careSettingsPanel")?.classList.toggle("hide", !isAdmin());
     $("proHealthPanel")?.classList.toggle("hide", !isAdmin());
+    $("dataSafetyPanel")?.classList.toggle("hide", !isAdmin());
     $("auditPanel")?.classList.toggle("hide", !isAdmin());
     $("dropdownSettingsPanel")?.classList.toggle("hide", !isAdmin());
     $("userAdminPanel")?.classList.toggle("hide", !isAdmin());
@@ -2083,6 +2084,7 @@ function setMainView(view) {
   if (isReportsView) renderReportCenter();
   if (isAdminView) {
     renderHealthCheck();
+    renderDataSafetyPanel();
     renderUserAdmin();
     renderTrash();
     renderAuditTrail();
@@ -4267,6 +4269,127 @@ function renderHealthCheck() {
       <div class="muted">${esc(note)}</div>
     </div>
   `).join("");
+}
+
+function renderDataSafetyPanel() {
+  if (!isAdmin()) return;
+  if ($("safetyCustomersCount")) $("safetyCustomersCount").textContent = allCustomers.length || customers.length;
+  if ($("safetyDealsCount")) $("safetyDealsCount").textContent = allDeals.length || deals.length;
+  if ($("safetyPaymentsCount")) $("safetyPaymentsCount").textContent = allPayments.length || payments.length;
+  if ($("safetyAuditCount")) $("safetyAuditCount").textContent = auditLogs.length;
+}
+
+function jsonCell(value) {
+  if (value == null || value === "") return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
+
+function snapshotSheet(name, headers, rows) {
+  return {name, rows:[headers, ...rows]};
+}
+
+async function exportOperationalSnapshot() {
+  if (!isAdmin()) return notice("Chỉ admin được xuất snapshot vận hành.", true);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const customerRows = (allCustomers.length ? allCustomers : customers).map(c => [
+    c.id, c.name, c.companyName, c.phoneRaw, c.phoneNormalized, c.address, c.channel,
+    c.owner, c.ownerEmail, c.status, c.follow, c.nextCareDate, fmtDate(c.createdAt),
+    c.isDeleted ? "yes" : "", fmtDate(c.deletedAt), c.note
+  ]);
+  const careRows = (allCareLogs.length ? allCareLogs : careLogs).map(l => [
+    l.id, l.customerId, l.customerName, l.owner, l.ownerEmail, l.status, l.careChannel,
+    l.careResult, l.nextCareDate, l.note, fmtDate(l.createdAt), l.isDeleted ? "yes" : ""
+  ]);
+  const dealRows = (allDeals.length ? allDeals : deals).map(d => [
+    d.id, d.customerId, orderCustomerName(d), orderCustomerPhone(d), orderOwnerName(d),
+    orderOwnerEmail(d), orderStatusLabel(d), fmtDate(d.dealDate || d.createdAt),
+    fmtDate(d.completedAt), fmtDate(d.deliveryDate), deliveryStatusLabel(deliveryStats(d).status),
+    dealAmount(d), dealPaidAmount(d.id), dealDebtAmount(d), orderProductText(d),
+    d.isDeleted ? "yes" : "", d.note
+  ]);
+  const orderItemRows = orderItems.map(i => [
+    i.id, i.dealId, i.customerId, i.productId, i.productSku, i.productName || i.product,
+    i.qty, i.deliveredQty, i.unitPrice || i.price, i.discountAmount, i.lineTotal, i.unit
+  ]);
+  const paymentRows = (allPayments.length ? allPayments : payments).map(p => [
+    p.id, p.paymentNo, p.dealId, p.customerId, p.customerName, p.owner, p.ownerEmail,
+    p.amount, p.method, p.status, fmtDate(p.paymentDate || p.createdAt),
+    p.receivedByEmail || p.createdByEmail, p.isDeleted ? "yes" : "", p.note
+  ]);
+  const inventoryRows = (allInventoryMovements.length ? allInventoryMovements : inventoryMovements).map(m => [
+    m.id, m.productId, m.productSku, m.productName, m.movementType, m.qty, m.unit,
+    m.warehouse, m.refType, m.refId, m.createdByEmail, fmtDate(m.createdAt),
+    m.isDeleted ? "yes" : "", m.note
+  ]);
+  const productRows = products.map(p => [
+    p.id, productSku(p), p.name, p.size, p.surface, p.origin, p.color, p.price || "",
+    p.priceText || "", productInventoryQty(p), p.active === false ? "no" : "yes", p.description
+  ]);
+  const quoteRows = (allQuotes.length ? allQuotes : quotes).map(q => [
+    q.id, q.quoteNo, q.customerId, q.customerName, q.customerPhone, q.customerCompanyName,
+    q.owner, q.ownerEmail, quoteStatusLabel(q.status), fmtDate(q.quoteDate || q.createdAt),
+    fmtDate(q.validUntil), q.subtotal, q.discountAmount, q.totalAmount, q.convertedDealId, q.isDeleted ? "yes" : "", q.note
+  ]);
+  const kpiRuleRows = kpiRules.map(r => [
+    r.id, r.month, r.name, r.target, r.countMode, r.active === false ? "no" : "yes",
+    jsonCell(r.assignedOwners), jsonCell(r.ownerTargets), r.description
+  ]);
+  const kpiProposalRows = kpiProposals.map(p => [
+    p.id, p.kpiRuleId, p.kpiName, p.month, p.owner, p.ownerEmail, p.customerName,
+    p.customerPhone, p.customerCompanyName, p.status, p.reviewedByEmail, fmtDate(p.reviewedAt),
+    p.isDeleted ? "yes" : "", p.content, p.evidenceUrl
+  ]);
+  const userRows = users.map(u => [
+    u.uid || u.id, u.email, u.name, u.role, u.active === false ? "locked" : "active",
+    u.team, u.canExport === true ? "yes" : "no", fmtDate(u.updatedAt || u.createdAt)
+  ]);
+  const auditRows = auditLogs.map(a => [
+    a.id, fmtDate(a.createdAt), a.email, a.action, a.entity, a.entityId, a.payloadJson || a.note || ""
+  ]);
+
+  const sheets = [
+    snapshotSheet("00_Tong_quan", ["Mục", "Số dòng", "Ghi chú"], [
+      ["Thời điểm xuất", new Date().toLocaleString("vi-VN"), "Snapshot Excel để đối chiếu nhanh"],
+      ["Customers", customerRows.length, "Gồm cả khách đang ẩn nếu đã tải"],
+      ["Care logs", careRows.length, ""],
+      ["Deals", dealRows.length, ""],
+      ["Order items", orderItemRows.length, ""],
+      ["Payments", paymentRows.length, ""],
+      ["Inventory", inventoryRows.length, ""],
+      ["Products", productRows.length, ""],
+      ["Quotes", quoteRows.length, ""],
+      ["KPI proposals", kpiProposalRows.length, ""],
+      ["Users", userRows.length, ""],
+      ["Audit logs", auditRows.length, ""]
+    ]),
+    snapshotSheet("Customers", ["ID","Tên","Công ty","SĐT","SĐT chuẩn","Địa chỉ","Kênh","Owner","Owner email","Trạng thái","Follow","Hẹn chăm","Ngày tạo","Đã ẩn","Ngày ẩn","Ghi chú"], customerRows),
+    snapshotSheet("CareLogs", ["ID","Customer ID","Khách","Owner","Owner email","Trạng thái","Kênh chăm","Kết quả","Hẹn tiếp","Ghi chú","Ngày tạo","Đã ẩn"], careRows),
+    snapshotSheet("Deals", ["ID","Customer ID","Khách","SĐT","Owner","Owner email","Trạng thái","Ngày đơn","Ngày mua","Hẹn giao","Giao hàng","Giá trị","Đã thu","Còn nợ","Sản phẩm","Đã ẩn","Ghi chú"], dealRows),
+    snapshotSheet("OrderItems", ["ID","Deal ID","Customer ID","Product ID","SKU","Sản phẩm","SL","Đã giao","Đơn giá","Chiết khấu","Thành tiền","Đơn vị"], orderItemRows),
+    snapshotSheet("Payments", ["ID","Mã thu","Deal ID","Customer ID","Khách","Owner","Owner email","Số tiền","Hình thức","Trạng thái","Ngày thu","Người ghi","Đã xóa mềm","Ghi chú"], paymentRows),
+    snapshotSheet("Inventory", ["ID","Product ID","SKU","Sản phẩm","Loại","SL","Đơn vị","Kho","Ref type","Ref ID","Người tạo","Ngày tạo","Đã xóa mềm","Ghi chú"], inventoryRows),
+    snapshotSheet("Products", ["ID","SKU","Tên","Size","Bề mặt","Xuất xứ","Màu","Giá","Giá text","Tồn","Active","Mô tả"], productRows),
+    snapshotSheet("Quotes", ["ID","Mã BG","Customer ID","Khách","SĐT","Công ty","Owner","Owner email","Trạng thái","Ngày","Hiệu lực","Tạm tính","Chiết khấu","Tổng","Deal chuyển đổi","Đã ẩn","Ghi chú"], quoteRows),
+    snapshotSheet("QuoteItems", ["ID","Quote ID","Product ID","SKU","Sản phẩm","SL","Đơn giá","Chiết khấu","Thành tiền"], quoteItems.map(i => [i.id, i.quoteId, i.productId, i.productSku, i.productName || i.productLabel, i.qty, i.unitPrice, i.discountAmount, i.lineTotal])),
+    snapshotSheet("KpiRules", ["ID","Tháng","Tên KPI","Chỉ tiêu","Cách tính","Active","Nhân viên gán","Target riêng","Diễn giải"], kpiRuleRows),
+    snapshotSheet("KpiProposals", ["ID","Rule ID","KPI","Tháng","Owner","Owner email","Khách","SĐT","Công ty","Trạng thái","Người duyệt","Ngày duyệt","Đã ẩn","Nội dung","Minh chứng"], kpiProposalRows),
+    snapshotSheet("Users", ["ID","Email","Tên","Role","Active","Team","Can export","Cập nhật"], userRows),
+    snapshotSheet("AuditLogs", ["ID","Thời gian","Email","Action","Entity","Entity ID","Payload"], auditRows)
+  ];
+
+  const exported = exportXlsx(sheets, `crm-operational-snapshot-${todayIso()}-${stamp}`);
+  if (exported) {
+    await logAudit("exportOperationalSnapshot", "exports", "operationalSnapshot", {
+      customers: customerRows.length,
+      deals: dealRows.length,
+      payments: paymentRows.length,
+      inventory: inventoryRows.length,
+      products: productRows.length,
+      auditLogs: auditRows.length
+    }).catch(err => notice("Snapshot đã xuất, nhưng chưa ghi được audit log: " + authMessage(err), true));
+    notice("Đã xuất snapshot vận hành.");
+  }
 }
 
 function renderUserAdmin() {
@@ -7526,6 +7649,7 @@ on("logoutBtn", "click", async () => {
 on("reloadBtn", "click", () => runAction("reloadBtn", "reload", "Đang tải...", reloadApp));
 on("healthReloadBtn", "click", renderHealthCheck);
 on("exportManagementReportBtn", "click", () => runAction("exportManagementReportBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
+on("exportOperationalSnapshotBtn", "click", () => runAction("exportOperationalSnapshotBtn", "exportOperationalSnapshot", "Đang xuất...", exportOperationalSnapshot));
 on("cleanupPhoneIndexBtn", "click", () => runAction("cleanupPhoneIndexBtn", "cleanupPhoneIndex", "Đang dọn...", cleanupPhoneIndex));
 on("cleanupOrphansBtn", "click", () => runAction("cleanupOrphansBtn", "cleanupOrphans", "Đang dọn...", cleanupOrphans));
 on("cleanupDataBtn", "click", () => runAction("cleanupDataBtn", "cleanupData", "Đang dọn...", cleanupData));

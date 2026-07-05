@@ -553,6 +553,22 @@
           <div id="healthGrid" class="health-grid"></div>
         </div>
 
+        <div id="dataSafetyPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <h3>An toàn dữ liệu</h3>
+            <div class="actions">
+              <button id="exportOperationalSnapshotBtn" class="small primary" type="button">Xuất snapshot vận hành</button>
+            </div>
+          </div>
+          <div class="muted" style="margin-bottom:10px">Dùng trước khi import, cleanup, xóa user/khách hoặc chỉnh dữ liệu lớn. File snapshot là bản xem nhanh trong Excel, không thay thế backup Supabase CLI.</div>
+          <div class="health-grid">
+            <div class="health-card good"><div class="muted">Khách đang quản lý</div><b id="safetyCustomersCount">0</b><div class="muted">Gồm cả dữ liệu đã tải theo quyền admin</div></div>
+            <div class="health-card"><div class="muted">Đơn / Deal</div><b id="safetyDealsCount">0</b><div class="muted">Đơn đang xử lý, đã mua, đã hủy</div></div>
+            <div class="health-card"><div class="muted">Thanh toán</div><b id="safetyPaymentsCount">0</b><div class="muted">Khoản thu và khoản đã xóa mềm</div></div>
+            <div class="health-card warn"><div class="muted">Audit log</div><b id="safetyAuditCount">0</b><div class="muted">Dấu vết thao tác quan trọng</div></div>
+          </div>
+        </div>
+
         <div id="userAdminPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
             <h3>Quản lý nhân viên</h3>

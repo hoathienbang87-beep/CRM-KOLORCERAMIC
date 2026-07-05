@@ -64,6 +64,18 @@ node_modules/
 
 # dotenv environment variables file
 .env
+.env.*
+!.env.example
+
+# Operational backups and data exports
+backups/
+exports/
+*.sql
+*.dump
+*.backup
+*.xlsx
+*.xls
+*.csv
 
 # Temporary editor/Office lock files
 ~$*
