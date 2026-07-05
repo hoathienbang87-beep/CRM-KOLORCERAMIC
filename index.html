@@ -567,6 +567,11 @@
             <div class="health-card"><div class="muted">Thanh toán</div><b id="safetyPaymentsCount">0</b><div class="muted">Khoản thu và khoản đã xóa mềm</div></div>
             <div class="health-card warn"><div class="muted">Audit log</div><b id="safetyAuditCount">0</b><div class="muted">Dấu vết thao tác quan trọng</div></div>
           </div>
+          <div class="panel soft-panel" style="margin-top:12px">
+            <div class="table-title">Checklist deploy nhanh</div>
+            <div class="muted">Trước deploy: xuất snapshot, backup Supabase nếu có đổi SQL/RLS, test local admin/manager/sale, kiểm tra không commit .env hoặc file backup.</div>
+            <div class="muted">Sau deploy: mở trang production, đăng nhập Google, thêm thử chăm sóc/KPI/đơn hàng, kiểm tra báo cáo và export, xem Vercel logs nếu có lỗi.</div>
+          </div>
         </div>
 
         <div id="userAdminPanel" class="panel hide" style="margin-top:14px">

@@ -28,3 +28,10 @@ http://127.0.0.1:5181/index.html
 ## Notes
 
 Use only the Supabase anon key in `js/supabase-config.js`. Never put the service role key in this frontend repo.
+
+## Operations
+
+- Backup and restore guide: `PHASE-4-13-DATA-SAFETY-BACKUP.md`
+- Deploy checklist: `PHASE-4-14-OPERATIONS-DEPLOY.md`
+
+Before a production deploy, export an operational snapshot in **Quản trị > An toàn dữ liệu** and confirm no `.env`, database password, service role key, SQL dump, or customer export file is staged in Git.
