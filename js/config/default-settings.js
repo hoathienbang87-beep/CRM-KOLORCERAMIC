@@ -2,7 +2,7 @@
   sourceConfigVersion: 2,
   sources: [],
   sourceChannels: {},
-  channels: ["Khách vãng lai", "Công trình dd", "Công ty TK/XD", "Facebook", "Zalo", "Website", "Tiktok", "Sếp giới thiệu", "Đối tác giới thiệu", "Khác"],
+  channels: ["Khách vãng lai", "Công trình dd", "Công ty TK/XD", "Facebook", "Zalo", "Website", "Tiktok", "Sếp giới thiệu", "Đối tác giới thiệu", "Khách hàng từ PCI", "Khách hàng từ VMARK", "Khác"],
   customerTypes: [],
   statuses: ["Lead mới", "Đang tư vấn", "Đang báo giá", "Đang follow", "Đã cọc", "Đã mua", "Tạm dừng", "Không nhu cầu"],
   followConfigVersion: 2,
