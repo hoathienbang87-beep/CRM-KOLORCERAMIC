@@ -2350,9 +2350,9 @@ function computedFollowStatus(c) {
   if (!c) return "";
   if (isCustomerClosed(c)) return systemLabel("closedFollow");
   const nextDate = clean(c.nextCareDate);
-  if (!nextDate) return isLeadStatus(c) ? systemLabel("noDateFollow") : systemLabel("closedFollow");
+  if (!nextDate) return systemLabel("noDateFollow");
   const delta = careDeltaDays(c);
-  if (delta === null) return isLeadStatus(c) ? systemLabel("noDateFollow") : systemLabel("closedFollow");
+  if (delta === null) return systemLabel("noDateFollow");
   if (delta > careDueDays()) return systemLabel("overdueFollow");
   if (delta >= 0) return systemLabel("dueFollow");
   return systemLabel("activeFollow");
@@ -2367,6 +2367,26 @@ const followMatchesFilter = (c, follow) => {
 };
 const isCareDue = c => sameLabel(computedFollowStatus(c), "dueFollow") || sameLabel(computedFollowStatus(c), "overdueFollow");
 const isCareOverdue = c => sameLabel(computedFollowStatus(c), "overdueFollow");
+function careScheduleText(c) {
+  if (c && isCustomerClosed(c)) return systemLabel("closedFollow");
+  const nextDate = clean(c?.nextCareDate);
+  if (!nextDate) return "Chưa đặt lịch";
+  const delta = careDeltaDays(c);
+  if (delta === null) return fmtDate(nextDate);
+  if (delta > careDueDays()) return `Quá ${delta} ngày`;
+  if (delta === 0) return "Hôm nay";
+  if (delta > 0) return `Cần chăm (${delta} ngày)`;
+  return `Sắp tới ${fmtDate(nextDate)}`;
+}
+function careSchedulePillClass(c) {
+  if (c && isCustomerClosed(c)) return "green";
+  if (isCareOverdue(c)) return "red";
+  if (isCareDue(c)) return "orange";
+  if (!clean(c?.nextCareDate)) return "orange";
+  return "green";
+}
+const isFollowUpResult = value => normalizeKey(value) === normalizeKey("Hẹn lại");
+const isNoNeedResult = value => sameLabel(value, "noNeedStatus") || normalizeKey(value) === normalizeKey("Không nhu cầu");
 const openDealCount = id => customerDeals(id).filter(isActiveDeal).length;
 const addDaysIso = (iso, days) => {
   const d = new Date((iso || todayIso()) + "T00:00:00");
@@ -3247,7 +3267,7 @@ function taskRows() {
       const c = t.customer;
       if (owner && !sameIdentity(customerOwnerKey(c), owner) && !sameIdentity(customerOwnerName(c), owner)) return false;
       if (!key) return true;
-      return normalizeKey([c.name, c.companyName, c.phoneRaw, c.phoneNormalized, c.address, c.channel, customerOwnerName(c), c.status, c.need, c.note, computedFollowStatus(c)].join(" ")).includes(key);
+      return normalizeKey([c.name, c.companyName, c.phoneRaw, c.phoneNormalized, c.address, c.channel, customerOwnerName(c), c.status, c.need, c.note, computedFollowStatus(c), careScheduleText(c)].join(" ")).includes(key);
     })
     .sort((a,b) => {
       const rank = {overdue: 0, today: 1, "no-date": 2, upcoming: 3};
@@ -3274,6 +3294,7 @@ function renderTaskBoard() {
   list.innerHTML = page.map(({customer: c, type, delta}) => {
     const dateText = clean(c.nextCareDate) ? fmtDate(c.nextCareDate) : "Chưa đặt lịch";
     const overdueText = type === "overdue" ? ` · Quá ${esc(delta)} ngày` : "";
+    const scheduleText = careScheduleText(c);
     return `
       <div class="task-row ${esc(taskClass(type))}">
         <div>
@@ -3282,8 +3303,9 @@ function renderTaskBoard() {
           <div class="muted">${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")}</div>
         </div>
         <div>
-          <span class="pill ${type === "overdue" ? "red" : type === "upcoming" ? "green" : "orange"}">${esc(taskLabel(type))}</span>
+          <span class="pill ${esc(careSchedulePillClass(c))}">${esc(taskLabel(type))}</span>
           <div class="muted">${esc(dateText)}${overdueText}</div>
+          <div class="muted">${esc(scheduleText)}</div>
         </div>
         <div>
           <b>${esc(customerOwnerName(c))}</b>
@@ -3291,8 +3313,7 @@ function renderTaskBoard() {
         </div>
         <div class="task-actions">
           <button class="small primary" type="button" data-care-open="${esc(c.id)}">Chăm sóc</button>
-          <button class="small" type="button" data-open-template="${esc(c.id)}">Báo giá</button>
-          <button class="small" type="button" data-open-deal="${esc(c.id)}">Đơn hàng</button>
+          <button class="small" type="button" data-open-deal="${esc(c.id)}">Ghi mua</button>
           <button class="small" type="button" data-task-snooze="${esc(c.id)}" data-days="1">Dời mai</button>
         </div>
       </div>
@@ -3347,6 +3368,7 @@ function renderTodayCare() {
     <div class="today-item">
       <b>${esc(c.name)}</b>
       <div class="today-meta">${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")} · ${esc(customerOwnerName(c))}</div>
+      <div><span class="pill ${esc(careSchedulePillClass(c))}">${esc(careScheduleText(c))}</span></div>
       ${c.note ? `<div class="muted">${esc(c.note)}</div>` : ""}
       <button class="small" type="button" data-care-open="${esc(c.id)}">Mở chăm sóc</button>
     </div>
@@ -3401,7 +3423,7 @@ function renderCustomers() {
     const purchaseValue = basicPurchaseValueFor(c);
     const showroomVisits = showroomVisitCountFor(c);
     const rowClass = ["customer-row", isFailStatus(st) || isCanceledDeal(st) ? "row-fail" : "", purchaseTimes ? "row-success row-vip" : "", isCareOverdue(c) ? "row-overdue" : ""].filter(Boolean).join(" ");
-    const careBadge = isCareOverdue(c) ? `<br><span class="pill red">Quá ${esc(careDeltaDays(c))} ngày</span>` : isCareDue(c) ? `<br><span class="pill orange">${esc(systemLabel("dueFollow"))}</span>` : "";
+    const careBadge = `<br><span class="pill ${esc(careSchedulePillClass(c))}">${esc(careScheduleText(c))}</span>`;
     const contactText = c.phoneRaw || c.phoneNormalized || "Không SĐT";
     const customerMeta = [c.companyName, c.address].filter(Boolean).join(" · ");
     const statusClass = isFailStatus(st) || isCanceledDeal(st) ? "red" : purchaseTimes ? "green" : "orange";
@@ -3422,7 +3444,7 @@ function renderCustomers() {
       <td class="source-col">${c.channel ? `<span class="pill">${esc(c.channel)}</span>` : ""}</td>
       <td>${esc(customerOwnerName(c))}</td>
       <td><span class="pill ${statusClass}">${esc(c.status || st || "Chưa rõ")}</span></td>
-      <td><span class="pill ${sameLabel(careStatus, "overdueFollow") ? "red" : sameLabel(careStatus, "dueFollow") ? "orange" : sameLabel(careStatus, "closedFollow") ? "" : "green"}">${esc(careStatus)}</span></td>
+      <td><span class="pill ${esc(careSchedulePillClass(c))}">${esc(careStatus)}</span></td>
       <td>
         <div class="deal-counts">
           <span><b>${esc(showroomVisits)}</b> đến showroom</span>
@@ -5298,21 +5320,29 @@ async function saveCustomer() {
 async function saveCareLog() {
   const c = customers.find(x => x.id === selectedCustomerId);
   if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền cập nhật khách này.", true);
+  const careChannel = clean($("careChannel").value);
+  const careResult = clean($("careResult").value);
+  const careNote = clean($("careNote").value);
   const nextCareDateInput = clean($("careNextDate").value);
-  const closeCare = sameLabel($("careResult").value, "noNeedStatus") || sameLabel($("careResult").value, "closedFollow");
+  if (!careChannel) return notice("Vui lòng chọn hình thức chăm sóc.", true);
+  if (!careResult) return notice("Vui lòng chọn kết quả chăm.", true);
+  if (!careNote) return notice("Vui lòng nhập ghi chú chăm sóc để lưu lịch sử rõ ràng.", true);
+  if (isFollowUpResult(careResult) && !nextCareDateInput) return notice("Kết quả là Hẹn lại thì cần nhập ngày hẹn chăm tiếp.", true);
+  if (nextCareDateInput && nextCareDateInput < todayIso()) return notice("Ngày hẹn chăm tiếp không nên nằm trong quá khứ.", true);
+  const closeCare = isNoNeedResult(careResult) || sameLabel(careResult, "closedFollow");
   const nextStatus = closeCare ? systemLabel("noNeedStatus") : clean($("careStatus").value);
   const nextCareDate = closeCare ? "" : nextCareDateInput;
   const nextFollow = computedFollowStatus({...c, status: nextStatus || c.status, nextCareDate});
   const log = {
     customerId: c.id, customerName: c.name || "", phoneNormalized: c.phoneNormalized || "",
     owner: c.owner || "", ownerEmail: c.ownerEmail || "", status: nextStatus, follow: nextFollow,
-    careChannel: clean($("careChannel").value), careResult: clean($("careResult").value),
+    careChannel, careResult,
     companyName: isPartnerChannel(c.channel) ? clean($("careCompanyName").value) : "",
     partnerType: isPartnerChannel(c.channel) ? clean($("carePartnerType").value) : "",
     partnerActivity: isPartnerChannel(c.channel) ? clean($("carePartnerActivity").value) : "",
     partnerLevel: isPartnerChannel(c.channel) ? clean($("carePartnerLevel").value) : "",
     partnerCapacity: isPartnerChannel(c.channel) ? clean($("carePartnerCapacity").value) : "",
-    need: clean($("careNeed").value), note: clean($("careNote").value),
+    need: clean($("careNeed").value), note: careNote,
     nextCareDate, createdByEmail: currentUser.email || "",
     createdAt: serverTimestamp()
   };
@@ -5386,6 +5416,16 @@ async function saveDeal() {
   } catch (err) {
     notice(authMessage(err), true);
   }
+}
+
+function syncCareFormRules() {
+  const nextInput = $("careNextDate");
+  if (!nextInput) return;
+  const result = clean($("careResult")?.value);
+  const needsDate = isFollowUpResult(result);
+  nextInput.required = needsDate;
+  nextInput.min = todayIso();
+  nextInput.closest(".field")?.classList.toggle("required-field", needsDate);
 }
 
 async function updateDeal(dealId) {
@@ -5945,22 +5985,36 @@ function profileStat(label, value) {
   return `<div class="profile-stat"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
 }
 
+function activityMetaPills(values = []) {
+  const items = values.filter(Boolean);
+  return items.length ? `<div class="activity-pills">${items.map(item => `<span>${esc(item)}</span>`).join("")}</div>` : "";
+}
+
 function customerActivityItems(id) {
   const careRows = customerLogs(id).map(l => ({
     kind: "care",
     label: "Chăm sóc",
     at: l.createdAt,
-    title: [l.status, l.careResult].filter(Boolean).join(" · ") || "Ghi chăm sóc",
-    text: [l.careChannel, l.note].filter(Boolean).join(" · "),
-    meta: l.nextCareDate ? `Hẹn tiếp: ${fmtDate(l.nextCareDate)}` : ""
+    title: l.careResult || l.status || "Ghi chăm sóc",
+    text: l.note || "",
+    meta: "",
+    pills: [
+      l.careChannel ? `Hình thức: ${l.careChannel}` : "",
+      l.status ? `Trạng thái: ${l.status}` : "",
+      l.nextCareDate ? `Hẹn tiếp: ${fmtDate(l.nextCareDate)}` : "Chưa hẹn tiếp"
+    ]
   }));
   const dealRows = customerDeals(id).map(d => ({
     kind: "deal",
-    label: "Đơn hàng",
+    label: "Mua căn bản",
     at: d.completedAt || d.dealDate || d.createdAt,
-    title: normalizeDealStatus(d.dealStatus) || "Đơn hàng",
+    title: normalizeDealStatus(d.dealStatus) || "Ghi nhận mua căn bản",
     text: [orderProductText(d), dealAmount(d) ? money(dealAmount(d)) : ""].filter(Boolean).join(" · "),
-    meta: d.completedAt ? `Ngày mua: ${fmtDate(d.completedAt)}` : d.deliveryDate ? `Hẹn giao: ${fmtDate(d.deliveryDate)}` : ""
+    meta: "",
+    pills: [
+      d.completedAt ? `Ngày mua: ${fmtDate(d.completedAt)}` : "",
+      d.dealDate ? `Ngày ghi: ${fmtDate(d.dealDate)}` : ""
+    ]
   }));
   const proposalRows = kpiProposals
     .filter(p => p.customerId === id && !p.isDeleted)
@@ -5970,7 +6024,8 @@ function customerActivityItems(id) {
       at: p.createdAt,
       title: p.kpiName || "Đề xuất KPI",
       text: isApprovedKpiProposal(p) ? "Đã duyệt" : isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt",
-      meta: p.content || ""
+      meta: p.content || "",
+      pills: [p.status ? `Trạng thái: ${p.status}` : ""]
     }));
   return [...careRows, ...dealRows, ...proposalRows]
     .sort((a,b) => (toDate(b.at)?.getTime() || 0) - (toDate(a.at)?.getTime() || 0));
@@ -5985,7 +6040,7 @@ function renderCustomerActivityPreview(c) {
   const proposals = kpiProposals.filter(p => p.customerId === c.id && !p.isDeleted);
   const pendingDeals = ds.filter(isActiveDeal);
   const approvedKpi = proposals.filter(isApprovedKpiProposal);
-  const nextCare = clean(c.nextCareDate) ? fmtDate(c.nextCareDate) : "Chưa hẹn";
+  const nextCare = careScheduleText(c);
   box.innerHTML = `
     <div class="profile-stats">
       ${profileStat("Lần chăm", logs.length)}
@@ -5998,7 +6053,7 @@ function renderCustomerActivityPreview(c) {
     </div>
     <div class="profile-subtitle">
       <h4>Hoạt động gần đây</h4>
-      <span class="pill ${isCareOverdue(c) ? "red" : isCareDue(c) ? "orange" : "green"}">Hẹn: ${esc(nextCare)}</span>
+      <span class="pill ${esc(careSchedulePillClass(c))}">Hẹn: ${esc(nextCare)}</span>
     </div>
     ${activity.length ? `<div class="activity-mini-list">${activity.slice(0,5).map(item => `
       <div class="activity-mini ${esc(item.kind)}">
@@ -6006,6 +6061,7 @@ function renderCustomerActivityPreview(c) {
           <b>${esc(item.label)} · ${esc(item.title)}</b>
           <span class="muted">${esc(fmtDate(item.at))}</span>
         </div>
+        ${activityMetaPills(item.pills)}
         ${item.text ? `<div>${esc(item.text)}</div>` : ""}
         ${item.meta ? `<div class="muted">${esc(item.meta)}</div>` : ""}
       </div>
@@ -6179,6 +6235,7 @@ function openDrawer(id, mode="care") {
   $("careNeed").value = clean(c.need);
   $("careNote").value = "";
   $("careNextDate").value = clean(c.nextCareDate);
+  syncCareFormRules();
   $("dealStatus").value = systemLabel("depositStatus");
   $("dealCustomerName").value = clean(c.name);
   $("dealCustomerPhone").value = clean(c.phoneRaw || c.phoneNormalized);
@@ -6389,6 +6446,7 @@ function renderHistories(id) {
           <b>${esc(item.label)} · ${esc(item.title)}</b>
           <span class="muted">${esc(fmtDate(item.at))}</span>
         </div>
+        ${activityMetaPills(item.pills)}
         ${item.text ? `<div>${esc(item.text)}</div>` : ""}
         ${item.meta ? `<div class="muted">${esc(item.meta)}</div>` : ""}
         ${careLog && (careLog.companyName || careLog.partnerType || careLog.partnerActivity || careLog.partnerLevel || careLog.partnerCapacity) ? `<div class="muted">${esc([careLog.companyName,careLog.partnerType,careLog.partnerActivity,careLog.partnerLevel,careLog.partnerCapacity].filter(Boolean).join(" · "))}</div>` : ""}
@@ -7248,7 +7306,7 @@ function saleActivityRows() {
       const taskType = taskTypeForCustomer(c);
       rows.push({
         date: clean(c.nextCareDate) || "",
-        type: `Task ${taskLabel(taskType)}`,
+        type: `Việc ${taskLabel(taskType)}`,
         owner: customerOwnerName(c),
         ownerEmail: customerOwnerKey(c),
         customer: c.name || "",
@@ -7369,7 +7427,7 @@ function renderSaleActivityReport() {
   if ($("saleActivityMetrics")) {
     $("saleActivityMetrics").innerHTML = [
       ["Tổng hoạt động", metrics.total, ""],
-      ["Task quá hạn", metrics.taskOverdue, metrics.taskOverdue ? "bad" : ""],
+      ["Việc quá hạn", metrics.taskOverdue, metrics.taskOverdue ? "bad" : ""],
       ["Chăm sóc", metrics.care, ""],
       ["Ghi nhận mua", metrics.deal, ""],
       ["Khách đã mua", metrics.completed, ""],
@@ -7383,7 +7441,7 @@ function renderSaleActivityReport() {
   }
   $("saleActivitySummary").innerHTML = summary.length ? `
     <table class="admin-table">
-      <thead><tr><th>Nhân viên</th><th>Task mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Ghi nhận mua</th><th>Khách đã mua</th><th>Giá trị mua</th></tr></thead>
+      <thead><tr><th>Nhân viên</th><th>Việc mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Ghi nhận mua</th><th>Khách đã mua</th><th>Giá trị mua</th></tr></thead>
       <tbody>${summary.map(s => `
         <tr>
           <td><b>${esc(s.owner)}</b><div class="muted">${esc(s.ownerEmail)}</div></td>
@@ -7615,7 +7673,7 @@ async function exportSaleActivityReport() {
   if (!rows.length) return notice("Không có hoạt động phù hợp để xuất.", true);
   const summaryRows = [
     [`Báo cáo hoạt động sale - ${range.label}`, "", "", "", "", "", "", ""],
-    ["Nhân viên","Email","Task mở","Task quá hạn","Chăm sóc","Báo giá","Deal tạo","Đơn hoàn thành","Doanh số"],
+    ["Nhân viên","Email","Việc mở","Việc quá hạn","Chăm sóc","Báo giá","Ghi nhận mua","Khách đã mua","Giá trị mua"],
     ...summary.map(s => [s.owner, s.ownerEmail, s.taskOpen, s.taskOverdue, s.care, s.quote, s.deal, s.completed, s.revenue])
   ];
   const detailRows = [
@@ -8073,6 +8131,7 @@ on("kpiRuleTarget", "input", () => {
   });
 });
 on("careStatus", "change", updateCareStatusVisual);
+on("careResult", "change", syncCareFormRules);
 on("source", "change", () => { hydrateChannelOptions(); togglePartnerFields(); });
 on("channel", "change", togglePartnerFields);
 on("customerType", "change", togglePartnerFields);

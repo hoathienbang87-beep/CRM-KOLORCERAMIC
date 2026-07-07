@@ -21,6 +21,7 @@
     .login-card h1{margin:0 0 8px;font-size:25px;line-height:1.2}
     .login-card p{color:var(--muted);margin:0 0 18px}
     .field{margin-bottom:14px}
+    .field.required-field label:after{content:" *";color:var(--rose);font-weight:900}
     .error{color:var(--bad);font-weight:700;margin-top:10px}
     .topbar{height:58px;background:linear-gradient(90deg,#ffffff 0,#f0fbf7 58%,#fff7e8 100%);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:sticky;top:0;z-index:10}
     .brand{font-weight:800;font-size:19px;line-height:1.2}
@@ -214,6 +215,8 @@
     .activity-mini-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
     .activity-mini-head b{font-size:14px}
     .activity-mini .muted{font-size:12px}
+    .activity-pills{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0}
+    .activity-pills span{border:1px solid #dbe7f4;background:#f8fbff;border-radius:999px;padding:3px 8px;color:#415a7c;font-size:12px;font-weight:800}
     .activity-mini.bad{border-left-color:var(--rose);background:#fff7f7}
     .report-activity{padding:11px 12px}
     .report-activity-meta{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0}
