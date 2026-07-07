@@ -670,10 +670,51 @@
               <h2>CMS nội dung</h2>
               <p>Quản lý các phần nội dung website bằng form an toàn, không chỉnh code.</p>
             </div>
+            <div class="admin-header-actions">
+              <button id="resetCmsFormBtn" type="button">Xóa form</button>
+              <button id="saveCmsPageBtn" type="button">Lưu trang</button>
+              <button id="saveCmsSectionBtn" class="primary" type="button">Lưu section</button>
+            </div>
           </div>
-          <div class="admin-empty-state">
-            <b>Trang CMS nội dung đã sẵn sàng khung.</b>
-            <span>Giai đoạn sau sẽ thêm form cho trang chủ, banner, section giới thiệu, bộ sưu tập, dự án thực tế, tin tức, FAQ, footer và thông tin liên hệ.</span>
+          <div class="cms-admin-grid">
+            <div class="cms-editor-card">
+              <h3>Trang website</h3>
+              <div class="settings-grid">
+                <div class="field"><label>Slug trang</label><input id="cmsPageSlug" placeholder="home"></div>
+                <div class="field"><label>Tiêu đề trang</label><input id="cmsPageTitle" placeholder="Trang chủ"></div>
+                <div class="field"><label>Trạng thái</label><select id="cmsPageStatus"><option value="draft">Nháp</option><option value="published">Đang hiển thị</option><option value="hidden">Ẩn</option></select></div>
+                <div class="field"><label>Thứ tự</label><input id="cmsPageSortOrder" type="number" value="0"></div>
+                <div class="field settings-wide"><label>Mô tả SEO / ghi chú</label><textarea id="cmsPageDescription" placeholder="Mô tả ngắn cho trang"></textarea></div>
+              </div>
+              <div class="table-wrap compact-table">
+                <table class="admin-table">
+                  <thead><tr><th>Trang</th><th>Trạng thái</th><th>Section</th><th>Thao tác</th></tr></thead>
+                  <tbody id="cmsPageRows"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="cms-editor-card">
+              <h3>Section nội dung</h3>
+              <div class="settings-grid">
+                <div class="field"><label>Thuộc trang</label><select id="cmsSectionPage"></select></div>
+                <div class="field"><label>Key section</label><input id="cmsSectionKey" placeholder="hero"></div>
+                <div class="field"><label>Loại section</label><select id="cmsSectionType"><option value="hero">Hero/Banner</option><option value="intro">Giới thiệu</option><option value="collection">Bộ sưu tập</option><option value="project">Dự án</option><option value="news">Tin tức</option><option value="faq">FAQ</option><option value="footer">Footer</option><option value="content">Nội dung khác</option></select></div>
+                <div class="field"><label>Thứ tự</label><input id="cmsSectionSortOrder" type="number" value="0"></div>
+                <div class="field"><label>Hiển thị</label><select id="cmsSectionVisible"><option value="true">Hiển thị</option><option value="false">Ẩn</option></select></div>
+                <div class="field"><label>Tiêu đề</label><input id="cmsSectionTitle" placeholder="Tiêu đề section"></div>
+                <div class="field settings-wide"><label>Tiêu đề phụ</label><textarea id="cmsSectionSubtitle" placeholder="Dòng mô tả ngắn"></textarea></div>
+                <div class="field settings-wide"><label>Nội dung</label><textarea id="cmsSectionBody" placeholder="Nội dung chính, mỗi ý có thể xuống dòng"></textarea></div>
+                <div class="field settings-wide"><label>Ảnh URL</label><input id="cmsSectionImageUrl" placeholder="https://..."></div>
+                <div class="field"><label>Nút CTA</label><input id="cmsSectionCtaLabel" placeholder="Xem thêm"></div>
+                <div class="field"><label>Link CTA</label><input id="cmsSectionCtaUrl" placeholder="/collections"></div>
+              </div>
+              <div class="table-wrap compact-table">
+                <table class="admin-table">
+                  <thead><tr><th>Section</th><th>Trang</th><th>Hiển thị</th><th>Thao tác</th></tr></thead>
+                  <tbody id="cmsSectionRows"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 

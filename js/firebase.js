@@ -20,6 +20,8 @@ const tableMap = {
   users: "app_users",
   settings: "settings",
   companySettings: "company_settings",
+  websitePages: "website_pages",
+  websiteSections: "website_sections",
   customers: "customers",
   careLogs: "care_logs",
   deals: "deals",
@@ -105,6 +107,38 @@ function rowFor(ref, input) {
     case "settings":
     case "companySettings":
       return { id, data, raw_data: data, updated_at: first(data.updatedAt, data.updated_at, nowIso()) };
+    case "websitePages":
+      return {
+        ...rowBase(ref, data),
+        data,
+        slug: first(data.slug, id),
+        title: first(data.title, null),
+        status: first(data.status, "draft"),
+        is_published: first(data.isPublished, data.is_published, data.status === "published", false),
+        sort_order: first(data.sortOrder, data.sort_order, 0),
+        updated_by_email: first(data.updatedByEmail, data.updated_by_email, null),
+        created_at: first(data.createdAt, data.created_at, null),
+        updated_at: first(data.updatedAt, data.updated_at, nowIso())
+      };
+    case "websiteSections":
+      return {
+        ...rowBase(ref, data),
+        data,
+        page_id: first(data.pageId, data.page_id, null),
+        section_key: first(data.sectionKey, data.section_key, null),
+        section_type: first(data.sectionType, data.section_type, "content"),
+        title: first(data.title, null),
+        subtitle: first(data.subtitle, null),
+        body: first(data.body, null),
+        image_url: first(data.imageUrl, data.image_url, null),
+        cta_label: first(data.ctaLabel, data.cta_label, null),
+        cta_url: first(data.ctaUrl, data.cta_url, null),
+        is_visible: first(data.isVisible, data.is_visible, true),
+        sort_order: first(data.sortOrder, data.sort_order, 0),
+        updated_by_email: first(data.updatedByEmail, data.updated_by_email, null),
+        created_at: first(data.createdAt, data.created_at, null),
+        updated_at: first(data.updatedAt, data.updated_at, nowIso())
+      };
     case "users":
       return {
         ...rowBase(ref, data),

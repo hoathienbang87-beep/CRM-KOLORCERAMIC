@@ -61,6 +61,8 @@ let currentUser = null;
 let appUser = null;
 let settings = {...DEFAULT_SETTINGS};
 let companySettings = {};
+let websitePages = [];
+let websiteSections = [];
 let allCustomers = [];
 let customers = [];
 let deletedCustomers = [];
@@ -116,6 +118,26 @@ const DEFAULT_COMPANY_SETTINGS = {
   zaloUrl: "",
   brandColor: "#147a68",
   defaultNotice: ""
+};
+const DEFAULT_CMS_PAGE = {
+  slug: "home",
+  title: "Trang chủ",
+  status: "draft",
+  sortOrder: 0,
+  description: ""
+};
+const DEFAULT_CMS_SECTION = {
+  pageId: "home",
+  sectionKey: "hero",
+  sectionType: "hero",
+  title: "",
+  subtitle: "",
+  body: "",
+  imageUrl: "",
+  ctaLabel: "",
+  ctaUrl: "",
+  isVisible: true,
+  sortOrder: 0
 };
 
 const roleKey = () => clean(appUser?.role).toLowerCase();
@@ -254,7 +276,7 @@ const viewDependencies = {
   products: ["products", "inventoryMovements", "settings"],
   quotes: ["customers", "quotes", "quoteItems", "products", "settings", "users"],
   reports: ["customers", "careLogs", "deals", "quotes", "quoteItems", "orderItems", "payments", "inventoryMovements", "products", "auditLogs", "settings", "users"],
-  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings"]
+  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "websitePages", "websiteSections"]
 };
 const scheduleRenderAll = debounce(() => renderAll(), 180);
 const scheduleRenderChart = debounce(() => requestChartRender(), 180);
@@ -739,6 +761,240 @@ async function saveCompanySettings() {
 function resetCompanySettingsForm() {
   renderCompanySettingsForm();
   notice("Đã khôi phục form cấu hình công ty.");
+}
+
+function normalizeCmsPage(raw = {}) {
+  const slug = normalizeCmsSlug(raw.slug || raw.id || DEFAULT_CMS_PAGE.slug);
+  return {
+    ...DEFAULT_CMS_PAGE,
+    ...raw,
+    id: raw.id || slug,
+    slug,
+    status: ["draft","published","hidden"].includes(clean(raw.status)) ? clean(raw.status) : DEFAULT_CMS_PAGE.status,
+    isPublished: raw.isPublished === true || raw.status === "published",
+    sortOrder: Number(raw.sortOrder ?? raw.sort_order ?? 0) || 0
+  };
+}
+
+function normalizeCmsSection(raw = {}) {
+  const pageId = normalizeCmsSlug(raw.pageId || raw.page_id || DEFAULT_CMS_SECTION.pageId);
+  const sectionKey = normalizeCmsSlug(raw.sectionKey || raw.section_key || DEFAULT_CMS_SECTION.sectionKey);
+  return {
+    ...DEFAULT_CMS_SECTION,
+    ...raw,
+    id: raw.id || `${pageId}_${sectionKey}`,
+    pageId,
+    sectionKey,
+    sectionType: clean(raw.sectionType || raw.section_type || DEFAULT_CMS_SECTION.sectionType),
+    isVisible: raw.isVisible !== false && raw.is_visible !== false,
+    sortOrder: Number(raw.sortOrder ?? raw.sort_order ?? 0) || 0
+  };
+}
+
+function normalizeCmsSlug(value) {
+  return normalizeKey(value).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "home";
+}
+
+function cmsPageLabel(pageId) {
+  const page = websitePages.find(p => p.id === pageId || p.slug === pageId);
+  return page ? `${page.title || page.slug} (${page.slug})` : pageId;
+}
+
+function fillCmsPageOptions() {
+  const select = $("cmsSectionPage");
+  if (!select) return;
+  const pages = websitePages.length ? websitePages : [normalizeCmsPage(DEFAULT_CMS_PAGE)];
+  const selected = select.value || "home";
+  select.innerHTML = pages.map(p => `<option value="${esc(p.id || p.slug)}">${esc(p.title || p.slug)}</option>`).join("");
+  select.value = pages.some(p => (p.id || p.slug) === selected) ? selected : (pages[0]?.id || "home");
+}
+
+function renderCmsPageForm(page = normalizeCmsPage(DEFAULT_CMS_PAGE)) {
+  const pairs = [
+    ["cmsPageSlug", page.slug],
+    ["cmsPageTitle", page.title],
+    ["cmsPageStatus", page.status],
+    ["cmsPageSortOrder", page.sortOrder],
+    ["cmsPageDescription", page.description || ""]
+  ];
+  pairs.forEach(([id, value]) => {
+    const el = $(id);
+    if (el && document.activeElement !== el) el.value = value ?? "";
+  });
+}
+
+function renderCmsSectionForm(section = normalizeCmsSection({pageId: $("cmsSectionPage")?.value || "home"})) {
+  fillCmsPageOptions();
+  const pairs = [
+    ["cmsSectionPage", section.pageId],
+    ["cmsSectionKey", section.sectionKey],
+    ["cmsSectionType", section.sectionType],
+    ["cmsSectionSortOrder", section.sortOrder],
+    ["cmsSectionVisible", String(section.isVisible !== false)],
+    ["cmsSectionTitle", section.title || ""],
+    ["cmsSectionSubtitle", section.subtitle || ""],
+    ["cmsSectionBody", section.body || ""],
+    ["cmsSectionImageUrl", section.imageUrl || ""],
+    ["cmsSectionCtaLabel", section.ctaLabel || ""],
+    ["cmsSectionCtaUrl", section.ctaUrl || ""]
+  ];
+  pairs.forEach(([id, value]) => {
+    const el = $(id);
+    if (el && document.activeElement !== el) el.value = value ?? "";
+  });
+}
+
+function renderCmsAdmin() {
+  if (!canAccessAdminPanel()) return;
+  websitePages = websitePages.map(normalizeCmsPage).sort((a,b) => a.sortOrder - b.sortOrder || clean(a.title).localeCompare(clean(b.title)));
+  websiteSections = websiteSections.map(normalizeCmsSection).sort((a,b) => a.pageId.localeCompare(b.pageId) || a.sortOrder - b.sortOrder || a.sectionKey.localeCompare(b.sectionKey));
+  fillCmsPageOptions();
+  renderCmsTables();
+  if (!$("cmsPageSlug")?.value) renderCmsPageForm(websitePages[0] || normalizeCmsPage(DEFAULT_CMS_PAGE));
+  if (!$("cmsSectionKey")?.value) renderCmsSectionForm(websiteSections[0] || normalizeCmsSection({pageId: $("cmsSectionPage")?.value || "home"}));
+}
+
+function renderCmsTables() {
+  const pageRows = $("cmsPageRows");
+  if (pageRows) {
+    pageRows.innerHTML = websitePages.length ? websitePages.map(page => {
+      const count = websiteSections.filter(s => s.pageId === page.id || s.pageId === page.slug).length;
+      return `
+        <tr>
+          <td><b>${esc(page.title || page.slug)}</b><div class="muted">${esc(page.slug)}</div></td>
+          <td><span class="tag">${esc(page.status)}</span></td>
+          <td>${esc(count)}</td>
+          <td class="row-actions">
+            <button data-edit-cms-page="${esc(page.id)}" type="button">Sửa</button>
+            <button data-new-cms-section="${esc(page.id)}" type="button">Thêm section</button>
+          </td>
+        </tr>
+      `;
+    }).join("") : `<tr><td colspan="4" class="muted">Chưa có trang CMS. Hãy tạo trang đầu tiên.</td></tr>`;
+  }
+  const sectionRows = $("cmsSectionRows");
+  if (sectionRows) {
+    sectionRows.innerHTML = websiteSections.length ? websiteSections.map(section => `
+      <tr>
+        <td><b>${esc(section.title || section.sectionKey)}</b><div class="muted">${esc(section.sectionType)} · ${esc(section.sectionKey)}</div></td>
+        <td>${esc(cmsPageLabel(section.pageId))}</td>
+        <td><span class="tag">${section.isVisible !== false ? "Hiển thị" : "Ẩn"}</span></td>
+        <td class="row-actions">
+          <button data-edit-cms-section="${esc(section.id)}" type="button">Sửa</button>
+          <button data-toggle-cms-section="${esc(section.id)}" type="button">${section.isVisible !== false ? "Ẩn" : "Hiện"}</button>
+        </td>
+      </tr>
+    `).join("") : `<tr><td colspan="4" class="muted">Chưa có section CMS.</td></tr>`;
+  }
+}
+
+function cmsPageFormData() {
+  const slug = normalizeCmsSlug($("cmsPageSlug")?.value || DEFAULT_CMS_PAGE.slug);
+  const status = clean($("cmsPageStatus")?.value) || "draft";
+  return normalizeCmsPage({
+    id: slug,
+    slug,
+    title: clean($("cmsPageTitle")?.value) || slug,
+    status,
+    isPublished: status === "published",
+    sortOrder: Number($("cmsPageSortOrder")?.value || 0) || 0,
+    description: clean($("cmsPageDescription")?.value),
+    updatedByEmail: currentUser?.email || "",
+    updatedAt: serverTimestamp()
+  });
+}
+
+function cmsSectionFormData() {
+  const pageId = normalizeCmsSlug($("cmsSectionPage")?.value || "home");
+  const sectionKey = normalizeCmsSlug($("cmsSectionKey")?.value || "section");
+  return normalizeCmsSection({
+    id: `${pageId}_${sectionKey}`,
+    pageId,
+    sectionKey,
+    sectionType: clean($("cmsSectionType")?.value) || "content",
+    title: clean($("cmsSectionTitle")?.value),
+    subtitle: clean($("cmsSectionSubtitle")?.value),
+    body: clean($("cmsSectionBody")?.value),
+    imageUrl: clean($("cmsSectionImageUrl")?.value),
+    ctaLabel: clean($("cmsSectionCtaLabel")?.value),
+    ctaUrl: clean($("cmsSectionCtaUrl")?.value),
+    isVisible: $("cmsSectionVisible")?.value !== "false",
+    sortOrder: Number($("cmsSectionSortOrder")?.value || 0) || 0,
+    updatedByEmail: currentUser?.email || "",
+    updatedAt: serverTimestamp()
+  });
+}
+
+async function saveCmsPage() {
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu CMS.", true);
+  const data = cmsPageFormData();
+  try {
+    await setDoc(doc(db, "websitePages", data.id), data, {merge:true});
+    await logAudit("saveWebsitePage", "websitePages", data.id, data)
+      .catch(err => notice("Đã lưu trang, nhưng chưa ghi được audit log: " + authMessage(err), true));
+    websitePages = uniqById([...websitePages.filter(p => p.id !== data.id), data]);
+    renderCmsAdmin();
+    notice("Đã lưu trang CMS.");
+  } catch (err) {
+    notice("Không lưu được trang CMS. Hãy chắc chắn đã chạy file SQL CMS. " + authMessage(err), true);
+  }
+}
+
+async function saveCmsSection() {
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu CMS.", true);
+  const data = cmsSectionFormData();
+  if (!websitePages.some(p => p.id === data.pageId || p.slug === data.pageId)) return notice("Hãy tạo/lưu trang trước khi thêm section.", true);
+  try {
+    await setDoc(doc(db, "websiteSections", data.id), data, {merge:true});
+    await logAudit("saveWebsiteSection", "websiteSections", data.id, data)
+      .catch(err => notice("Đã lưu section, nhưng chưa ghi được audit log: " + authMessage(err), true));
+    websiteSections = uniqById([...websiteSections.filter(s => s.id !== data.id), data]);
+    renderCmsAdmin();
+    notice("Đã lưu section CMS.");
+  } catch (err) {
+    notice("Không lưu được section CMS. Hãy chắc chắn đã chạy file SQL CMS. " + authMessage(err), true);
+  }
+}
+
+function uniqById(items) {
+  return [...new Map(items.filter(Boolean).map(item => [item.id, item])).values()];
+}
+
+function resetCmsForms() {
+  renderCmsPageForm(normalizeCmsPage(DEFAULT_CMS_PAGE));
+  renderCmsSectionForm(normalizeCmsSection(DEFAULT_CMS_SECTION));
+  notice("Đã xóa form CMS.");
+}
+
+function editCmsPage(pageId) {
+  const page = websitePages.find(p => p.id === pageId);
+  if (!page) return;
+  renderCmsPageForm(page);
+}
+
+function editCmsSection(sectionId) {
+  const section = websiteSections.find(s => s.id === sectionId);
+  if (!section) return;
+  renderCmsSectionForm(section);
+}
+
+function newCmsSection(pageId) {
+  renderCmsSectionForm(normalizeCmsSection({pageId, sectionKey: "section", sortOrder: websiteSections.filter(s => s.pageId === pageId).length + 1}));
+}
+
+async function toggleCmsSection(sectionId) {
+  const section = websiteSections.find(s => s.id === sectionId);
+  if (!section) return;
+  await setDoc(doc(db, "websiteSections", section.id), {
+    ...section,
+    isVisible: section.isVisible === false,
+    updatedByEmail: currentUser?.email || "",
+    updatedAt: serverTimestamp()
+  }, {merge:true});
+  await logAudit("toggleWebsiteSection", "websiteSections", section.id, {isVisible: section.isVisible === false})
+    .catch(err => notice("Đã đổi trạng thái section, nhưng chưa ghi được audit log: " + authMessage(err), true));
+  section.isVisible = section.isVisible === false;
+  renderCmsAdmin();
 }
 
 async function seedSettings() {
@@ -1945,6 +2201,8 @@ function watchData() {
   allInventoryMovements = [];
   products = [];
   users = [];
+  websitePages = [];
+  websiteSections = [];
   kpiRules = [];
   kpiProposals = [];
   auditLogs = [];
@@ -1968,6 +2226,16 @@ function watchData() {
       if (isAdminRoute()) renderCompanySettingsForm();
       markDirty("companySettings");
     }, err => notice("Lỗi tải cấu hình công ty: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "websitePages"), snap => {
+      websitePages = snap.docs.map(d => normalizeCmsPage({id:d.id, ...d.data()}));
+      if (isAdminRoute()) renderCmsAdmin();
+      markDirty("websitePages");
+    }, err => notice("Lỗi tải trang CMS: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "websiteSections"), snap => {
+      websiteSections = snap.docs.map(d => normalizeCmsSection({id:d.id, ...d.data()}));
+      if (isAdminRoute()) renderCmsAdmin();
+      markDirty("websiteSections");
+    }, err => notice("Lỗi tải section CMS: " + authMessage(err), true)));
   }
 
   unsubscribers.push(onSnapshot(collection(db, "kpiRules"), snap => {
@@ -7544,6 +7812,7 @@ function renderAdminShell() {
   if (title) title.textContent = meta.title;
   if (subtitle) subtitle.textContent = meta.subtitle;
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
+  if (meta.key === "content") renderCmsAdmin();
   if (meta.key === "users") renderUserAdmin();
   if (meta.key === "settings") renderCompanySettingsForm();
 }
@@ -7685,7 +7954,15 @@ document.addEventListener("click", e => {
   const printDeliveryId = e.target.closest("[data-print-delivery]")?.dataset.printDelivery;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
+  const editCmsPageId = e.target.closest("[data-edit-cms-page]")?.dataset.editCmsPage;
+  const newCmsSectionPageId = e.target.closest("[data-new-cms-section]")?.dataset.newCmsSection;
+  const editCmsSectionId = e.target.closest("[data-edit-cms-section]")?.dataset.editCmsSection;
+  const toggleCmsSectionId = e.target.closest("[data-toggle-cms-section]")?.dataset.toggleCmsSection;
   if (loadMoreKey) loadMorePage(loadMoreKey);
+  if (editCmsPageId) editCmsPage(editCmsPageId);
+  if (newCmsSectionPageId) newCmsSection(newCmsSectionPageId);
+  if (editCmsSectionId) editCmsSection(editCmsSectionId);
+  if (toggleCmsSectionId) runAction(`toggleCmsSection:${toggleCmsSectionId}`, "toggleCmsSection", "Đang cập nhật...", () => toggleCmsSection(toggleCmsSectionId));
   if (channelQuick) {
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
     $("filterChannel").value = "";
@@ -7806,6 +8083,13 @@ on("saveCompanySettingsBtn", "click", () => runAction("saveCompanySettingsBtn", 
 on("resetCompanySettingsBtn", "click", resetCompanySettingsForm);
 ["companyName","companyLogoUrl","companyPhone","companyEmail","companyShowroomAddress","companyFacebookUrl","companyZaloUrl","companyBrandColor","companyDefaultNotice"].forEach(id => {
   on(id, "input", () => renderCompanySettingsPreview());
+});
+on("saveCmsPageBtn", "click", () => runAction("saveCmsPageBtn", "saveCmsPage", "Đang lưu...", saveCmsPage));
+on("saveCmsSectionBtn", "click", () => runAction("saveCmsSectionBtn", "saveCmsSection", "Đang lưu...", saveCmsSection));
+on("resetCmsFormBtn", "click", resetCmsForms);
+on("cmsPageSlug", "input", () => {
+  const value = normalizeCmsSlug($("cmsPageSlug").value);
+  if (!$("cmsSectionPage")?.value) $("cmsSectionPage").value = value;
 });
 on("filterChannel", "change", () => {
   activeChannelQuickFilter = "";
