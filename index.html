@@ -627,6 +627,72 @@
     </main>
   </section>
 
+  <section id="adminAppView" class="admin-app hide" inert aria-hidden="true">
+    <aside class="admin-sidebar">
+      <div class="admin-brand">
+        <span class="admin-brand-mark"></span>
+        <div>
+          <b>Kolorceramic CMS</b>
+          <small>Admin Panel</small>
+        </div>
+      </div>
+      <nav class="admin-menu" aria-label="Admin menu">
+        <button class="active" type="button" data-admin-section="dashboard">Tổng quan</button>
+        <button type="button" data-admin-section="content" disabled>CMS nội dung</button>
+        <button type="button" data-admin-section="products" disabled>Sản phẩm</button>
+        <button type="button" data-admin-section="media" disabled>Media</button>
+        <button type="button" data-admin-section="users" disabled>Người dùng</button>
+        <button type="button" data-admin-section="settings" disabled>Cấu hình</button>
+        <button type="button" data-admin-section="audit" disabled>Nhật ký</button>
+      </nav>
+      <div class="admin-sidebar-note">Giai đoạn 2 mới tạo khung riêng. Các module sẽ được nối Supabase theo từng giai đoạn sau.</div>
+    </aside>
+    <div class="admin-main">
+      <header class="admin-header">
+        <div>
+          <div class="admin-eyebrow">Khu quản trị hệ thống</div>
+          <h1>Admin Panel</h1>
+          <p>Quản trị nội dung, sản phẩm, media, người dùng và cấu hình công ty mà không cần chỉnh code.</p>
+        </div>
+        <div class="admin-header-actions">
+          <span id="adminUserText" class="admin-user-pill"></span>
+          <button id="adminBackToCrmBtn" class="small" type="button">Về CRM</button>
+          <button id="adminLogoutBtn" class="small danger" type="button">Đăng xuất</button>
+        </div>
+      </header>
+
+      <main class="admin-content">
+        <section class="admin-panel">
+          <div class="admin-section-title">
+            <div>
+              <h2>Tổng quan hệ thống</h2>
+              <p>Dashboard riêng cho owner/admin. Đây là nền để tách admin khỏi giao diện làm việc hằng ngày.</p>
+            </div>
+            <span id="adminRouteGuardText" class="admin-status-pill">owner/admin only</span>
+          </div>
+          <div id="adminDashboardGrid" class="admin-dashboard-grid"></div>
+        </section>
+
+        <section class="admin-panel">
+          <div class="admin-section-title">
+            <div>
+              <h2>Module admin sẽ triển khai tiếp</h2>
+              <p>Các trang dưới đây đã có trong thiết kế menu, hiện đang khóa để tránh admin chỉnh nhầm khi chưa có database/RLS CMS.</p>
+            </div>
+          </div>
+          <div class="admin-module-grid">
+            <div><b>CMS nội dung</b><span>Trang chủ, banner, bộ sưu tập, dự án, tin tức, FAQ, footer.</span></div>
+            <div><b>Sản phẩm / mẫu gạch</b><span>Danh mục, sản phẩm, hình ảnh, ẩn/hiện, nổi bật, thứ tự.</span></div>
+            <div><b>Media</b><span>Upload và chọn ảnh cho banner, sản phẩm, dự án.</span></div>
+            <div><b>Người dùng</b><span>Danh sách user, role, khóa/mở, thông tin nhân viên.</span></div>
+            <div><b>Cấu hình công ty</b><span>Logo, hotline, email, showroom, mạng xã hội, màu thương hiệu.</span></div>
+            <div><b>Nhật ký hoạt động</b><span>Theo dõi ai sửa nội dung, sản phẩm, user và cấu hình.</span></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </section>
+
   <div id="drawerBackdrop" class="drawer-backdrop hide"></div>
   <aside id="drawer" class="drawer hide">
     <div class="drawer-head">

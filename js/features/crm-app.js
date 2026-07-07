@@ -107,7 +107,9 @@ const KPI_EVIDENCE_MAX_FILES = 6;
 const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
 
 const roleKey = () => clean(appUser?.role).toLowerCase();
+const isOwner = () => roleKey() === "owner";
 const isAdmin = () => roleKey() === "admin";
+const canAccessAdminPanel = () => isOwner() || isAdmin();
 const isManager = () => ["admin","manager","quanly","quản lý","quản lí"].includes(roleKey());
 const isSale = () => roleKey() === "sale";
 const canExportData = () => ["admin","manager","sale"].includes(roleKey()) || appUser?.canExport === true || String(appUser?.canExport || "").toLowerCase() === "true";
@@ -282,6 +284,17 @@ function renderPager(id, key, total, label="dòng") {
     <span>Đang hiển thị ${esc(shown)}/${esc(total)} ${esc(label)}</span>
     <button class="small" type="button" data-load-more="${esc(key)}">Hiển thị thêm</button>
   `;
+}
+
+function isAdminRoute() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  return path === "/admin";
+}
+
+function goToRoute(path) {
+  if (window.location.pathname === path) return showApp();
+  window.history.pushState({}, "", path);
+  showApp();
 }
 
 function loadMorePage(key) {
@@ -480,7 +493,7 @@ function hydrateSelects() {
     $("trashPanel").classList.add("hide");
     $("proHealthPanel").classList.add("hide");
     $("auditPanel").classList.add("hide");
-    $("adminViewBtn")?.classList.add("hide");
+    $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
     $("reportsViewBtn")?.classList.add("hide");
   } else {
     $("owner").disabled = false;
@@ -489,20 +502,20 @@ function hydrateSelects() {
     $("orderFilterOwner").disabled = false;
     $("exportBtn").classList.remove("hide");
     $("deleteCustomerBtn").classList.remove("hide");
-    $("seedBtn").classList.toggle("hide", !isAdmin());
-    $("syncPhoneBtn").classList.toggle("hide", !isAdmin());
-    $("syncOwnerBtn").classList.toggle("hide", !isAdmin());
-    $("importBtn").classList.toggle("hide", !isAdmin());
+    $("seedBtn").classList.toggle("hide", !canAccessAdminPanel());
+    $("syncPhoneBtn").classList.toggle("hide", !canAccessAdminPanel());
+    $("syncOwnerBtn").classList.toggle("hide", !canAccessAdminPanel());
+    $("importBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("importProductsBtn")?.classList.toggle("hide", !isManager());
     $("kpiRulePanel").classList.remove("hide");
     $("kpiApprovalPanel").classList.remove("hide");
-    $("careSettingsPanel").classList.toggle("hide", !isAdmin());
-    $("dropdownSettingsPanel").classList.toggle("hide", !isAdmin());
-    $("proHealthPanel").classList.toggle("hide", !isAdmin());
-    $("auditPanel").classList.toggle("hide", !isAdmin());
-    $("userAdminPanel").classList.toggle("hide", !isAdmin());
-    $("trashPanel").classList.toggle("hide", !isAdmin());
-    $("adminViewBtn")?.classList.toggle("hide", !isAdmin());
+    $("careSettingsPanel").classList.toggle("hide", !canAccessAdminPanel());
+    $("dropdownSettingsPanel").classList.toggle("hide", !canAccessAdminPanel());
+    $("proHealthPanel").classList.toggle("hide", !canAccessAdminPanel());
+    $("auditPanel").classList.toggle("hide", !canAccessAdminPanel());
+    $("userAdminPanel").classList.toggle("hide", !canAccessAdminPanel());
+    $("trashPanel").classList.toggle("hide", !canAccessAdminPanel());
+    $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
     $("reportsViewBtn")?.classList.remove("hide");
   }
 }
@@ -2025,7 +2038,7 @@ function renderCrmView() {
 function setMainView(view) {
   activeMainView = ["customers","kpi","orders","products","quotes","reports","admin"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
-  if (activeMainView === "admin" && !isAdmin()) activeMainView = "crm";
+  if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
   const isCustomerView = activeMainView === "customers";
   const isKpiView = activeMainView === "kpi";
   const isOrdersView = activeMainView === "orders";
@@ -2043,13 +2056,13 @@ function setMainView(view) {
   }
   adminViewIds.forEach(id => $(id)?.classList.add("hide"));
   if (isAdminView) {
-    $("careSettingsPanel")?.classList.toggle("hide", !isAdmin());
-    $("proHealthPanel")?.classList.toggle("hide", !isAdmin());
-    $("dataSafetyPanel")?.classList.toggle("hide", !isAdmin());
-    $("auditPanel")?.classList.toggle("hide", !isAdmin());
-    $("dropdownSettingsPanel")?.classList.toggle("hide", !isAdmin());
-    $("userAdminPanel")?.classList.toggle("hide", !isAdmin());
-    $("trashPanel")?.classList.toggle("hide", !isAdmin());
+    $("careSettingsPanel")?.classList.toggle("hide", !canAccessAdminPanel());
+    $("proHealthPanel")?.classList.toggle("hide", !canAccessAdminPanel());
+    $("dataSafetyPanel")?.classList.toggle("hide", !canAccessAdminPanel());
+    $("auditPanel")?.classList.toggle("hide", !canAccessAdminPanel());
+    $("dropdownSettingsPanel")?.classList.toggle("hide", !canAccessAdminPanel());
+    $("userAdminPanel")?.classList.toggle("hide", !canAccessAdminPanel());
+    $("trashPanel")?.classList.toggle("hide", !canAccessAdminPanel());
   }
   customerViewIds.forEach(id => $(id)?.classList.toggle("hide", !isCustomerView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isOrdersView || isProductsView || isQuotesView || isReportsView || isAdminView);
@@ -2060,7 +2073,7 @@ function setMainView(view) {
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   quotesViewIds.forEach(id => $(id)?.classList.toggle("hide", !isQuotesView));
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
-  $("adminViewBtn")?.classList.toggle("hide", !isAdmin());
+  $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
   $("crmViewBtn")?.classList.toggle("primary", !isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isQuotesView && !isReportsView && !isAdminView);
   $("customersViewBtn")?.classList.toggle("primary", isCustomerView);
@@ -4607,6 +4620,12 @@ async function deleteUserAdmin(uid) {
 }
 
 function renderAll() {
+  const adminVisible = $("adminAppView") && !$("adminAppView").classList.contains("hide");
+  if (adminVisible) {
+    renderAdminDashboard();
+    dirtyCollections.clear();
+    return;
+  }
   if (!$("appView") || $("appView").classList.contains("hide")) return;
   const shouldRenderView = activeViewNeedsRender();
   if (hasDirty("customers", "settings")) renderTodayCare();
@@ -7352,18 +7371,63 @@ function setViewHidden(id, hidden) {
   else el.removeAttribute("aria-hidden");
 }
 
+function renderAdminDashboard() {
+  if (!$("adminDashboardGrid")) return;
+  const managedCustomers = allCustomers.length ? allCustomers : customers;
+  const activeProducts = products.filter(p => p.active !== false && !p.isDeleted).length;
+  const newOrders = deals.filter(d => !d.isDeleted && isActiveDeal(d)).length;
+  const dueCare = managedCustomers.filter(c => !c.isDeleted && isCareDue(c)).length;
+  const activeUsers = users.filter(u => u.active !== false).length;
+  const warnings = [
+    managedCustomers.filter(c => !clean(c.ownerEmail) && !clean(c.owner)).length ? "Có khách thiếu phụ trách" : "",
+    dueCare ? "Có khách cần chăm sóc" : "",
+    auditLogs.length ? "" : "Chưa tải được audit log"
+  ].filter(Boolean);
+  const cards = [
+    ["Tổng khách hàng", managedCustomers.filter(c => !c.isDeleted).length, "Dữ liệu khách đang quản lý"],
+    ["Đơn hàng mới", newOrders, "Deal/đơn đang xử lý"],
+    ["Khách cần chăm", dueCare, "Theo logic hẹn chăm hiện tại", dueCare ? "warn" : ""],
+    ["Sản phẩm hiển thị", activeProducts, "Sản phẩm active"],
+    ["User hoạt động", activeUsers, "Tài khoản active"],
+    ["Cảnh báo", warnings.length, warnings.join(" · ") || "Chưa có cảnh báo nổi bật", warnings.length ? "warn" : ""]
+  ];
+  $("adminDashboardGrid").innerHTML = cards.map(([label, value, note, cls]) => `
+    <div class="admin-dashboard-card ${esc(cls || "")}">
+      <span>${esc(label)}</span>
+      <b>${esc(value)}</b>
+      <div class="muted">${esc(note)}</div>
+    </div>
+  `).join("");
+  if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
+}
+
 function showLogin() {
   stopPresence();
   stopWatchers();
   setViewHidden("loginView", false);
   setViewHidden("appView", true);
+  setViewHidden("adminAppView", true);
   $("onlinePanel").classList.add("hide");
   if (location.protocol === "file:") $("localWarning").classList.remove("hide");
 }
 
 function showApp() {
+  if (isAdminRoute()) {
+    if (!canAccessAdminPanel()) {
+      window.history.replaceState({}, "", "/");
+      showApp();
+      notice("Bạn không có quyền vào khu vực admin.", true);
+      return;
+    }
+    setViewHidden("loginView", true);
+    setViewHidden("appView", true);
+    setViewHidden("adminAppView", false);
+    renderAdminDashboard();
+    return;
+  }
   setViewHidden("loginView", true);
   setViewHidden("appView", false);
+  setViewHidden("adminAppView", true);
   $("onlinePanel").classList.toggle("hide", !isAdmin());
   $("userText").textContent = currentUser.email || currentUser.displayName || "";
   $("roleText").textContent = `Vai trò: ${appUser.role || "sale"} · Tên hiển thị: ${ownerName()}`;
@@ -7606,7 +7670,12 @@ on("productsViewBtn", "click", () => setMainView("products"));
 on("quotesViewBtn", "click", () => setMainView("quotes"));
 on("kpiViewBtn", "click", () => setMainView("kpi"));
 on("reportsViewBtn", "click", () => setMainView("reports"));
-on("adminViewBtn", "click", () => setMainView("admin"));
+on("adminViewBtn", "click", () => goToRoute("/admin"));
+on("adminBackToCrmBtn", "click", () => goToRoute("/"));
+on("adminLogoutBtn", "click", async () => {
+  try { await updatePresence(false); } catch {}
+  await signOut(auth);
+});
 ["orderFilterYear","orderFilterMonth","orderFilterOwner","orderFilterStatus"].forEach(id => on(id, "change", renderOrders));
 on("resetOrderFilterBtn", "click", resetOrderFilters);
 on("savePaymentBtn", "click", () => runAction("savePaymentBtn", "savePayment", "Đang lưu...", savePayment));
@@ -7716,6 +7785,10 @@ on("cancelCustomerInfoBtn", "click", () => toggleCustomerInfoEdit(false));
 on("saveCustomerInfoBtn", "click", () => runAction("saveCustomerInfoBtn", "saveCustomerInfo", "Đang lưu...", saveCustomerInfo));
 on("deleteCustomerBtn", "click", () => runAction("deleteCustomerBtn", "deleteCustomer", "Đang xóa...", deleteCustomer));
 window.addEventListener("resize", scheduleRenderChart);
+window.addEventListener("popstate", () => {
+  if (currentUser && appUser) showApp();
+  else showLogin();
+});
 on("channelReportRange", "change", () => {
   updateChannelReportCustomControls();
   scheduleRenderChart();
