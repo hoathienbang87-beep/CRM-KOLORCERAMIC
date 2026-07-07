@@ -77,7 +77,13 @@
       </aside>
 
       <section>
-        <div id="viewTabsSlot"></div>
+        <div id="viewTabsSlot" class="view-tabs">
+          <button id="crmViewBtn" class="primary" type="button">CRM</button>
+          <button id="customersViewBtn" type="button">Khách hàng</button>
+          <button id="kpiViewBtn" type="button">KPI</button>
+          <button id="reportsViewBtn" type="button">Báo cáo</button>
+          <button id="adminViewBtn" type="button">Quản trị</button>
+        </div>
 
         <div id="executiveDashboard" class="panel manager-only hide" style="margin-bottom:14px">
           <div class="pro-section-title">
@@ -280,36 +286,6 @@
           <div class="actions">
             <button id="reportExportManagementBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
             <button id="reportExportKpiBtn" class="small primary" type="button">Xuất KPI</button>
-            <button id="reportExportOrdersBtn" class="small primary" type="button">Xuất đơn hàng</button>
-            <button id="reportExportErpBtn" class="small primary" type="button">Xuất ERP mini</button>
-          </div>
-          <div class="section erp-report-section" style="margin-top:14px">
-            <div class="pro-section-title">
-              <h3>Báo cáo ERP mini</h3>
-              <span id="erpReportRangeText" class="muted"></span>
-            </div>
-            <div class="toolbar erp-report-toolbar">
-              <div><label>Tháng</label><input id="erpReportMonth" type="month"></div>
-              <div><label>Nhân viên</label><select id="erpReportOwner"></select></div>
-              <div class="toolbar-actions"><button id="resetErpReportFilterBtn" type="button">Xóa lọc</button></div>
-            </div>
-            <div id="erpReportGrid" class="executive-grid order-summary-grid"></div>
-            <div class="erp-report-grid">
-              <div class="section erp-report-card">
-                <div class="pro-section-title">
-                  <h3>Sản phẩm bán chạy</h3>
-                  <span id="topProductSummary" class="muted"></span>
-                </div>
-                <div id="topProductTable" class="table-wrap"></div>
-              </div>
-              <div class="section erp-report-card">
-                <div class="pro-section-title">
-                  <h3>Cảnh báo vận hành</h3>
-                  <span id="erpRiskSummary" class="muted"></span>
-                </div>
-                <div id="erpRiskList" class="detail-list"></div>
-              </div>
-            </div>
           </div>
           <div class="section" style="margin-top:14px">
             <div class="pro-section-title">
@@ -419,7 +395,7 @@
             <div class="toolbar-search"><label>Tìm kiếm</label><input id="searchBox" placeholder="Tên, SĐT, địa chỉ, ghi chú..."></div>
             <div><label>Nhân viên</label><select id="filterOwner"></select></div>
             <div><label>Trạng thái</label><select id="filterStatus"></select></div>
-            <div><label>Đơn hàng</label><select id="filterDealStatus"></select></div>
+            <div><label>Mua căn bản</label><select id="filterDealStatus"></select></div>
             <div><label>Tình trạng chăm</label><select id="filterFollow"></select></div>
             <select id="filterSource" class="hide"></select>
             <div><label>Kênh chi tiết</label><select id="filterChannel"></select></div>
@@ -455,7 +431,7 @@
               <thead>
                 <tr>
                   <th>Khách hàng</th><th>SĐT</th><th>Ngày tạo</th><th class="source-col">Kênh chi tiết</th><th>Phụ trách</th>
-                  <th>Trạng thái</th><th>Tình trạng chăm</th><th>Đơn hàng</th><th>Hẹn chăm</th><th class="note-col">Ghi chú</th><th class="action-col">Thao tác</th>
+                  <th>Trạng thái</th><th>Tình trạng chăm</th><th>Mua căn bản</th><th>Hẹn chăm</th><th class="note-col">Ghi chú</th><th class="action-col">Thao tác</th>
                 </tr>
               </thead>
               <tbody id="customerRows"></tbody>
@@ -621,27 +597,24 @@
       <div class="admin-brand">
         <span class="admin-brand-mark"></span>
         <div>
-          <b>Kolorceramic CMS</b>
-          <small>Admin Panel</small>
+          <b>Kolorceramic CRM</b>
+          <small>Quản trị CRM</small>
         </div>
       </div>
       <nav class="admin-menu" aria-label="Admin menu">
         <button class="active" type="button" data-admin-route="/admin">Tổng quan</button>
-        <button type="button" data-admin-route="/admin/content">CMS nội dung</button>
-        <button type="button" data-admin-route="/admin/products">Sản phẩm</button>
-        <button type="button" data-admin-route="/admin/media">Media</button>
         <button type="button" data-admin-route="/admin/users">Người dùng</button>
         <button type="button" data-admin-route="/admin/settings">Cấu hình</button>
         <button type="button" data-admin-route="/admin/audit-logs">Nhật ký</button>
       </nav>
-      <div class="admin-sidebar-note">Giai đoạn 3 mới tạo trang rỗng. Các module sẽ được nối Supabase theo từng giai đoạn sau.</div>
+      <div class="admin-sidebar-note">Khu quản trị chỉ phục vụ CRM: nhân viên, danh mục, cấu hình chăm sóc và nhật ký hoạt động.</div>
     </aside>
     <div class="admin-main">
       <header class="admin-header">
         <div>
-          <div class="admin-eyebrow">Khu quản trị hệ thống</div>
-          <h1>Admin Panel</h1>
-          <p>Quản trị nội dung, sản phẩm, media, người dùng và cấu hình công ty mà không cần chỉnh code.</p>
+          <div class="admin-eyebrow">Khu quản trị CRM</div>
+          <h1>Quản trị CRM</h1>
+          <p>Quản trị nhân viên, danh mục chăm sóc khách hàng, cấu hình công ty và nhật ký thao tác.</p>
         </div>
         <div class="admin-header-actions">
           <span id="adminUserText" class="admin-user-pill"></span>
@@ -661,86 +634,6 @@
               <span id="adminRouteGuardText" class="admin-status-pill">owner/admin only</span>
             </div>
             <div id="adminDashboardGrid" class="admin-dashboard-grid"></div>
-          </div>
-        </section>
-
-        <section id="adminContentPage" class="admin-page admin-panel hide" data-admin-page="content">
-          <div class="admin-section-title">
-            <div>
-              <h2>CMS nội dung</h2>
-              <p>Quản lý các phần nội dung website bằng form an toàn, không chỉnh code.</p>
-            </div>
-            <div class="admin-header-actions">
-              <button id="resetCmsFormBtn" type="button">Xóa form</button>
-              <button id="saveCmsPageBtn" type="button">Lưu trang</button>
-              <button id="saveCmsSectionBtn" class="primary" type="button">Lưu section</button>
-            </div>
-          </div>
-          <div class="cms-admin-grid">
-            <div class="cms-editor-card">
-              <h3>Trang website</h3>
-              <div class="settings-grid">
-                <div class="field"><label>Slug trang</label><input id="cmsPageSlug" placeholder="home"></div>
-                <div class="field"><label>Tiêu đề trang</label><input id="cmsPageTitle" placeholder="Trang chủ"></div>
-                <div class="field"><label>Trạng thái</label><select id="cmsPageStatus"><option value="draft">Nháp</option><option value="published">Đang hiển thị</option><option value="hidden">Ẩn</option></select></div>
-                <div class="field"><label>Thứ tự</label><input id="cmsPageSortOrder" type="number" value="0"></div>
-                <div class="field settings-wide"><label>Mô tả SEO / ghi chú</label><textarea id="cmsPageDescription" placeholder="Mô tả ngắn cho trang"></textarea></div>
-              </div>
-              <div class="table-wrap compact-table">
-                <table class="admin-table">
-                  <thead><tr><th>Trang</th><th>Trạng thái</th><th>Section</th><th>Thao tác</th></tr></thead>
-                  <tbody id="cmsPageRows"></tbody>
-                </table>
-              </div>
-            </div>
-            <div class="cms-editor-card">
-              <h3>Section nội dung</h3>
-              <div class="settings-grid">
-                <div class="field"><label>Thuộc trang</label><select id="cmsSectionPage"></select></div>
-                <div class="field"><label>Key section</label><input id="cmsSectionKey" placeholder="hero"></div>
-                <div class="field"><label>Loại section</label><select id="cmsSectionType"><option value="hero">Hero/Banner</option><option value="intro">Giới thiệu</option><option value="collection">Bộ sưu tập</option><option value="project">Dự án</option><option value="news">Tin tức</option><option value="faq">FAQ</option><option value="footer">Footer</option><option value="content">Nội dung khác</option></select></div>
-                <div class="field"><label>Thứ tự</label><input id="cmsSectionSortOrder" type="number" value="0"></div>
-                <div class="field"><label>Hiển thị</label><select id="cmsSectionVisible"><option value="true">Hiển thị</option><option value="false">Ẩn</option></select></div>
-                <div class="field"><label>Tiêu đề</label><input id="cmsSectionTitle" placeholder="Tiêu đề section"></div>
-                <div class="field settings-wide"><label>Tiêu đề phụ</label><textarea id="cmsSectionSubtitle" placeholder="Dòng mô tả ngắn"></textarea></div>
-                <div class="field settings-wide"><label>Nội dung</label><textarea id="cmsSectionBody" placeholder="Nội dung chính, mỗi ý có thể xuống dòng"></textarea></div>
-                <div class="field settings-wide"><label>Ảnh URL</label><input id="cmsSectionImageUrl" placeholder="https://..."></div>
-                <div class="field"><label>Nút CTA</label><input id="cmsSectionCtaLabel" placeholder="Xem thêm"></div>
-                <div class="field"><label>Link CTA</label><input id="cmsSectionCtaUrl" placeholder="/collections"></div>
-              </div>
-              <div class="table-wrap compact-table">
-                <table class="admin-table">
-                  <thead><tr><th>Section</th><th>Trang</th><th>Hiển thị</th><th>Thao tác</th></tr></thead>
-                  <tbody id="cmsSectionRows"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="adminProductsPage" class="admin-page admin-panel hide" data-admin-page="products">
-          <div class="admin-section-title">
-            <div>
-              <h2>Sản phẩm / mẫu gạch</h2>
-              <p>Quản lý danh mục, sản phẩm, hình ảnh, trạng thái hiển thị và thứ tự xuất hiện.</p>
-            </div>
-          </div>
-          <div class="admin-empty-state">
-            <b>Trang sản phẩm admin đã sẵn sàng khung.</b>
-            <span>Giai đoạn sau sẽ tách rõ sản phẩm website/CMS với dữ liệu sản phẩm nội bộ nếu cần.</span>
-          </div>
-        </section>
-
-        <section id="adminMediaPage" class="admin-page admin-panel hide" data-admin-page="media">
-          <div class="admin-section-title">
-            <div>
-              <h2>Media</h2>
-              <p>Quản lý ảnh cho banner, sản phẩm, dự án và các nội dung website.</p>
-            </div>
-          </div>
-          <div class="admin-empty-state">
-            <b>Trang media đã sẵn sàng khung.</b>
-            <span>Giai đoạn sau sẽ cần Supabase Storage bucket/policy riêng cho ảnh CMS, không dùng thư mục code.</span>
           </div>
         </section>
 
@@ -816,17 +709,15 @@
         <section class="admin-panel">
           <div class="admin-section-title">
             <div>
-              <h2>Module admin sẽ triển khai tiếp</h2>
-              <p>Các trang đã có route riêng, hiện là khung rỗng để tránh admin chỉnh nhầm khi chưa có database/RLS CMS.</p>
+              <h2>Phạm vi quản trị CRM</h2>
+              <p>Khu này chỉ giữ các phần cần cho vận hành CRM thuần, không quản lý website, sản phẩm, kho hoặc đơn hàng chi tiết.</p>
             </div>
           </div>
           <div class="admin-module-grid">
-            <div><b>CMS nội dung</b><span>Trang chủ, banner, bộ sưu tập, dự án, tin tức, FAQ, footer.</span></div>
-            <div><b>Sản phẩm / mẫu gạch</b><span>Danh mục, sản phẩm, hình ảnh, ẩn/hiện, nổi bật, thứ tự.</span></div>
-            <div><b>Media</b><span>Upload và chọn ảnh cho banner, sản phẩm, dự án.</span></div>
-            <div><b>Người dùng</b><span>Danh sách user, role, khóa/mở, thông tin nhân viên.</span></div>
-            <div><b>Cấu hình công ty</b><span>Logo, hotline, email, showroom, mạng xã hội, màu thương hiệu.</span></div>
-            <div><b>Nhật ký hoạt động</b><span>Theo dõi ai sửa nội dung, sản phẩm, user và cấu hình.</span></div>
+            <div><b>Người dùng</b><span>Danh sách user, role, khóa/mở và thông tin nhân viên sale.</span></div>
+            <div><b>Danh mục CRM</b><span>Kênh chi tiết, trạng thái chăm, kết quả chăm và cấu hình cảnh báo.</span></div>
+            <div><b>Cấu hình công ty</b><span>Thông tin liên hệ cơ bản dùng trong CRM.</span></div>
+            <div><b>Nhật ký hoạt động</b><span>Theo dõi thao tác quan trọng về khách hàng, chăm sóc, KPI và user.</span></div>
           </div>
         </section>
       </main>
@@ -906,41 +797,41 @@
     </section>
 
     <section id="dealSection" class="section">
-      <h3>Đơn hàng</h3>
+      <h3>Ghi nhận mua căn bản</h3>
       <div class="grid2">
         <div class="field"><label>Tên KH</label><input id="dealCustomerName"></div>
         <div class="field"><label>SĐT</label><input id="dealCustomerPhone"></div>
       </div>
-      <div class="field"><label>Địa chỉ giao hàng</label><textarea id="dealDeliveryAddress"></textarea></div>
-      <div class="field"><label>Mã số thuế</label><input id="dealTaxCode"></div>
+      <div class="field hide"><label>Địa chỉ giao hàng</label><textarea id="dealDeliveryAddress"></textarea></div>
+      <div class="field hide"><label>Mã số thuế</label><input id="dealTaxCode"></div>
       <div class="grid2">
-        <div class="field"><label>Tình trạng đơn</label><select id="dealStatus"></select></div>
+        <div class="field"><label>Tình trạng mua</label><select id="dealStatus"></select></div>
         <div class="field"><label>Đã cọc (%)</label><input id="dealDepositPercent" type="number" min="0" max="100" step="0.1"></div>
-        <div class="field"><label>Giá trị đơn (VNĐ)</label><input id="dealAmount" type="number" min="0" step="1000" placeholder="VD: 25000000"></div>
+        <div class="field"><label>Giá trị mua căn bản (VNĐ)</label><input id="dealAmount" type="number" min="0" step="1000" placeholder="VD: 25000000"></div>
         <div class="field"><label>Ngày cọc</label><input id="dealDate" type="date"></div>
-        <div class="field"><label>Ngày giao</label><input id="dealDeliveryDate" type="date"></div>
+        <div class="field hide"><label>Ngày giao</label><input id="dealDeliveryDate" type="date"></div>
       </div>
       <div class="actions" style="justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">Sản phẩm</label>
-        <button id="addDealItemBtn" class="small" type="button">Add SP</button>
+        <label style="margin:0">Nội dung mua căn bản</label>
+        <button id="addDealItemBtn" class="small" type="button">Thêm dòng</button>
       </div>
       <datalist id="productOptions"></datalist>
       <div id="dealItems"></div>
       <div class="field"><label>Ghi chú</label><textarea id="dealNote"></textarea></div>
       <div class="grid3">
-        <button id="saveDealBtn" class="primary">Tạo đơn</button>
+        <button id="saveDealBtn" class="primary">Lưu mua căn bản</button>
         <button id="cancelEditDealBtn" type="button" class="hide">Hủy sửa</button>
-        <button id="showPendingDealsBtn" type="button">Đang xử lý</button>
-        <button id="showCompletedDealsBtn" type="button">Đã hoàn thành</button>
+        <button id="showPendingDealsBtn" type="button">Đang chăm</button>
+        <button id="showCompletedDealsBtn" type="button">Đã mua</button>
       </div>
     </section>
 
     <section id="dealListSection" class="section hide">
       <div class="actions" style="justify-content:space-between;margin-bottom:10px">
-        <h3 id="dealListTitle" style="margin:0">Đơn hàng</h3>
+        <h3 id="dealListTitle" style="margin:0">Mua căn bản</h3>
         <button id="closeDealListBtn" class="small" type="button">Đóng</button>
       </div>
-      <div id="dealListContent" class="muted">Chưa có đơn hàng.</div>
+      <div id="dealListContent" class="muted">Chưa có dữ liệu mua căn bản.</div>
     </section>
 
     <section id="logHistorySection" class="section hide">

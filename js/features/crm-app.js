@@ -260,23 +260,17 @@ function withActionTimeout(promise, label, ms=45000) {
 
 const dirtyCollections = new Set();
 const adminRoutes = {
-  "/admin": {key:"dashboard", title:"Admin Panel", subtitle:"Quản trị nội dung, sản phẩm, media, người dùng và cấu hình công ty mà không cần chỉnh code."},
-  "/admin/content": {key:"content", title:"CMS nội dung", subtitle:"Quản lý các phần hiển thị trên website bằng form an toàn."},
-  "/admin/products": {key:"products", title:"Sản phẩm / mẫu gạch", subtitle:"Quản lý danh mục, mẫu gạch, ảnh, trạng thái hiển thị và thứ tự."},
-  "/admin/media": {key:"media", title:"Media", subtitle:"Quản lý ảnh cho banner, sản phẩm, dự án và nội dung website."},
+  "/admin": {key:"dashboard", title:"Quản trị CRM", subtitle:"Quản trị người dùng, danh mục CRM, chăm sóc khách hàng và dữ liệu vận hành."},
   "/admin/users": {key:"users", title:"Người dùng", subtitle:"Quản lý tài khoản, role, khóa/mở và thông tin nhân viên."},
   "/admin/settings": {key:"settings", title:"Cấu hình công ty", subtitle:"Quản lý logo, hotline, email, showroom, mạng xã hội và thương hiệu."},
-  "/admin/audit-logs": {key:"audit-logs", title:"Nhật ký hoạt động", subtitle:"Theo dõi các thay đổi nội dung, sản phẩm, user và cấu hình."}
+  "/admin/audit-logs": {key:"audit-logs", title:"Nhật ký hoạt động", subtitle:"Theo dõi các thay đổi khách hàng, chăm sóc, KPI, user và cấu hình."}
 };
 const viewDependencies = {
   crm: ["customers", "careLogs", "deals", "settings"],
-  customers: ["customers", "careLogs", "deals", "orderItems", "payments", "settings", "users"],
+  customers: ["customers", "careLogs", "deals", "settings", "users"],
   kpi: ["customers", "kpiRules", "kpiProposals", "settings", "users"],
-  orders: ["customers", "deals", "orderItems", "payments", "products", "settings", "users"],
-  products: ["products", "inventoryMovements", "settings"],
-  quotes: ["customers", "quotes", "quoteItems", "products", "settings", "users"],
-  reports: ["customers", "careLogs", "deals", "quotes", "quoteItems", "orderItems", "payments", "inventoryMovements", "products", "auditLogs", "settings", "users"],
-  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "websitePages", "websiteSections"]
+  reports: ["customers", "careLogs", "deals", "kpiProposals", "auditLogs", "settings", "users"],
+  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings"]
 };
 const scheduleRenderAll = debounce(() => renderAll(), 180);
 const scheduleRenderChart = debounce(() => requestChartRender(), 180);
@@ -287,7 +281,7 @@ function markDirty(...names) {
 }
 
 function activeViewKey() {
-  return ["customers","kpi","orders","products","quotes","reports","admin"].includes(activeMainView) ? activeMainView : "crm";
+  return ["customers","kpi","reports","admin"].includes(activeMainView) ? activeMainView : "crm";
 }
 
 function activeViewNeedsRender() {
@@ -503,7 +497,7 @@ function hydrateSelects() {
   fillSelect("dealStatus", settings.dealStatuses);
   fillSelect("filterOwner", ownerOptions(), "", "Tất cả nhân viên");
   fillSelect("filterStatus", [...settings.statuses, {value:"__NO_PHONE__", label:"KH không SĐT"}], "", "Tất cả trạng thái");
-  fillSelect("filterDealStatus", settings.dealStatuses, "", "Tất cả đơn hàng");
+  fillSelect("filterDealStatus", settings.dealStatuses, "", "Tất cả trạng thái mua");
   fillSelect("filterFollow", settings.follows, "", "Tất cả tình trạng");
   fillSelect("filterSource", settings.sources, "", "Tất cả nguồn");
   hydrateFilterChannelOptions();
@@ -2226,16 +2220,6 @@ function watchData() {
       if (isAdminRoute()) renderCompanySettingsForm();
       markDirty("companySettings");
     }, err => notice("Lỗi tải cấu hình công ty: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "websitePages"), snap => {
-      websitePages = snap.docs.map(d => normalizeCmsPage({id:d.id, ...d.data()}));
-      if (isAdminRoute()) renderCmsAdmin();
-      markDirty("websitePages");
-    }, err => notice("Lỗi tải trang CMS: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "websiteSections"), snap => {
-      websiteSections = snap.docs.map(d => normalizeCmsSection({id:d.id, ...d.data()}));
-      if (isAdminRoute()) renderCmsAdmin();
-      markDirty("websiteSections");
-    }, err => notice("Lỗi tải section CMS: " + authMessage(err), true)));
   }
 
   unsubscribers.push(onSnapshot(collection(db, "kpiRules"), snap => {
@@ -2244,21 +2228,10 @@ function watchData() {
     markDirty("kpiRules");
   }, err => notice("Lỗi tải KPI: " + authMessage(err), true)));
 
-  unsubscribers.push(onSnapshot(collection(db, "products"), snap => {
-    applySnap("products", snap, true);
-    hydrateProductFilters();
-    renderProductOptions();
-  }, err => notice("Lỗi tải sản phẩm: " + authMessage(err), true)));
-
   if (isManager()) {
     unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "payments"), snap => applySnap("payments", snap, false), err => notice("Lỗi tải thanh toán: " + authMessage(err), true)));
-    unsubscribers.push(onSnapshot(collection(db, "inventoryMovements"), snap => applySnap("inventoryMovements", snap, false), err => notice("Lỗi tải kho: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải dữ liệu mua căn bản: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "auditLogs"), snap => {
       auditLogs = snap.docs.map(d => ({id:d.id, ...d.data()})).sort(byDateDesc);
@@ -2281,12 +2254,7 @@ function watchData() {
 
   unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm được cấp quyền: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải đơn hàng được cấp quyền: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(collection(db, "quotes"), snap => applySnap("quotes", snap, true), err => notice("Lỗi tải báo giá được cấp quyền: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(collection(db, "quoteItems"), snap => applySnap("quoteItems", snap, false), err => notice("Lỗi tải dòng báo giá được cấp quyền: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(collection(db, "orderItems"), snap => applySnap("orderItems", snap, false), err => notice("Lỗi tải dòng đơn hàng được cấp quyền: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(collection(db, "payments"), snap => applySnap("payments", snap, false), err => notice("Lỗi tải thanh toán được cấp quyền: " + authMessage(err), true)));
-  unsubscribers.push(onSnapshot(collection(db, "inventoryMovements"), snap => applySnap("inventoryMovements", snap, false), err => notice("Lỗi tải kho được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải dữ liệu mua căn bản được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI của bạn: " + authMessage(err), true)));
 }
 
@@ -2418,9 +2386,6 @@ const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel"];
 const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
 const customerViewIds = ["customerSearchPanel"];
 const kpiViewIds = ["kpiSummaryPanel","kpiRulePanel","kpiApprovalPanel"];
-const ordersViewIds = ["ordersPanel"];
-const productsViewIds = ["productsPanel"];
-const quotesViewIds = ["quotesPanel"];
 const reportsViewIds = ["reportsPanel"];
 
 function renderCrmView() {
@@ -2432,20 +2397,17 @@ function renderCrmView() {
 }
 
 function setMainView(view) {
-  activeMainView = ["customers","kpi","orders","products","quotes","reports","admin"].includes(view) ? view : "crm";
+  activeMainView = ["customers","kpi","reports","admin"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
   const isCustomerView = activeMainView === "customers";
   const isKpiView = activeMainView === "kpi";
-  const isOrdersView = activeMainView === "orders";
-  const isProductsView = activeMainView === "products";
-  const isQuotesView = activeMainView === "quotes";
   const isReportsView = activeMainView === "reports";
   const isAdminView = activeMainView === "admin";
   crmViewIds.forEach(id => {
-    if (isCustomerView || isKpiView || isOrdersView || isProductsView || isQuotesView || isReportsView || isAdminView) $(id)?.classList.add("hide");
+    if (isCustomerView || isKpiView || isReportsView || isAdminView) $(id)?.classList.add("hide");
   });
-  if (!isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isQuotesView && !isReportsView && !isAdminView) {
+  if (!isCustomerView && !isKpiView && !isReportsView && !isAdminView) {
     $("needCarePanel")?.classList.remove("hide");
     $("executiveDashboard")?.classList.toggle("hide", !isManager());
     $("pipelinePanel")?.classList.toggle("hide", !isManager());
@@ -2461,25 +2423,20 @@ function setMainView(view) {
     $("trashPanel")?.classList.toggle("hide", !canAccessAdminPanel());
   }
   customerViewIds.forEach(id => $(id)?.classList.toggle("hide", !isCustomerView));
-  document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isOrdersView || isProductsView || isQuotesView || isReportsView || isAdminView);
+  document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isReportsView || isAdminView);
   $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView);
   $("kpiRulePanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpiApprovalPanel")?.classList.toggle("hide", !isKpiView || !isManager());
-  ordersViewIds.forEach(id => $(id)?.classList.toggle("hide", !isOrdersView));
-  productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
-  quotesViewIds.forEach(id => $(id)?.classList.toggle("hide", !isQuotesView));
+  ["ordersPanel","productsPanel","quotesPanel"].forEach(id => $(id)?.classList.add("hide"));
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
   $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
-  $("crmViewBtn")?.classList.toggle("primary", !isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isQuotesView && !isReportsView && !isAdminView);
+  $("crmViewBtn")?.classList.toggle("primary", !isCustomerView && !isKpiView && !isReportsView && !isAdminView);
   $("customersViewBtn")?.classList.toggle("primary", isCustomerView);
-  $("ordersViewBtn")?.classList.toggle("primary", isOrdersView);
-  $("productsViewBtn")?.classList.toggle("primary", isProductsView);
-  $("quotesViewBtn")?.classList.toggle("primary", isQuotesView);
   $("kpiViewBtn")?.classList.toggle("primary", isKpiView);
   $("reportsViewBtn")?.classList.toggle("primary", isReportsView);
   $("adminViewBtn")?.classList.toggle("primary", isAdminView);
-  if (!isCustomerView && !isKpiView && !isOrdersView && !isProductsView && !isQuotesView && !isReportsView && !isAdminView) renderCrmView();
+  if (!isCustomerView && !isKpiView && !isReportsView && !isAdminView) renderCrmView();
   if (isCustomerView) renderCustomers();
   if (isKpiView) {
     renderKpiTable();
@@ -2487,9 +2444,6 @@ function setMainView(view) {
     renderKpiRuleList();
     renderKpiApprovalPanel();
   }
-  if (isOrdersView) renderOrders();
-  if (isProductsView) renderProducts();
-  if (isQuotesView) renderQuotes();
   if (isReportsView) renderReportCenter();
   if (isAdminView) {
     renderHealthCheck();
@@ -3460,8 +3414,7 @@ function renderCustomers() {
       <td class="note-col">${esc(c.note || "")}</td>
       <td class="action-col"><div class="row-actions">
         <button class="small primary" data-open-care="${esc(c.id)}">Chăm sóc KH</button>
-        <button class="small" data-open-deal="${esc(c.id)}">Đơn hàng</button>
-        <button class="small" data-open-template="${esc(c.id)}">Báo giá/Đề xuất</button>
+        <button class="small" data-open-deal="${esc(c.id)}">Mua căn bản</button>
         <button class="small primary" data-open-kpi-proposal-customer="${esc(c.id)}">Đề xuất KPI</button>
       </div></td>
     </tr>`;
@@ -5041,9 +4994,9 @@ function dealItemTemplate(item={}) {
   const meta = [item.surface, item.origin, item.color, item.priceText || (item.price ? money(item.price) : "")].filter(Boolean).join(" · ");
   return `<div class="deal-item-row" data-deal-item>
     <input type="hidden" data-deal-product-id value="${esc(productId)}">
-    <div class="field"><label>Tên sản phẩm</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="Gõ tên/mã để chọn từ danh mục"><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
-    <div class="field"><label>Mã hàng</label><input data-deal-code value="${esc(item.code || "")}"></div>
-    <div class="field"><label>Số lượng</label><input data-deal-qty value="${esc(item.qty || "")}" placeholder="12 hộp, 1 hộp..."></div>
+    <div class="field"><label>Nội dung / sản phẩm khách mua</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="VD: Gạch phòng khách, mẫu showroom..."><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
+    <div class="field hide"><label>Mã hàng</label><input data-deal-code value="${esc(item.code || "")}"></div>
+    <div class="field"><label>Số lượng / ghi chú ngắn</label><input data-deal-qty value="${esc(item.qty || "")}" placeholder="VD: 1 lần mua, 30m2..."></div>
     <button class="small" type="button" data-remove-deal-item>Xóa</button>
   </div>`;
 }
@@ -7042,18 +6995,21 @@ function renderOrders() {
 
 function renderReportCenter() {
   if (!$("reportsPanel") || !isManager()) return;
-  const reportDeals = currentReportDeals();
-  const completed = reportDeals.filter(isCompletedDeal);
-  const pending = reportDeals.filter(isActiveDeal);
   const month = currentMonth();
-  const monthCompleted = completed.filter(d => monthOf(d.completedAt || d.dealDate || d.createdAt) === month);
+  const reportCustomers = currentReportCustomers();
+  const monthCustomers = reportCustomers.filter(c => monthOf(c.createdAt) === month);
+  const dueCare = reportCustomers.filter(c => isCareDue(c));
+  const overdueCare = reportCustomers.filter(c => isCareOverdue(c));
+  const monthCareLogs = careLogs.filter(l => monthOf(l.createdAt || l.careDate) === month);
+  const boughtCustomers = reportCustomers.filter(c => customerDeals(c.id).some(isCompletedDeal));
   const cards = [
-    ["Khách đang quản lý", currentReportCustomers().length, ""],
-    ["Đơn hoàn thành", completed.length, ""],
-    ["Đơn đang xử lý", pending.length, pending.length ? "warn" : ""],
-    ["Doanh số tháng", money(monthCompleted.reduce((sum,d) => sum + dealAmount(d), 0)), ""],
-    ["KPI chờ duyệt", kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length, kpiProposals.some(p => isPendingKpiProposal(p) && !p.isDeleted) ? "warn" : ""],
-    ["Sản phẩm đang bán", products.length, ""]
+    ["Khách đang quản lý", reportCustomers.length, ""],
+    ["Khách mới tháng này", monthCustomers.length, ""],
+    ["Cần chăm", dueCare.length, dueCare.length ? "warn" : ""],
+    ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "warn" : ""],
+    ["Lượt chăm tháng", monthCareLogs.length, ""],
+    ["Khách đã mua căn bản", boughtCustomers.length, ""],
+    ["KPI chờ duyệt", kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length, kpiProposals.some(p => isPendingKpiProposal(p) && !p.isDeleted) ? "warn" : ""]
   ];
   $("reportCenterTime").textContent = `Cập nhật ${new Date().toLocaleString("vi-VN")}`;
   $("reportCenterGrid").innerHTML = cards.map(([label,value,cls]) => `
@@ -7062,7 +7018,6 @@ function renderReportCenter() {
       <b>${esc(value)}</b>
     </div>
   `).join("");
-  renderErpReport();
   renderSaleActivityReport();
 }
 
@@ -7288,42 +7243,13 @@ function saleActivityRows() {
       });
     });
 
-  const quoteActivityActions = ["openQuoteProposal","openQuoteTemplate","createDealFromQuote","createQuote","updateQuote","convertQuoteToDeal"];
-  auditLogs
-    .filter(a => inDateRange(a.createdAt, range) && quoteActivityActions.includes(clean(a.action)))
-    .forEach(a => {
-      const q = quotes.find(item => item.id === a.entityId) || {};
-      const c = customerById(q.customerId || a.entityId);
-      if (!c.id || !canSeeCustomer(c) || !ownerMatchesKey({owner:c.owner, ownerEmail:c.ownerEmail}, ownerFilter)) return;
-      const action = clean(a.action);
-      rows.push({
-        date: isoFromAny(a.createdAt),
-        type: action === "convertQuoteToDeal" || action === "createDealFromQuote"
-          ? "Chuyển báo giá thành đơn"
-          : action === "updateQuote"
-            ? "Cập nhật báo giá"
-            : "Báo giá/Đề xuất",
-        owner: customerOwnerName(c),
-        ownerEmail: customerOwnerKey(c),
-        customer: c.name || "",
-        phone: c.phoneRaw || c.phoneNormalized || "",
-        companyName: c.companyName || "",
-        channel: c.channel || "",
-        status: c.status || "",
-        amount: "",
-        note: q.quoteNo || action || "",
-        bucket: "quote",
-        customerId: c.id
-      });
-    });
-
   deals
     .filter(d => !d.isDeleted && inDateRange(d.dealDate || d.createdAt, range) && ownerMatchesKey(d, ownerFilter))
     .forEach(d => {
       const c = customerById(d.customerId);
       rows.push({
         date: isoFromAny(d.dealDate || d.createdAt),
-        type: "Tạo đơn/deal",
+        type: "Ghi nhận mua căn bản",
         owner: orderOwnerName(d),
         ownerEmail: orderOwnerEmail(d),
         customer: orderCustomerName(d),
@@ -7344,7 +7270,7 @@ function saleActivityRows() {
       const c = customerById(d.customerId);
       rows.push({
         date: isoFromAny(d.completedAt || d.dealDate || d.createdAt),
-        type: "Hoàn thành đơn",
+        type: "Khách đã mua",
         owner: orderOwnerName(d),
         ownerEmail: orderOwnerEmail(d),
         customer: orderCustomerName(d),
@@ -7356,28 +7282,6 @@ function saleActivityRows() {
         note: orderProductText(d) || d.note || "",
         bucket: "completed",
         customerId: d.customerId
-      });
-    });
-
-  payments
-    .filter(p => !p.isDeleted && inDateRange(p.paymentDate || p.createdAt, range) && ownerMatchesKey(p, ownerFilter))
-    .forEach(p => {
-      const d = deals.find(item => item.id === p.dealId) || {};
-      const c = customerById(p.customerId || d.customerId);
-      rows.push({
-        date: isoFromAny(p.paymentDate || p.createdAt),
-        type: "Thu thanh toán",
-        owner: p.owner || orderOwnerName(d),
-        ownerEmail: p.ownerEmail || orderOwnerEmail(d),
-        customer: p.customerName || orderCustomerName(d),
-        phone: c.phoneRaw || c.phoneNormalized || orderCustomerPhone(d),
-        companyName: c.companyName || "",
-        channel: c.channel || "",
-        status: p.method || "Thanh toán",
-        amount: p.amount || 0,
-        note: p.note || p.paymentNo || "",
-        bucket: "payment",
-        customerId: p.customerId || d.customerId
       });
     });
 
@@ -7416,9 +7320,7 @@ function renderSaleActivityReport() {
     total: rows.length,
     taskOverdue: rows.filter(r => r.bucket === "task" && r.taskType === "overdue").length,
     care: rows.filter(r => r.bucket === "care").length,
-    quote: rows.filter(r => r.bucket === "quote").length,
     deal: rows.filter(r => r.bucket === "deal").length,
-    payment: rows.filter(r => r.bucket === "payment").length,
     completed: rows.filter(r => r.bucket === "completed").length,
     revenue: rows.filter(r => r.bucket === "completed").reduce((sum,r) => sum + Number(r.amount || 0), 0)
   };
@@ -7427,11 +7329,9 @@ function renderSaleActivityReport() {
       ["Tổng hoạt động", metrics.total, ""],
       ["Task quá hạn", metrics.taskOverdue, metrics.taskOverdue ? "bad" : ""],
       ["Chăm sóc", metrics.care, ""],
-      ["Báo giá", metrics.quote, ""],
-      ["Deal tạo", metrics.deal, ""],
-      ["Thanh toán", metrics.payment, ""],
-      ["Đơn hoàn thành", metrics.completed, ""],
-      ["Doanh số", money(metrics.revenue), ""]
+      ["Ghi nhận mua", metrics.deal, ""],
+      ["Khách đã mua", metrics.completed, ""],
+      ["Giá trị mua", money(metrics.revenue), ""]
     ].map(([label,value,cls]) => `
       <div class="report-metric ${esc(cls)}">
         <span>${esc(label)}</span>
@@ -7441,16 +7341,14 @@ function renderSaleActivityReport() {
   }
   $("saleActivitySummary").innerHTML = summary.length ? `
     <table class="admin-table">
-      <thead><tr><th>Nhân viên</th><th>Task mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Báo giá</th><th>Deal tạo</th><th>Thanh toán</th><th>Đơn hoàn thành</th><th>Doanh số</th></tr></thead>
+      <thead><tr><th>Nhân viên</th><th>Task mở</th><th>Quá hạn</th><th>Chăm sóc</th><th>Ghi nhận mua</th><th>Khách đã mua</th><th>Giá trị mua</th></tr></thead>
       <tbody>${summary.map(s => `
         <tr>
           <td><b>${esc(s.owner)}</b><div class="muted">${esc(s.ownerEmail)}</div></td>
           <td>${esc(s.taskOpen)}</td>
           <td>${s.taskOverdue ? `<span class="pill red">${esc(s.taskOverdue)}</span>` : "0"}</td>
           <td>${esc(s.care)}</td>
-          <td>${esc(s.quote)}</td>
           <td>${esc(s.deal)}</td>
-          <td>${esc(s.payment)}</td>
           <td>${esc(s.completed)}</td>
           <td><b>${esc(money(s.revenue))}</b></td>
         </tr>
@@ -7771,9 +7669,9 @@ function renderAdminDashboard() {
   renderAdminShell();
   if (!$("adminDashboardGrid")) return;
   const managedCustomers = allCustomers.length ? allCustomers : customers;
-  const activeProducts = products.filter(p => p.active !== false && !p.isDeleted).length;
-  const newOrders = deals.filter(d => !d.isDeleted && isActiveDeal(d)).length;
+  const monthCustomers = managedCustomers.filter(c => monthOf(c.createdAt) === currentMonth() && !c.isDeleted).length;
   const dueCare = managedCustomers.filter(c => !c.isDeleted && isCareDue(c)).length;
+  const pendingKpi = kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length;
   const activeUsers = users.filter(u => u.active !== false).length;
   const warnings = [
     managedCustomers.filter(c => !clean(c.ownerEmail) && !clean(c.owner)).length ? "Có khách thiếu phụ trách" : "",
@@ -7782,9 +7680,9 @@ function renderAdminDashboard() {
   ].filter(Boolean);
   const cards = [
     ["Tổng khách hàng", managedCustomers.filter(c => !c.isDeleted).length, "Dữ liệu khách đang quản lý"],
-    ["Đơn hàng mới", newOrders, "Deal/đơn đang xử lý"],
+    ["Khách mới tháng này", monthCustomers, "Khách được tạo trong tháng"],
     ["Khách cần chăm", dueCare, "Theo logic hẹn chăm hiện tại", dueCare ? "warn" : ""],
-    ["Sản phẩm hiển thị", activeProducts, "Sản phẩm active"],
+    ["KPI chờ duyệt", pendingKpi, "Đề xuất cần admin/manager xử lý", pendingKpi ? "warn" : ""],
     ["User hoạt động", activeUsers, "Tài khoản active"],
     ["Cảnh báo", warnings.length, warnings.join(" · ") || "Chưa có cảnh báo nổi bật", warnings.length ? "warn" : ""]
   ];
@@ -7812,7 +7710,6 @@ function renderAdminShell() {
   if (title) title.textContent = meta.title;
   if (subtitle) subtitle.textContent = meta.subtitle;
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
-  if (meta.key === "content") renderCmsAdmin();
   if (meta.key === "users") renderUserAdmin();
   if (meta.key === "settings") renderCompanySettingsForm();
 }
@@ -8084,13 +7981,6 @@ on("resetCompanySettingsBtn", "click", resetCompanySettingsForm);
 ["companyName","companyLogoUrl","companyPhone","companyEmail","companyShowroomAddress","companyFacebookUrl","companyZaloUrl","companyBrandColor","companyDefaultNotice"].forEach(id => {
   on(id, "input", () => renderCompanySettingsPreview());
 });
-on("saveCmsPageBtn", "click", () => runAction("saveCmsPageBtn", "saveCmsPage", "Đang lưu...", saveCmsPage));
-on("saveCmsSectionBtn", "click", () => runAction("saveCmsSectionBtn", "saveCmsSection", "Đang lưu...", saveCmsSection));
-on("resetCmsFormBtn", "click", resetCmsForms);
-on("cmsPageSlug", "input", () => {
-  const value = normalizeCmsSlug($("cmsPageSlug").value);
-  if (!$("cmsSectionPage")?.value) $("cmsSectionPage").value = value;
-});
 on("filterChannel", "change", () => {
   activeChannelQuickFilter = "";
   resetPagingAndRender("customers", scheduleRenderAll);
@@ -8103,9 +7993,6 @@ on("resetMyKpiProposalFilterBtn", "click", resetMyKpiProposalFilter);
 on("resetKpiApprovalFilterBtn", "click", resetKpiApprovalFilter);
 on("crmViewBtn", "click", () => setMainView("crm"));
 on("customersViewBtn", "click", () => setMainView("customers"));
-on("ordersViewBtn", "click", () => setMainView("orders"));
-on("productsViewBtn", "click", () => setMainView("products"));
-on("quotesViewBtn", "click", () => setMainView("quotes"));
 on("kpiViewBtn", "click", () => setMainView("kpi"));
 on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => goToRoute("/admin"));
@@ -8179,9 +8066,7 @@ on("exportOrdersBtn", "click", () => runAction("exportOrdersBtn", "exportOrders"
 on("exportKpiBtn", "click", () => runAction("exportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
 on("reportExportManagementBtn", "click", () => runAction("reportExportManagementBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
 on("reportExportKpiBtn", "click", () => runAction("reportExportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
-on("reportExportOrdersBtn", "click", () => runAction("reportExportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
 on("reportExportActivityBtn", "click", () => runAction("reportExportActivityBtn", "exportSaleActivity", "Đang xuất...", exportSaleActivityReport));
-on("reportExportErpBtn", "click", () => runAction("reportExportErpBtn", "exportErpReport", "Đang xuất...", exportErpReport));
 on("openKpiProposalBtn", "click", () => openKpiProposalModal());
 on("openKpiProposalBtnTop", "click", () => openKpiProposalModal());
 on("closeKpiProposalBtn", "click", closeKpiProposalModal);
