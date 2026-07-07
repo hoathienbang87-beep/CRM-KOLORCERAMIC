@@ -2320,6 +2320,24 @@ const canEditDeal = d => {
   return (ownerMatchesCurrentUser(d) || ownerMatchesCurrentUser(c)) && isActiveDeal(d);
 };
 const purchaseCount = id => customerDeals(id).filter(isCompletedDeal).length;
+const hasProfileNumber = value => value !== undefined && value !== null && String(value).trim() !== "";
+const positiveNumber = value => Math.max(0, Number(value || 0) || 0);
+const customerProfileNumber = (c, keys, fallback = 0) => {
+  for (const key of keys) {
+    if (hasProfileNumber(c?.[key])) return positiveNumber(c[key]);
+  }
+  return positiveNumber(typeof fallback === "function" ? fallback() : fallback);
+};
+const showroomVisitCountFor = c => customerProfileNumber(c, ["showroomVisitCount", "showroomVisits", "showroom_visit_count"]);
+const basicPurchaseCountFor = c => Math.max(
+  customerProfileNumber(c, ["basicPurchaseCount", "purchaseCount", "purchase_count"]),
+  purchaseCount(c?.id)
+);
+const basicPurchaseValueFor = c => Math.max(
+  customerProfileNumber(c, ["basicPurchaseValue", "purchaseValue", "purchase_value", "lifetimeValue"]),
+  customerDeals(c?.id).filter(isKpiRevenueDeal).reduce((sum, d) => sum + dealAmount(d), 0)
+);
+const potentialLevelFor = c => clean(c?.potentialLevel || c?.level || c?.customerLevel || "Bình thường");
 const customerHasDealStatus = (id, labelKey) => customerDeals(id).some(d => sameLabel(normalizeDealStatus(d.dealStatus), labelKey));
 const customerHasCompletedDeal = id => customerDeals(id).some(isCompletedDeal);
 const latestDealStatus = c => normalizeDealStatus(customerDeals(c.id)[0]?.dealStatus || c.dealStatus || "");
@@ -2327,7 +2345,7 @@ const daysBetweenIso = (a, b) => Math.floor((new Date(a + "T00:00:00") - new Dat
 const careDeltaDays = c => clean(c.nextCareDate) ? daysBetweenIso(todayIso(), clean(c.nextCareDate)) : null;
 const careDueDays = () => Math.max(0, Number(settings.careDueDays ?? DEFAULT_SETTINGS.careDueDays ?? 3) || 0);
 const isLeadStatus = c => sameLabel(c?.status, "leadStatus");
-const isCustomerClosed = c => purchaseCount(c.id) > 0 || isCanceledDeal(latestDealStatus(c)) || isFailStatus(latestDealStatus(c)) || sameLabel(c.status, "noNeedStatus");
+const isCustomerClosed = c => basicPurchaseCountFor(c) > 0 || isCanceledDeal(latestDealStatus(c)) || isFailStatus(latestDealStatus(c)) || sameLabel(c.status, "noNeedStatus");
 function computedFollowStatus(c) {
   if (!c) return "";
   if (isCustomerClosed(c)) return systemLabel("closedFollow");
@@ -3377,14 +3395,16 @@ function renderCustomers() {
   const rows = visibleCustomers();
   const page = pageRows("customers", rows);
   $("customerRows").innerHTML = page.length ? page.map(c => {
-    const counts = dealCounts(c.id);
     const st = latestDealStatus(c) || c.status || "";
     const careStatus = computedFollowStatus(c);
-    const rowClass = ["customer-row", isFailStatus(st) || isCanceledDeal(st) ? "row-fail" : "", purchaseCount(c.id) ? "row-success row-vip" : "", isCareOverdue(c) ? "row-overdue" : ""].filter(Boolean).join(" ");
+    const purchaseTimes = basicPurchaseCountFor(c);
+    const purchaseValue = basicPurchaseValueFor(c);
+    const showroomVisits = showroomVisitCountFor(c);
+    const rowClass = ["customer-row", isFailStatus(st) || isCanceledDeal(st) ? "row-fail" : "", purchaseTimes ? "row-success row-vip" : "", isCareOverdue(c) ? "row-overdue" : ""].filter(Boolean).join(" ");
     const careBadge = isCareOverdue(c) ? `<br><span class="pill red">Quá ${esc(careDeltaDays(c))} ngày</span>` : isCareDue(c) ? `<br><span class="pill orange">${esc(systemLabel("dueFollow"))}</span>` : "";
     const contactText = c.phoneRaw || c.phoneNormalized || "Không SĐT";
     const customerMeta = [c.companyName, c.address].filter(Boolean).join(" · ");
-    const statusClass = isFailStatus(st) || isCanceledDeal(st) ? "red" : purchaseCount(c.id) ? "green" : "orange";
+    const statusClass = isFailStatus(st) || isCanceledDeal(st) ? "red" : purchaseTimes ? "green" : "orange";
     return `<tr class="${rowClass}">
       <td>
         <div class="customer-cell">
@@ -3405,9 +3425,9 @@ function renderCustomers() {
       <td><span class="pill ${sameLabel(careStatus, "overdueFollow") ? "red" : sameLabel(careStatus, "dueFollow") ? "orange" : sameLabel(careStatus, "closedFollow") ? "" : "green"}">${esc(careStatus)}</span></td>
       <td>
         <div class="deal-counts">
-          <span><b>${esc(counts.deposit)}</b> ${esc(systemLabel("depositStatus"))}</span>
-          <span><b>${esc(counts.bought)}</b> ${esc(systemLabel("boughtStatus"))}</span>
-          <span><b>${esc(counts.canceled)}</b> ${esc(systemLabel("canceledStatus"))}</span>
+          <span><b>${esc(showroomVisits)}</b> đến showroom</span>
+          <span><b>${esc(purchaseTimes)}</b> lần mua</span>
+          <span><b>${esc(money(purchaseValue))}</b> giá trị</span>
         </div>
       </td>
       <td>${esc(fmtDate(c.nextCareDate))}${careBadge}</td>
@@ -5222,6 +5242,10 @@ async function saveCustomer() {
     partnerActivity: isPartnerChannel(clean($("channel").value)) ? clean($("partnerActivity").value) : "",
     partnerLevel: isPartnerChannel(clean($("channel").value)) ? clean($("partnerLevel").value) : "",
     partnerCapacity: isPartnerChannel(clean($("channel").value)) ? clean($("partnerCapacity").value) : "",
+    potentialLevel: "Bình thường",
+    showroomVisitCount: 0,
+    basicPurchaseCount: 0,
+    basicPurchaseValue: 0,
     status: systemLabel("leadStatus"), follow: systemLabel("noDateFollow"), nextCareDate: "", isDeleted: false,
     createdByEmail: currentUser.email || "", updatedByEmail: currentUser.email || "",
     createdAt: serverTimestamp(), updatedAt: serverTimestamp()
@@ -5913,7 +5937,8 @@ async function cleanupData() {
 }
 
 function infoCell(label, value) {
-  return `<div class="info-cell"><span>${esc(label)}</span><b>${esc(value || "-")}</b></div>`;
+  const display = value === 0 ? 0 : (value || "-");
+  return `<div class="info-cell"><span>${esc(label)}</span><b>${esc(display)}</b></div>`;
 }
 
 function profileStat(label, value) {
@@ -5964,8 +5989,11 @@ function renderCustomerActivityPreview(c) {
   box.innerHTML = `
     <div class="profile-stats">
       ${profileStat("Lần chăm", logs.length)}
-      ${profileStat("Đơn xử lý", pendingDeals.length)}
-      ${profileStat("Đã mua", purchaseCount(c.id))}
+      ${profileStat("Mức tiềm năng", potentialLevelFor(c))}
+      ${profileStat("Đến showroom", showroomVisitCountFor(c))}
+      ${profileStat("Số lần mua", basicPurchaseCountFor(c))}
+      ${profileStat("Giá trị mua", money(basicPurchaseValueFor(c)))}
+      ${profileStat("Mua đang xử lý", pendingDeals.length)}
       ${profileStat("KPI duyệt", approvedKpi.length)}
     </div>
     <div class="profile-subtitle">
@@ -5996,7 +6024,11 @@ function renderCustomerInfo(c) {
     infoCell("Kênh chi tiết", c.channel),
     isPartnerChannel(c.channel) ? infoCell("Tên công ty", c.companyName) : "",
     infoCell("Nhân viên phụ trách", customerOwnerName(c)),
-    infoCell("Nhu cầu / Sản phẩm", c.need),
+    infoCell("Mức tiềm năng", potentialLevelFor(c)),
+    infoCell("Số lần đến showroom", showroomVisitCountFor(c)),
+    infoCell("Số lần mua căn bản", basicPurchaseCountFor(c)),
+    infoCell("Tổng giá trị mua căn bản", money(basicPurchaseValueFor(c))),
+    infoCell("Nhu cầu / Quan tâm", c.need),
     infoCell("Ghi chú", c.note)
   ].join("");
   renderCustomerActivityPreview(c);
@@ -6019,6 +6051,10 @@ function fillCustomerInfoEdit(c) {
   $("editPartnerActivity").value = clean(c.partnerActivity);
   $("editPartnerLevel").value = clean(c.partnerLevel);
   $("editPartnerCapacity").value = clean(c.partnerCapacity);
+  $("editPotentialLevel").value = potentialLevelFor(c);
+  $("editShowroomVisitCount").value = showroomVisitCountFor(c);
+  $("editBasicPurchaseCount").value = basicPurchaseCountFor(c);
+  $("editBasicPurchaseValue").value = basicPurchaseValueFor(c);
   $("editNeed").value = clean(c.need);
   $("editNote").value = clean(c.note);
   if (!isManager()) $("editOwner").value = clean(c.ownerEmail || ownerEmail());
@@ -6057,6 +6093,10 @@ async function saveCustomerInfo() {
     partnerActivity: isPartnerChannel(clean($("editChannel").value)) ? clean($("editPartnerActivity").value) : "",
     partnerLevel: isPartnerChannel(clean($("editChannel").value)) ? clean($("editPartnerLevel").value) : "",
     partnerCapacity: isPartnerChannel(clean($("editChannel").value)) ? clean($("editPartnerCapacity").value) : "",
+    potentialLevel: clean($("editPotentialLevel").value) || "Bình thường",
+    showroomVisitCount: positiveNumber($("editShowroomVisitCount").value),
+    basicPurchaseCount: positiveNumber($("editBasicPurchaseCount").value),
+    basicPurchaseValue: positiveNumber($("editBasicPurchaseValue").value),
     need: clean($("editNeed").value),
     note: clean($("editNote").value),
     updatedAt: serverTimestamp(),
@@ -6120,7 +6160,9 @@ function openDrawer(id, mode="care") {
     c.phoneRaw || c.phoneNormalized || "Không SĐT",
     c.companyName || c.channel || "",
     customerOwnerName(c),
-    `Lần mua hàng: ${purchaseCount(id)}`
+    `Đến showroom: ${showroomVisitCountFor(c)}`,
+    `Mua căn bản: ${basicPurchaseCountFor(c)} lần`,
+    `Giá trị: ${money(basicPurchaseValueFor(c))}`
   ].filter(Boolean);
   $("drawerTitle").textContent = drawerTitle;
   $("drawerInfo").innerHTML = drawerMeta.map(item => `<span>${esc(item)}</span>`).join("");
@@ -7621,28 +7663,27 @@ async function exportCsv() {
   const rows = visibleCustomers();
   if (!rows.length) return notice("Không có khách hàng phù hợp với bộ lọc hiện tại.", true);
   const filterLabel = activeCustomerFilterLabel();
-  const header = ["Khách hàng","Tên công ty","SĐT","Ngày tạo","Kênh chi tiết","Phụ trách","Trạng thái","Tình trạng chăm","Đã cọc","Đã mua","Đã hủy","Hẹn chăm","Ghi chú"];
+  const header = ["Khách hàng","Tên công ty","SĐT","Ngày tạo","Kênh chi tiết","Phụ trách","Trạng thái","Tình trạng chăm","Mức tiềm năng","Đến showroom","Số lần mua","Giá trị mua","Hẹn chăm","Nhu cầu","Ghi chú"];
   const dataRows = [
-    [`Danh sách khách hàng - ${filterLabel}`, "", "", "", "", "", "", "", "", "", "", "", ""],
+    [`Danh sách khách hàng - ${filterLabel}`, "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
     header,
-    ...rows.map(c => {
-      const counts = dealCounts(c.id);
-      return [
-        c.name || "",
-        c.companyName || "",
-        c.phoneRaw || c.phoneNormalized || "",
-        fmtDate(c.createdAt),
-        canonicalChannel(c.channel),
-        customerOwnerName(c),
-        c.status || "",
-        computedFollowStatus(c),
-        counts.deposit,
-        counts.bought,
-        counts.canceled,
-        fmtDate(c.nextCareDate),
-        c.note || ""
-      ];
-    })
+    ...rows.map(c => [
+      c.name || "",
+      c.companyName || "",
+      c.phoneRaw || c.phoneNormalized || "",
+      fmtDate(c.createdAt),
+      canonicalChannel(c.channel),
+      customerOwnerName(c),
+      c.status || "",
+      computedFollowStatus(c),
+      potentialLevelFor(c),
+      showroomVisitCountFor(c),
+      basicPurchaseCountFor(c),
+      basicPurchaseValueFor(c),
+      fmtDate(c.nextCareDate),
+      c.need || "",
+      c.note || ""
+    ])
   ];
   const exported = exportXlsx([{ name: "Khach hang", rows: dataRows }], `crm-khach-hang-theo-bo-loc-${new Date().toISOString().slice(0,10)}`);
   if (exported) {

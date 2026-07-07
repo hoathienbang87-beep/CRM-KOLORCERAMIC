@@ -57,7 +57,7 @@
           <div class="field"><label>Hoạt động TK/XD</label><select id="partnerActivity"></select></div>
           <div class="field"><label>Năng lực CTY</label><select id="partnerCapacity"></select></div>
         </div>
-        <div class="field"><label>Nhu cầu / Sản phẩm</label><input id="need"></div>
+        <div class="field"><label>Nhu cầu / Quan tâm</label><input id="need"></div>
         <div class="field"><label>Ghi chú</label><textarea id="note"></textarea></div>
         <div class="actions">
           <button id="saveCustomerBtn" class="primary">Lưu khách</button>
@@ -765,7 +765,21 @@
           <div class="field"><label>Hoạt động TK/XD</label><select id="editPartnerActivity"></select></div>
           <div class="field"><label>Năng lực CTY</label><select id="editPartnerCapacity"></select></div>
         </div>
-        <div class="field"><label>Nhu cầu / Sản phẩm</label><input id="editNeed"></div>
+        <div class="grid2">
+          <div class="field">
+            <label>Mức tiềm năng</label>
+            <select id="editPotentialLevel">
+              <option>Bình thường</option>
+              <option>Tiềm năng</option>
+              <option>Nóng</option>
+              <option>VIP / Đối tác</option>
+            </select>
+          </div>
+          <div class="field"><label>Số lần đến showroom</label><input id="editShowroomVisitCount" type="number" min="0" step="1"></div>
+          <div class="field"><label>Số lần mua căn bản</label><input id="editBasicPurchaseCount" type="number" min="0" step="1"></div>
+          <div class="field"><label>Tổng giá trị mua căn bản</label><input id="editBasicPurchaseValue" type="number" min="0" step="1000"></div>
+        </div>
+        <div class="field"><label>Nhu cầu / Quan tâm</label><input id="editNeed"></div>
         <div class="field"><label>Ghi chú</label><textarea id="editNote"></textarea></div>
         <div class="actions">
           <button id="saveCustomerInfoBtn" class="primary">Lưu thông tin</button>
@@ -787,7 +801,7 @@
         <div class="field"><label>Hoạt động TK/XD</label><select id="carePartnerActivity"></select></div>
         <div class="field"><label>Năng lực CTY</label><select id="carePartnerCapacity"></select></div>
       </div>
-      <div class="field"><label>Nhu cầu / Sản phẩm</label><input id="careNeed"></div>
+      <div class="field"><label>Nhu cầu / Quan tâm</label><input id="careNeed"></div>
       <div class="field"><label>Hẹn chăm tiếp</label><input id="careNextDate" type="date"></div>
       <div class="field"><label>Ghi chú chăm sóc</label><textarea id="careNote"></textarea></div>
       <div class="care-actions">

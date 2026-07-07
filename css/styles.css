@@ -199,7 +199,7 @@
     .info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
     .info-cell{border:1px solid #edf2f7;background:#f8fafc;border-radius:7px;padding:9px}
     .info-cell span{display:block;color:var(--muted);font-size:12px;font-weight:700;margin-bottom:4px}
-    .profile-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 4px}
+    .profile-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0 4px}
     .profile-stat{border:1px solid #dbe7f4;background:linear-gradient(145deg,#fff,#f5f9ff);border-radius:8px;padding:9px}
     .profile-stat span{display:block;color:var(--muted);font-size:12px;font-weight:800}
     .profile-stat b{font-size:19px;color:var(--ink)}
