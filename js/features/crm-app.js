@@ -369,7 +369,7 @@ function fillSelect(id, values, placeholder="-- Chọn --", allLabel="") {
 
 function ownerOptions() {
   const activeUserProfiles = users
-    .filter(u => u.active !== false && clean(u.role).toLowerCase() !== "admin")
+    .filter(u => u.active !== false && !["admin","owner"].includes(clean(u.role).toLowerCase()))
     .map(u => ({name: clean(u.name || u.email), email: clean(u.email)}))
     .filter(u => u.name && u.email);
   if (activeUserProfiles.length) return activeUserProfiles;
@@ -4420,7 +4420,7 @@ async function exportOperationalSnapshot() {
 }
 
 function renderUserAdmin() {
-  if (!isAdmin()) return;
+  if (!canAccessAdminPanel() || !$("userRows")) return;
   $("userRows").innerHTML = users.length ? users.map(u => {
     const role = clean(u.role || "sale").toLowerCase();
     const active = u.active !== false;
@@ -4429,12 +4429,12 @@ function renderUserAdmin() {
         <b>${esc(u.name || u.email || u.uid)}</b>
         <div class="muted">${esc(u.email || "")}</div>
         <div class="admin-badge-row">
-          <span class="pill ${role === "admin" ? "red" : role === "manager" ? "orange" : "green"}">${esc(role)}</span>
+          <span class="pill ${role === "admin" || role === "owner" ? "red" : role === "manager" ? "orange" : "green"}">${esc(role)}</span>
           <span class="pill ${active ? "green" : "red"}">${active ? "active" : "locked"}</span>
         </div>
       </td>
       <td><select data-user-role="${esc(u.uid)}">
-        ${["sale","manager","admin"].map(r => `<option value="${r}" ${role===r ? "selected" : ""}>${r}</option>`).join("")}
+        ${["sale","manager","admin","owner"].map(r => `<option value="${r}" ${role===r ? "selected" : ""}>${r}</option>`).join("")}
       </select></td>
       <td><select data-user-active="${esc(u.uid)}"><option value="true" ${active ? "selected" : ""}>active</option><option value="false" ${!active ? "selected" : ""}>locked</option></select></td>
       <td><input data-user-team="${esc(u.uid)}" value="${esc(u.team || "")}" placeholder="Team"></td>
@@ -4495,15 +4495,15 @@ function renderTrash() {
 }
 
 async function saveUserAdmin(uid) {
-  if (!isAdmin()) return notice("Chỉ admin được quản lý nhân viên.", true);
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được quản lý nhân viên.", true);
   const user = users.find(u => u.uid === uid);
   if (!user) return notice("Không tìm thấy user.", true);
   const role = clean(document.querySelector(`[data-user-role="${CSS.escape(uid)}"]`)?.value || "sale");
   const active = document.querySelector(`[data-user-active="${CSS.escape(uid)}"]`)?.value === "true";
   const team = clean(document.querySelector(`[data-user-team="${CSS.escape(uid)}"]`)?.value);
   const canExport = document.querySelector(`[data-user-export="${CSS.escape(uid)}"]`)?.value === "true";
-  if (sameIdentity(user.email, currentUser?.email) && (!active || role !== "admin")) {
-    return notice("Không thể tự khóa hoặc hạ quyền admin của chính bạn.", true);
+  if (sameIdentity(user.email, currentUser?.email) && (!active || !["admin","owner"].includes(role))) {
+    return notice("Không thể tự khóa hoặc hạ quyền admin/owner của chính bạn.", true);
   }
   try {
     const batch = writeBatch(db);
@@ -4539,7 +4539,7 @@ function clearNewUserForm() {
 }
 
 async function addUserAdmin() {
-  if (!isAdmin()) return notice("Chỉ admin được thêm nhân viên.", true);
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được thêm nhân viên.", true);
   const data = newUserFormData();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return notice("Email nhân viên chưa hợp lệ.", true);
   if (users.some(u => sameIdentity(u.email, data.email))) return notice("Email này đã có trong danh sách nhân viên.", true);
@@ -4579,7 +4579,7 @@ async function addUserAdmin() {
 }
 
 async function toggleUserAdmin(uid) {
-  if (!isAdmin()) return notice("Chỉ admin được khóa/mở nhân viên.", true);
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được khóa/mở nhân viên.", true);
   const user = users.find(u => u.uid === uid);
   if (!user) return notice("Không tìm thấy user.", true);
   const nextActive = user.active === false;
@@ -4607,7 +4607,7 @@ async function toggleUserAdmin(uid) {
 }
 
 async function deleteUserAdmin(uid) {
-  if (!isAdmin()) return notice("Chỉ admin được xóa nhân viên.", true);
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được xóa nhân viên.", true);
   const user = users.find(u => u.uid === uid);
   if (!user) return notice("Không tìm thấy user.", true);
   if (sameIdentity(user.email, currentUser?.email)) return notice("Không thể xóa tài khoản của chính bạn.", true);
@@ -7430,6 +7430,7 @@ function renderAdminShell() {
   if (title) title.textContent = meta.title;
   if (subtitle) subtitle.textContent = meta.subtitle;
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
+  if (meta.key === "users") renderUserAdmin();
 }
 
 function showLogin() {
