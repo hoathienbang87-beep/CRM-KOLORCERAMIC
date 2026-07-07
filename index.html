@@ -637,15 +637,15 @@
         </div>
       </div>
       <nav class="admin-menu" aria-label="Admin menu">
-        <button class="active" type="button" data-admin-section="dashboard">Tổng quan</button>
-        <button type="button" data-admin-section="content" disabled>CMS nội dung</button>
-        <button type="button" data-admin-section="products" disabled>Sản phẩm</button>
-        <button type="button" data-admin-section="media" disabled>Media</button>
-        <button type="button" data-admin-section="users" disabled>Người dùng</button>
-        <button type="button" data-admin-section="settings" disabled>Cấu hình</button>
-        <button type="button" data-admin-section="audit" disabled>Nhật ký</button>
+        <button class="active" type="button" data-admin-route="/admin">Tổng quan</button>
+        <button type="button" data-admin-route="/admin/content">CMS nội dung</button>
+        <button type="button" data-admin-route="/admin/products">Sản phẩm</button>
+        <button type="button" data-admin-route="/admin/media">Media</button>
+        <button type="button" data-admin-route="/admin/users">Người dùng</button>
+        <button type="button" data-admin-route="/admin/settings">Cấu hình</button>
+        <button type="button" data-admin-route="/admin/audit-logs">Nhật ký</button>
       </nav>
-      <div class="admin-sidebar-note">Giai đoạn 2 mới tạo khung riêng. Các module sẽ được nối Supabase theo từng giai đoạn sau.</div>
+      <div class="admin-sidebar-note">Giai đoạn 3 mới tạo trang rỗng. Các module sẽ được nối Supabase theo từng giai đoạn sau.</div>
     </aside>
     <div class="admin-main">
       <header class="admin-header">
@@ -662,22 +662,102 @@
       </header>
 
       <main class="admin-content">
-        <section class="admin-panel">
+        <section id="adminDashboardPage" class="admin-page" data-admin-page="dashboard">
+          <div class="admin-panel">
+            <div class="admin-section-title">
+              <div>
+                <h2>Tổng quan hệ thống</h2>
+                <p>Dashboard riêng cho owner/admin. Đây là nền để tách admin khỏi giao diện làm việc hằng ngày.</p>
+              </div>
+              <span id="adminRouteGuardText" class="admin-status-pill">owner/admin only</span>
+            </div>
+            <div id="adminDashboardGrid" class="admin-dashboard-grid"></div>
+          </div>
+        </section>
+
+        <section id="adminContentPage" class="admin-page admin-panel hide" data-admin-page="content">
           <div class="admin-section-title">
             <div>
-              <h2>Tổng quan hệ thống</h2>
-              <p>Dashboard riêng cho owner/admin. Đây là nền để tách admin khỏi giao diện làm việc hằng ngày.</p>
+              <h2>CMS nội dung</h2>
+              <p>Quản lý các phần nội dung website bằng form an toàn, không chỉnh code.</p>
             </div>
-            <span id="adminRouteGuardText" class="admin-status-pill">owner/admin only</span>
           </div>
-          <div id="adminDashboardGrid" class="admin-dashboard-grid"></div>
+          <div class="admin-empty-state">
+            <b>Trang CMS nội dung đã sẵn sàng khung.</b>
+            <span>Giai đoạn sau sẽ thêm form cho trang chủ, banner, section giới thiệu, bộ sưu tập, dự án thực tế, tin tức, FAQ, footer và thông tin liên hệ.</span>
+          </div>
+        </section>
+
+        <section id="adminProductsPage" class="admin-page admin-panel hide" data-admin-page="products">
+          <div class="admin-section-title">
+            <div>
+              <h2>Sản phẩm / mẫu gạch</h2>
+              <p>Quản lý danh mục, sản phẩm, hình ảnh, trạng thái hiển thị và thứ tự xuất hiện.</p>
+            </div>
+          </div>
+          <div class="admin-empty-state">
+            <b>Trang sản phẩm admin đã sẵn sàng khung.</b>
+            <span>Giai đoạn sau sẽ tách rõ sản phẩm website/CMS với dữ liệu sản phẩm nội bộ nếu cần.</span>
+          </div>
+        </section>
+
+        <section id="adminMediaPage" class="admin-page admin-panel hide" data-admin-page="media">
+          <div class="admin-section-title">
+            <div>
+              <h2>Media</h2>
+              <p>Quản lý ảnh cho banner, sản phẩm, dự án và các nội dung website.</p>
+            </div>
+          </div>
+          <div class="admin-empty-state">
+            <b>Trang media đã sẵn sàng khung.</b>
+            <span>Giai đoạn sau sẽ cần Supabase Storage bucket/policy riêng cho ảnh CMS, không dùng thư mục code.</span>
+          </div>
+        </section>
+
+        <section id="adminUsersPage" class="admin-page admin-panel hide" data-admin-page="users">
+          <div class="admin-section-title">
+            <div>
+              <h2>Người dùng</h2>
+              <p>Quản lý user, role, trạng thái khóa/mở và thông tin nhân viên từ khu admin riêng.</p>
+            </div>
+          </div>
+          <div class="admin-empty-state">
+            <b>Trang người dùng đã sẵn sàng khung.</b>
+            <span>Giai đoạn sau sẽ chuyển chức năng quản lý nhân viên hiện có sang đây và giữ audit đầy đủ.</span>
+          </div>
+        </section>
+
+        <section id="adminSettingsPage" class="admin-page admin-panel hide" data-admin-page="settings">
+          <div class="admin-section-title">
+            <div>
+              <h2>Cấu hình công ty</h2>
+              <p>Quản lý tên công ty, logo, hotline, email, showroom, mạng xã hội và màu thương hiệu.</p>
+            </div>
+          </div>
+          <div class="admin-empty-state">
+            <b>Trang cấu hình đã sẵn sàng khung.</b>
+            <span>Giai đoạn sau sẽ tạo bảng cấu hình riêng, không nhồi toàn bộ vào settings CRM hiện tại.</span>
+          </div>
+        </section>
+
+        <section id="adminAuditPage" class="admin-page admin-panel hide" data-admin-page="audit-logs">
+          <div class="admin-section-title">
+            <div>
+              <h2>Nhật ký hoạt động</h2>
+              <p>Theo dõi ai đã sửa nội dung, xóa sản phẩm, đổi quyền user hoặc thay đổi cấu hình.</p>
+            </div>
+          </div>
+          <div class="admin-empty-state">
+            <b>Trang nhật ký đã sẵn sàng khung.</b>
+            <span>Giai đoạn sau sẽ nối với audit log và lọc theo loại thao tác admin/CMS.</span>
+          </div>
         </section>
 
         <section class="admin-panel">
           <div class="admin-section-title">
             <div>
               <h2>Module admin sẽ triển khai tiếp</h2>
-              <p>Các trang dưới đây đã có trong thiết kế menu, hiện đang khóa để tránh admin chỉnh nhầm khi chưa có database/RLS CMS.</p>
+              <p>Các trang đã có route riêng, hiện là khung rỗng để tránh admin chỉnh nhầm khi chưa có database/RLS CMS.</p>
             </div>
           </div>
           <div class="admin-module-grid">

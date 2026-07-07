@@ -225,6 +225,15 @@ function withActionTimeout(promise, label, ms=45000) {
 }
 
 const dirtyCollections = new Set();
+const adminRoutes = {
+  "/admin": {key:"dashboard", title:"Admin Panel", subtitle:"Quản trị nội dung, sản phẩm, media, người dùng và cấu hình công ty mà không cần chỉnh code."},
+  "/admin/content": {key:"content", title:"CMS nội dung", subtitle:"Quản lý các phần hiển thị trên website bằng form an toàn."},
+  "/admin/products": {key:"products", title:"Sản phẩm / mẫu gạch", subtitle:"Quản lý danh mục, mẫu gạch, ảnh, trạng thái hiển thị và thứ tự."},
+  "/admin/media": {key:"media", title:"Media", subtitle:"Quản lý ảnh cho banner, sản phẩm, dự án và nội dung website."},
+  "/admin/users": {key:"users", title:"Người dùng", subtitle:"Quản lý tài khoản, role, khóa/mở và thông tin nhân viên."},
+  "/admin/settings": {key:"settings", title:"Cấu hình công ty", subtitle:"Quản lý logo, hotline, email, showroom, mạng xã hội và thương hiệu."},
+  "/admin/audit-logs": {key:"audit-logs", title:"Nhật ký hoạt động", subtitle:"Theo dõi các thay đổi nội dung, sản phẩm, user và cấu hình."}
+};
 const viewDependencies = {
   crm: ["customers", "careLogs", "deals", "settings"],
   customers: ["customers", "careLogs", "deals", "orderItems", "payments", "settings", "users"],
@@ -288,7 +297,12 @@ function renderPager(id, key, total, label="dòng") {
 
 function isAdminRoute() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  return path === "/admin";
+  return path === "/admin" || path.startsWith("/admin/");
+}
+
+function currentAdminRoute() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/admin";
+  return adminRoutes[path] ? path : "/admin";
 }
 
 function goToRoute(path) {
@@ -7372,6 +7386,7 @@ function setViewHidden(id, hidden) {
 }
 
 function renderAdminDashboard() {
+  renderAdminShell();
   if (!$("adminDashboardGrid")) return;
   const managedCustomers = allCustomers.length ? allCustomers : customers;
   const activeProducts = products.filter(p => p.active !== false && !p.isDeleted).length;
@@ -7401,6 +7416,22 @@ function renderAdminDashboard() {
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
 }
 
+function renderAdminShell() {
+  const route = currentAdminRoute();
+  const meta = adminRoutes[route] || adminRoutes["/admin"];
+  document.querySelectorAll("[data-admin-page]").forEach(page => {
+    page.classList.toggle("hide", page.dataset.adminPage !== meta.key);
+  });
+  document.querySelectorAll("[data-admin-route]").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.adminRoute === route);
+  });
+  const title = document.querySelector(".admin-header h1");
+  const subtitle = document.querySelector(".admin-header p");
+  if (title) title.textContent = meta.title;
+  if (subtitle) subtitle.textContent = meta.subtitle;
+  if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
+}
+
 function showLogin() {
   stopPresence();
   stopWatchers();
@@ -7422,6 +7453,7 @@ function showApp() {
     setViewHidden("loginView", true);
     setViewHidden("appView", true);
     setViewHidden("adminAppView", false);
+    renderAdminShell();
     renderAdminDashboard();
     return;
   }
@@ -7675,6 +7707,9 @@ on("adminBackToCrmBtn", "click", () => goToRoute("/"));
 on("adminLogoutBtn", "click", async () => {
   try { await updatePresence(false); } catch {}
   await signOut(auth);
+});
+document.querySelectorAll("[data-admin-route]").forEach(btn => {
+  btn.addEventListener("click", () => goToRoute(btn.dataset.adminRoute || "/admin"));
 });
 ["orderFilterYear","orderFilterMonth","orderFilterOwner","orderFilterStatus"].forEach(id => on(id, "change", renderOrders));
 on("resetOrderFilterBtn", "click", resetOrderFilters);
