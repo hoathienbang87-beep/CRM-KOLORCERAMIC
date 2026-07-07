@@ -19,6 +19,7 @@ export const supabase = createClient(config.url || "https://example.supabase.co"
 const tableMap = {
   users: "app_users",
   settings: "settings",
+  companySettings: "company_settings",
   customers: "customers",
   careLogs: "care_logs",
   deals: "deals",
@@ -77,7 +78,7 @@ function camelize(row = {}, collectionName = "") {
   });
   const merged = { ...raw, ...converted };
   if (collectionName === "users") merged.uid = row.id;
-  if (collectionName === "settings") return { ...(row.data || raw), id: row.id };
+  if (collectionName === "settings" || collectionName === "companySettings") return { ...(row.data || raw), id: row.id };
   return merged;
 }
 
@@ -102,6 +103,7 @@ function rowFor(ref, input) {
   const id = ref.id;
   switch (ref.collection) {
     case "settings":
+    case "companySettings":
       return { id, data, raw_data: data, updated_at: first(data.updatedAt, data.updated_at, nowIso()) };
     case "users":
       return {

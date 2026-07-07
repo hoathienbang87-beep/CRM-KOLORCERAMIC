@@ -733,10 +733,29 @@
               <h2>Cấu hình công ty</h2>
               <p>Quản lý tên công ty, logo, hotline, email, showroom, mạng xã hội và màu thương hiệu.</p>
             </div>
+            <div class="admin-header-actions">
+              <button id="resetCompanySettingsBtn" type="button">Hủy thay đổi</button>
+              <button id="saveCompanySettingsBtn" class="primary" type="button">Lưu cấu hình</button>
+            </div>
           </div>
-          <div class="admin-empty-state">
-            <b>Trang cấu hình đã sẵn sàng khung.</b>
-            <span>Giai đoạn sau sẽ tạo bảng cấu hình riêng, không nhồi toàn bộ vào settings CRM hiện tại.</span>
+          <div class="company-settings-layout">
+            <div class="settings-grid">
+              <div class="field"><label>Tên công ty</label><input id="companyName" placeholder="Kolorceramic THT"></div>
+              <div class="field"><label>Màu thương hiệu</label><input id="companyBrandColor" type="color" value="#147a68"></div>
+              <div class="field settings-wide"><label>Logo URL</label><input id="companyLogoUrl" placeholder="https://..."></div>
+              <div class="field"><label>Số điện thoại</label><input id="companyPhone" placeholder="090..."></div>
+              <div class="field"><label>Email</label><input id="companyEmail" type="email" placeholder="contact@congty.com"></div>
+              <div class="field settings-wide"><label>Địa chỉ showroom</label><textarea id="companyShowroomAddress" placeholder="Địa chỉ showroom / văn phòng"></textarea></div>
+              <div class="field"><label>Facebook</label><input id="companyFacebookUrl" placeholder="https://facebook.com/..."></div>
+              <div class="field"><label>Zalo</label><input id="companyZaloUrl" placeholder="https://zalo.me/... hoặc số Zalo"></div>
+              <div class="field settings-wide"><label>Thông báo mặc định</label><textarea id="companyDefaultNotice" placeholder="Thông báo mặc định hiển thị cho nhân viên hoặc website"></textarea></div>
+            </div>
+            <div class="company-preview" id="companySettingsPreview">
+              <span class="muted">Xem trước</span>
+              <div class="company-preview-logo">K</div>
+              <b>Kolorceramic THT</b>
+              <p class="muted">Chưa có thông tin liên hệ.</p>
+            </div>
           </div>
         </section>
 

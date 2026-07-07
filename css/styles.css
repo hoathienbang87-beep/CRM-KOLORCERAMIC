@@ -235,6 +235,12 @@
     .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:12px}
     .settings-grid textarea{min-height:118px;font-size:14px;line-height:1.35}
     .settings-wide{grid-column:1 / -1}
+    .company-settings-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+    .company-preview{border:1px solid #dbe7f4;background:linear-gradient(160deg,#f8fbff,#fff8df);border-radius:10px;padding:16px;display:grid;gap:10px;position:sticky;top:118px}
+    .company-preview-logo{width:54px;height:54px;border-radius:14px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:26px;font-weight:900;box-shadow:0 14px 30px rgba(15,23,42,.12);overflow:hidden}
+    .company-preview-logo img{width:100%;height:100%;object-fit:cover}
+    .company-preview b{font-size:20px}
+    .company-preview p{margin:0;line-height:1.45}
     .rule-list{display:grid;gap:8px;margin-top:12px}
     .rule-item{border:1px solid #e5edf6;background:#f8fafc;border-radius:7px;padding:10px}
     .kpi-assignment-box{border:1px solid var(--line);border-radius:8px;background:#f8fafc;padding:12px;margin:12px 0}
@@ -419,7 +425,7 @@
     .admin-module-grid b{font-size:15px}
     .admin-module-grid span{color:var(--muted);font-weight:700;font-size:13px}
 
-    @media(max-width:1180px){.layout{grid-template-columns:1fr}.kpis,.executive-grid{grid-template-columns:repeat(3,1fr)}.pipeline-grid{grid-template-columns:repeat(2,1fr)}.toolbar{grid-template-columns:repeat(3,minmax(150px,1fr))}.toolbar-search{grid-column:span 2}}
+    @media(max-width:1180px){.layout{grid-template-columns:1fr}.kpis,.executive-grid{grid-template-columns:repeat(3,1fr)}.pipeline-grid{grid-template-columns:repeat(2,1fr)}.toolbar{grid-template-columns:repeat(3,minmax(150px,1fr))}.toolbar-search{grid-column:span 2}.company-settings-layout{grid-template-columns:1fr}.company-preview{position:static}}
     @media(max-width:1180px){.chart-grid{grid-template-columns:1fr}}
     @media(max-width:1180px){.report-metric-grid{grid-template-columns:repeat(3,minmax(120px,1fr))}}
     @media(max-width:760px){.grid2,.grid3,.grid4,.need-grid,.toolbar,.quick-filter-grid,.task-row,.kpis,.executive-grid,.pipeline-grid,.care-work-summary,.profile-stats,.deal-item-row,.quote-item-row,.care-actions,.info-grid,.kpi-rule-grid,.kpi-assign-row,.kpi-state-grid,.kpi-approval-grid,.report-metric-grid,.settings-grid,.admin-user-create{grid-template-columns:1fr}.task-actions{justify-content:flex-start}.topbar{height:auto;align-items:flex-start;gap:8px;flex-direction:column;padding:12px 16px}.layout{padding:10px}.layout>aside.panel{position:static;max-height:none}.userbar{justify-content:flex-start}.view-tabs{top:0}.toolbar{padding:10px}.kpi-progress-btn{width:100%}.chart-wrap{height:240px}.chart-wrap.channel-chart-wrap{height:420px}.channel-report-controls,.channel-date-range{width:100%;align-items:stretch}.channel-report-controls select,.channel-date-range input{width:100%}.channel-date-range{display:grid;grid-template-columns:1fr auto 1fr}.drawer{width:100%;height:100%;max-height:none;border-radius:0}.settings-wide{grid-column:auto}.admin-app{grid-template-columns:1fr}.admin-sidebar{position:static;height:auto}.admin-header{position:static;align-items:flex-start;flex-direction:column}.admin-content{padding:12px}.admin-section-title{display:grid}.admin-header-actions{justify-content:flex-start}}

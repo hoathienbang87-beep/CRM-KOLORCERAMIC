@@ -60,6 +60,7 @@ import {
 let currentUser = null;
 let appUser = null;
 let settings = {...DEFAULT_SETTINGS};
+let companySettings = {};
 let allCustomers = [];
 let customers = [];
 let deletedCustomers = [];
@@ -105,6 +106,17 @@ let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI_EVIDENCE_MAX_FILES = 6;
 const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
+const DEFAULT_COMPANY_SETTINGS = {
+  companyName: "Kolorceramic THT",
+  logoUrl: "",
+  phone: "",
+  email: "",
+  showroomAddress: "",
+  facebookUrl: "",
+  zaloUrl: "",
+  brandColor: "#147a68",
+  defaultNotice: ""
+};
 
 const roleKey = () => clean(appUser?.role).toLowerCase();
 const isOwner = () => roleKey() === "owner";
@@ -242,7 +254,7 @@ const viewDependencies = {
   products: ["products", "inventoryMovements", "settings"],
   quotes: ["customers", "quotes", "quoteItems", "products", "settings", "users"],
   reports: ["customers", "careLogs", "deals", "quotes", "quoteItems", "orderItems", "payments", "inventoryMovements", "products", "auditLogs", "settings", "users"],
-  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings"]
+  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings"]
 };
 const scheduleRenderAll = debounce(() => renderAll(), 180);
 const scheduleRenderChart = debounce(() => requestChartRender(), 180);
@@ -633,6 +645,100 @@ async function loadSettings() {
   applySettings(rawSettings);
   await migrateSettingsIfNeeded(rawSettings);
   hydrateSelects();
+}
+
+function normalizeCompanySettings(raw = {}) {
+  return {
+    ...DEFAULT_COMPANY_SETTINGS,
+    ...raw,
+    brandColor: /^#[0-9a-f]{6}$/i.test(clean(raw.brandColor)) ? clean(raw.brandColor) : DEFAULT_COMPANY_SETTINGS.brandColor
+  };
+}
+
+async function loadCompanySettings() {
+  const snap = await getDoc(doc(db, "companySettings", "main"));
+  companySettings = normalizeCompanySettings(snap.exists() ? snap.data() : {});
+}
+
+function companySettingsFormData() {
+  return normalizeCompanySettings({
+    companyName: clean($("companyName")?.value) || DEFAULT_COMPANY_SETTINGS.companyName,
+    logoUrl: clean($("companyLogoUrl")?.value),
+    phone: clean($("companyPhone")?.value),
+    email: clean($("companyEmail")?.value),
+    showroomAddress: clean($("companyShowroomAddress")?.value),
+    facebookUrl: clean($("companyFacebookUrl")?.value),
+    zaloUrl: clean($("companyZaloUrl")?.value),
+    brandColor: clean($("companyBrandColor")?.value) || DEFAULT_COMPANY_SETTINGS.brandColor,
+    defaultNotice: clean($("companyDefaultNotice")?.value)
+  });
+}
+
+function renderCompanySettingsPreview(data = companySettingsFormData()) {
+  const box = $("companySettingsPreview");
+  if (!box) return;
+  const contact = [
+    data.phone ? `Hotline: ${data.phone}` : "",
+    data.email ? `Email: ${data.email}` : "",
+    data.showroomAddress ? `Showroom: ${data.showroomAddress}` : "",
+    data.facebookUrl ? `Facebook: ${data.facebookUrl}` : "",
+    data.zaloUrl ? `Zalo: ${data.zaloUrl}` : ""
+  ].filter(Boolean).join("<br>");
+  const logo = data.logoUrl
+    ? `<img src="${esc(data.logoUrl)}" alt="Logo" onerror="this.remove()">`
+    : esc((data.companyName || "K").charAt(0).toUpperCase());
+  box.innerHTML = `
+    <span class="muted">Xem trước</span>
+    <div class="company-preview-logo" style="background:${esc(data.brandColor)}">${logo}</div>
+    <b>${esc(data.companyName)}</b>
+    <p class="muted">${contact || "Chưa có thông tin liên hệ."}</p>
+    ${data.defaultNotice ? `<p>${esc(data.defaultNotice)}</p>` : ""}
+  `;
+}
+
+function renderCompanySettingsForm() {
+  if (!canAccessAdminPanel()) return;
+  const data = normalizeCompanySettings(companySettings);
+  const pairs = [
+    ["companyName", data.companyName],
+    ["companyLogoUrl", data.logoUrl],
+    ["companyPhone", data.phone],
+    ["companyEmail", data.email],
+    ["companyShowroomAddress", data.showroomAddress],
+    ["companyFacebookUrl", data.facebookUrl],
+    ["companyZaloUrl", data.zaloUrl],
+    ["companyBrandColor", data.brandColor],
+    ["companyDefaultNotice", data.defaultNotice]
+  ];
+  pairs.forEach(([id, value]) => {
+    const el = $(id);
+    if (el && document.activeElement !== el) el.value = value || "";
+  });
+  renderCompanySettingsPreview(data);
+}
+
+async function saveCompanySettings() {
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu cấu hình công ty.", true);
+  const data = companySettingsFormData();
+  try {
+    await setDoc(doc(db, "companySettings", "main"), {
+      ...data,
+      updatedByEmail: currentUser?.email || "",
+      updatedAt: serverTimestamp()
+    }, {merge:true});
+    companySettings = data;
+    renderCompanySettingsForm();
+    await logAudit("updateCompanySettings", "companySettings", "main", data)
+      .catch(err => notice("Đã lưu cấu hình, nhưng chưa ghi được audit log: " + authMessage(err), true));
+    notice("Đã lưu cấu hình công ty.");
+  } catch (err) {
+    notice("Không lưu được cấu hình công ty. Hãy chắc chắn đã chạy file SQL company_settings. " + authMessage(err), true);
+  }
+}
+
+function resetCompanySettingsForm() {
+  renderCompanySettingsForm();
+  notice("Đã khôi phục form cấu hình công ty.");
 }
 
 async function seedSettings() {
@@ -1855,6 +1961,14 @@ function watchData() {
     hydrateSelects();
     markDirty("settings");
   }, err => notice("Lỗi tải SETTINGS: " + authMessage(err), true)));
+
+  if (canAccessAdminPanel()) {
+    unsubscribers.push(onSnapshot(doc(db, "companySettings", "main"), snap => {
+      companySettings = normalizeCompanySettings(snap.exists() ? snap.data() : {});
+      if (isAdminRoute()) renderCompanySettingsForm();
+      markDirty("companySettings");
+    }, err => notice("Lỗi tải cấu hình công ty: " + authMessage(err), true)));
+  }
 
   unsubscribers.push(onSnapshot(collection(db, "kpiRules"), snap => {
     kpiRules = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => clean(a.name).localeCompare(clean(b.name)));
@@ -7431,6 +7545,7 @@ function renderAdminShell() {
   if (subtitle) subtitle.textContent = meta.subtitle;
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
   if (meta.key === "users") renderUserAdmin();
+  if (meta.key === "settings") renderCompanySettingsForm();
 }
 
 function showLogin() {
@@ -7498,6 +7613,7 @@ async function loginGoogle() {
 async function reloadApp() {
   try {
     await loadSettings();
+    if (canAccessAdminPanel()) await loadCompanySettings();
     watchData();
     renderAll();
     notice("Đã tải lại settings và dữ liệu mới nhất.");
@@ -7686,6 +7802,11 @@ on("addUserBtn", "click", () => runAction("addUserBtn", "addUser", "Đang thêm.
 ["newUserEmail","newUserName"].forEach(id => on(id, "keydown", e => {
   if (e.key === "Enter") runAction("addUserBtn", "addUser", "Đang thêm...", addUserAdmin);
 }));
+on("saveCompanySettingsBtn", "click", () => runAction("saveCompanySettingsBtn", "saveCompanySettings", "Đang lưu...", saveCompanySettings));
+on("resetCompanySettingsBtn", "click", resetCompanySettingsForm);
+["companyName","companyLogoUrl","companyPhone","companyEmail","companyShowroomAddress","companyFacebookUrl","companyZaloUrl","companyBrandColor","companyDefaultNotice"].forEach(id => {
+  on(id, "input", () => renderCompanySettingsPreview());
+});
 on("filterChannel", "change", () => {
   activeChannelQuickFilter = "";
   resetPagingAndRender("customers", scheduleRenderAll);
@@ -7842,6 +7963,7 @@ onAuthStateChanged(auth, async user => {
     appUser = await loadAppUser(user);
     if (appUser.active === false) throw new Error("Tài khoản đã bị khóa.");
     await loadSettings();
+    if (canAccessAdminPanel()) await loadCompanySettings();
     startPresence();
     showApp();
     watchData();
