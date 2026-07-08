@@ -4922,7 +4922,7 @@ function dealFormDataForCustomer(c) {
 
 function setDealFormMode(dealId="") {
   editingDealId = clean(dealId);
-  if ($("saveDealBtn")) $("saveDealBtn").textContent = editingDealId ? "Cập nhật đơn" : "Tạo đơn";
+  if ($("saveDealBtn")) $("saveDealBtn").textContent = editingDealId ? "Cập nhật mua căn bản" : "Lưu mua căn bản";
   $("cancelEditDealBtn")?.classList.toggle("hide", !editingDealId);
 }
 
@@ -5105,21 +5105,19 @@ async function saveCareLog() {
 async function saveDeal() {
   if (editingDealId) return updateDeal(editingDealId);
   const c = customers.find(x => x.id === selectedCustomerId);
-  if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền tạo đơn cho khách này.", true);
-  if (!clean($("dealCustomerName").value)) return notice("Vui lòng nhập tên khách trong đơn hàng.", true);
+  if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền ghi nhận mua căn bản cho khách này.", true);
+  if (!clean($("dealCustomerName").value)) return notice("Vui lòng nhập tên khách.", true);
   const {dealStatus, completed, canceled, depositPercent, amount, items, deal} = dealFormDataForCustomer(c);
   if (depositPercent < 0 || depositPercent > 100) return notice("Tỷ lệ cọc phải từ 0 đến 100%.", true);
   deal.createdByEmail = currentUser.email || "";
   deal.createdAt = serverTimestamp();
-  if (!items.length) return notice("Vui lòng thêm ít nhất 1 sản phẩm.", true);
+  if (!items.length && !amount) return notice("Vui lòng nhập nội dung hoặc giá trị mua căn bản.", true);
   try {
     const batch = writeBatch(db);
     const dealRef = doc(collection(db, "deals"));
-    const dealWithId = {...deal, id: dealRef.id};
     const customerRef = doc(db, "customers", c.id);
     const auditRef = doc(collection(db, "auditLogs"));
     batch.set(dealRef, deal);
-    writeOrderItemsForDeal(batch, dealWithId, items);
     batch.update(customerRef, {
       dealStatus: deal.dealStatus,
       status: completed ? systemLabel("boughtStatus") : canceled ? systemLabel("activeStatus") : systemLabel("depositStatus"),
@@ -5136,7 +5134,7 @@ async function saveDeal() {
     });
     await batch.commit();
     resetDealForm(c);
-    notice("Đã tạo đơn hàng.");
+    notice("Đã lưu mua căn bản.");
   } catch (err) {
     notice(authMessage(err), true);
   }
@@ -5154,14 +5152,14 @@ function syncCareFormRules() {
 
 async function updateDeal(dealId) {
   const oldDeal = deals.find(d => d.id === dealId);
-  if (!oldDeal) return notice("Không tìm thấy đơn hàng để cập nhật.", true);
-  if (!canEditDeal(oldDeal)) return notice("Bạn không có quyền sửa đơn hàng này.", true);
+  if (!oldDeal) return notice("Không tìm thấy dữ liệu mua căn bản để cập nhật.", true);
+  if (!canEditDeal(oldDeal)) return notice("Bạn không có quyền sửa dữ liệu mua căn bản này.", true);
   const c = customers.find(x => x.id === oldDeal.customerId) || customers.find(x => x.id === selectedCustomerId);
-  if (!c) return notice("Không tìm thấy khách của đơn hàng.", true);
-  if (!clean($("dealCustomerName").value)) return notice("Vui lòng nhập tên khách trong đơn hàng.", true);
+  if (!c) return notice("Không tìm thấy khách của dữ liệu mua căn bản.", true);
+  if (!clean($("dealCustomerName").value)) return notice("Vui lòng nhập tên khách.", true);
   const {dealStatus, completed, canceled, depositPercent, items, deal} = dealFormDataForCustomer(c);
   if (depositPercent < 0 || depositPercent > 100) return notice("Tỷ lệ cọc phải từ 0 đến 100%.", true);
-  if (!items.length) return notice("Vui lòng thêm ít nhất 1 sản phẩm.", true);
+  if (!items.length && !Number(deal.amount || 0)) return notice("Vui lòng nhập nội dung hoặc giá trị mua căn bản.", true);
   const updatedDeal = {
     ...deal,
     customerId: oldDeal.customerId,
@@ -5180,7 +5178,6 @@ async function updateDeal(dealId) {
   try {
     const batch = writeBatch(db);
     batch.update(doc(db, "deals", oldDeal.id), updatedDeal);
-    writeOrderItemsForDeal(batch, {...oldDeal, ...updatedDeal, id: oldDeal.id}, items, orderItems.filter(item => item.dealId === oldDeal.id));
     batch.update(doc(db, "customers", oldDeal.customerId), customerDealStatePatch(oldDeal.customerId, oldDeal.id, {...oldDeal, ...updatedDeal, id: oldDeal.id}));
     batch.set(doc(collection(db, "auditLogs")), {
       action: "updateDeal", entity: "deals", entityId: oldDeal.id,
@@ -5192,7 +5189,7 @@ async function updateDeal(dealId) {
     resetDealForm(c);
     renderHistories(c.id);
     showDealList(isCompletedDeal(updatedDeal) ? "completed" : "pending");
-    notice("Đã cập nhật đơn hàng.");
+    notice("Đã cập nhật mua căn bản.");
   } catch (err) {
     notice(authMessage(err), true);
   }
@@ -5460,46 +5457,36 @@ async function softDeleteDeal(dealId) {
 function reviewDeal(dealId) {
   const d = deals.find(x => x.id === dealId);
   if (!d) return;
-  const ship = deliveryStats(d);
   const itemRows = dealOrderItems(d);
   const items = itemRows.length
     ? itemRows.map((item, idx) => {
       const qty = Math.max(0, qtyNumber(item.qty));
-      const delivered = Math.max(0, Number(item.deliveredQty || 0));
       return `
       <div class="detail-row">
-        <b>${esc(idx + 1)}. ${esc(item.productName || item.product || item.productLabel || "Sản phẩm")}</b>
+        <b>${esc(idx + 1)}. ${esc(item.productName || item.product || item.productLabel || "Nội dung mua")}</b>
         <div class="detail-meta">
           ${item.productSku || item.code ? `<span>Mã: ${esc(item.productSku || item.code)}</span>` : ""}
           ${item.size ? `<span>Size: ${esc(item.size)}</span>` : ""}
           ${item.surface ? `<span>Bề mặt: ${esc(item.surface)}</span>` : ""}
           ${item.origin ? `<span>Xuất xứ: ${esc(item.origin)}</span>` : ""}
           <span>SL: ${esc(qty || item.qty || 0)}</span>
-          <span>Đã giao: ${esc(delivered)}</span>
-          <span>Còn: ${esc(Math.max(0, qty - delivered))}</span>
         </div>
       </div>
     `;}).join("")
-    : `<div class="detail-row">${esc(d.product || "Chưa có sản phẩm")}${d.quantity ? ` · SL: ${esc(d.quantity)}` : ""}</div>`;
+    : `<div class="detail-row">${esc(d.product || "Chưa có nội dung mua")}${d.quantity ? ` · SL: ${esc(d.quantity)}` : ""}</div>`;
   openDetailModal(
-    `Chi tiết đơn - ${orderCustomerName(d) || "Khách hàng"}`,
+    `Mua căn bản - ${orderCustomerName(d) || "Khách hàng"}`,
     `${orderCustomerPhone(d) || "Không SĐT"} · ${orderOwnerName(d) || ""}`,
     `
       <div class="profile-stats">
         ${profileStat("Trạng thái", orderStatusLabel(d))}
         ${profileStat("Giá trị", money(d.amount || 0))}
         ${profileStat("Đã cọc", `${d.depositPercent ?? 0}%`)}
-        ${profileStat("Ngày đơn", fmtDate(d.dealDate || d.createdAt) || "-")}
-        ${profileStat("Giao hàng", `${deliveryStatusLabel(ship.status)} (${ship.delivered}/${ship.total || "-"})`)}
-      </div>
-      <div class="info-grid">
-        ${infoCell("Địa chỉ giao hàng", d.deliveryAddress)}
-        ${infoCell("Mã số thuế", d.taxCode)}
-        ${infoCell("Ngày mua", fmtDate(d.completedAt))}
-        ${infoCell("Ngày giao", fmtDate(d.deliveryDate))}
+        ${profileStat("Ngày ghi nhận", fmtDate(d.dealDate || d.createdAt) || "-")}
+        ${profileStat("Ngày mua", fmtDate(d.completedAt) || "-")}
       </div>
       <div class="section">
-        <h3>Sản phẩm</h3>
+        <h3>Nội dung mua căn bản</h3>
         <div class="detail-list">${items}</div>
       </div>
       <div class="section">
@@ -5508,9 +5495,7 @@ function reviewDeal(dealId) {
       </div>
       <div class="actions">
         <button class="small" type="button" data-open-care="${esc(d.customerId)}">Mở khách</button>
-        <button class="small primary" type="button" data-delivery-deal="${esc(d.id)}">Giao hàng</button>
-        <button class="small" type="button" data-print-delivery="${esc(d.id)}">In phiếu giao</button>
-        ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa đơn</button>` : ""}
+        ${canEditDeal(d) ? `<button class="small primary" type="button" data-edit-deal="${esc(d.id)}">Sửa mua căn bản</button>` : ""}
       </div>
     `
   );
@@ -5518,12 +5503,12 @@ function reviewDeal(dealId) {
 
 function editDeal(dealId) {
   const d = deals.find(x => x.id === dealId);
-  if (!d) return notice("Không tìm thấy đơn hàng.", true);
-  if (!canEditDeal(d)) return notice("Bạn không có quyền sửa đơn hàng này.", true);
+  if (!d) return notice("Không tìm thấy dữ liệu mua căn bản.", true);
+  if (!canEditDeal(d)) return notice("Bạn không có quyền sửa dữ liệu mua căn bản này.", true);
   closeDetailModal();
   openDrawer(d.customerId, "deal");
   populateDealForm(d);
-  $("drawerTitle").textContent = `Sửa đơn - ${orderCustomerName(d) || d.customerName || "Khách hàng"}`;
+  $("drawerTitle").textContent = `Sửa mua căn bản - ${orderCustomerName(d) || d.customerName || "Khách hàng"}`;
 }
 
 async function deleteCustomer() {
