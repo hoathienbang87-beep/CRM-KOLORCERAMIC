@@ -444,6 +444,7 @@
       <nav class="admin-menu" aria-label="Admin menu">
         <button class="active" type="button" data-admin-route="/admin">Tổng quan</button>
         <button type="button" data-admin-route="/admin/users">Người dùng</button>
+        <button type="button" data-admin-route="/admin/categories">Danh mục CRM</button>
         <button type="button" data-admin-route="/admin/settings">Cấu hình</button>
         <button type="button" data-admin-route="/admin/audit-logs">Nhật ký</button>
       </nav>
@@ -501,6 +502,34 @@
           </div>
         </section>
 
+        <section id="adminCategoriesPage" class="admin-page admin-panel hide" data-admin-page="categories">
+          <div class="admin-section-title">
+            <div>
+              <h2>Danh mục CRM</h2>
+              <p>Quản lý kênh chi tiết, loại khách, trạng thái chăm sóc và các dropdown dùng trong CRM.</p>
+            </div>
+            <div class="admin-header-actions">
+              <button id="resetAdminCategoriesBtn" type="button">Hủy thay đổi</button>
+              <button id="saveAdminCategoriesBtn" class="primary" type="button">Lưu danh mục</button>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <div class="field"><label>Số ngày cảnh báo chăm</label><input id="adminCareDueDays" type="number" min="0" step="1"></div>
+            <div class="field"><label>Trạng thái mua căn bản</label><textarea id="adminSettingsDealStatuses"></textarea></div>
+            <div class="field settings-wide"><label>Kênh chi tiết</label><textarea id="adminSettingsSourceChannels" placeholder="Mỗi dòng một kênh chi tiết"></textarea></div>
+            <div class="field"><label>Loại khách</label><textarea id="adminSettingsCustomerTypes"></textarea></div>
+            <div class="field"><label>Trạng thái khách</label><textarea id="adminSettingsStatuses"></textarea></div>
+            <div class="field"><label>Tình trạng chăm</label><textarea id="adminSettingsFollows"></textarea></div>
+            <div class="field"><label>Hình thức chăm</label><textarea id="adminSettingsCareChannels"></textarea></div>
+            <div class="field"><label>Kết quả chăm</label><textarea id="adminSettingsCareResults"></textarea></div>
+            <div class="field settings-wide"><label>Nhãn hệ thống</label><textarea id="adminSettingsSystemLabels"></textarea></div>
+          </div>
+          <div class="admin-empty-state" style="margin-top:12px">
+            <b>Lưu ý an toàn</b>
+            <span>Không xóa các giá trị đang dùng nếu chưa chắc. Nếu cần đổi tên danh mục lớn, nên xuất snapshot trước để còn đối chiếu dữ liệu cũ.</span>
+          </div>
+        </section>
+
         <section id="adminSettingsPage" class="admin-page admin-panel hide" data-admin-page="settings">
           <div class="admin-section-title">
             <div>
@@ -540,10 +569,18 @@
               <p>Theo dõi ai đã sửa khách hàng, chăm sóc, KPI, đổi quyền user hoặc thay đổi cấu hình CRM.</p>
             </div>
           </div>
-          <div class="admin-empty-state">
-            <b>Trang nhật ký đã sẵn sàng khung.</b>
-            <span>Giai đoạn sau sẽ nối với audit log và lọc theo loại thao tác CRM.</span>
+          <div class="toolbar report-toolbar">
+            <div><label>Đối tượng</label><select id="adminAuditEntityFilter"></select></div>
+            <div class="toolbar-search"><label>Tìm nhật ký</label><input id="adminAuditSearch" placeholder="Email, hành động, đối tượng, nội dung..."></div>
+            <div class="toolbar-actions"><button id="resetAdminAuditFilterBtn" type="button">Xóa lọc</button></div>
           </div>
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Thời gian</th><th>Người thao tác</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead>
+              <tbody id="adminAuditRows"></tbody>
+            </table>
+          </div>
+          <div id="adminAuditPager" class="list-pager"></div>
         </section>
 
         <section class="admin-panel">

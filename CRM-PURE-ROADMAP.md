@@ -152,6 +152,8 @@ Test xong giai doan 5:
 
 Muc tieu: admin/owner tu cau hinh CRM ma khong can vao Supabase.
 
+Trang thai 2026-07-08: Da nang cap buoc dau. Admin panel rieng co them trang Danh muc CRM de quan ly kenh chi tiet, loai khach, trang thai, tinh trang cham, hinh thuc/ket qua cham va ngay canh bao; luu danh muc co xac nhan va audit log. Trang Nhat ky trong admin da noi voi auditLogs, co loc theo doi tuong va tim kiem. Owner duoc tinh vao nhom quyen quan ly de khong bi ket khi vao khu admin.
+
 Viec can lam:
 
 | Viec | Quyet dinh | Ket qua can co |

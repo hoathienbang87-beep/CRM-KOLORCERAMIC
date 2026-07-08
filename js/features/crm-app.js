@@ -100,7 +100,8 @@ const pagingState = {
   tasks: {limit: 30, step: 30},
   products: {limit: 80, step: 80},
   saleActivity: {limit: 80, step: 80},
-  audit: {limit: 80, step: 80}
+  audit: {limit: 80, step: 80},
+  adminAudit: {limit: 80, step: 80}
 };
 let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
@@ -123,7 +124,7 @@ const roleKey = () => clean(appUser?.role).toLowerCase();
 const isOwner = () => roleKey() === "owner";
 const isAdmin = () => roleKey() === "admin";
 const canAccessAdminPanel = () => isOwner() || isAdmin();
-const isManager = () => ["admin","manager","quanly","quản lý","quản lí"].includes(roleKey());
+const isManager = () => ["owner","admin","manager","quanly","quản lý","quản lí"].includes(roleKey());
 const isSale = () => roleKey() === "sale";
 const canExportData = () => ["admin","manager","sale"].includes(roleKey()) || appUser?.canExport === true || String(appUser?.canExport || "").toLowerCase() === "true";
 const ownerName = () => clean(appUser?.name) || clean(currentUser?.displayName) || clean(currentUser?.email);
@@ -241,6 +242,7 @@ const dirtyCollections = new Set();
 const adminRoutes = {
   "/admin": {key:"dashboard", title:"Quản trị CRM", subtitle:"Quản trị người dùng, danh mục CRM, chăm sóc khách hàng và dữ liệu vận hành."},
   "/admin/users": {key:"users", title:"Người dùng", subtitle:"Quản lý tài khoản, role, khóa/mở và thông tin nhân viên."},
+  "/admin/categories": {key:"categories", title:"Danh mục CRM", subtitle:"Quản lý kênh chi tiết, trạng thái, tình trạng chăm sóc và dropdown CRM."},
   "/admin/settings": {key:"settings", title:"Cấu hình công ty", subtitle:"Quản lý logo, hotline, email, showroom, mạng xã hội và thương hiệu."},
   "/admin/audit-logs": {key:"audit-logs", title:"Nhật ký hoạt động", subtitle:"Theo dõi các thay đổi khách hàng, chăm sóc, KPI, user và cấu hình."}
 };
@@ -249,7 +251,7 @@ const viewDependencies = {
   customers: ["customers", "careLogs", "deals", "settings", "users"],
   kpi: ["customers", "kpiRules", "kpiProposals", "settings", "users"],
   reports: ["customers", "careLogs", "deals", "kpiProposals", "auditLogs", "settings", "users"],
-  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings"]
+  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "kpiRules", "kpiProposals"]
 };
 const scheduleRenderAll = debounce(() => renderAll(), 180);
 const scheduleRenderChart = debounce(() => requestChartRender(), 180);
@@ -326,7 +328,8 @@ function loadMorePage(key) {
     customers: renderCustomers,
     tasks: renderTaskBoard,
     saleActivity: renderSaleActivityReport,
-    audit: renderAuditTrail
+    audit: renderAuditTrail,
+    adminAudit: renderAdminAuditPage
   };
   renderers[key]?.();
 }
@@ -724,6 +727,84 @@ async function saveCompanySettings() {
 function resetCompanySettingsForm() {
   renderCompanySettingsForm();
   notice("Đã khôi phục form cấu hình công ty.");
+}
+
+function renderAdminCategorySettingsForm() {
+  if (!canAccessAdminPanel()) return;
+  const pairs = [
+    ["adminSettingsSourceChannels", settings.channels],
+    ["adminSettingsCustomerTypes", settings.customerTypes],
+    ["adminSettingsStatuses", settings.statuses],
+    ["adminSettingsFollows", settings.follows],
+    ["adminSettingsCareChannels", settings.careChannels],
+    ["adminSettingsCareResults", settings.careResults],
+    ["adminSettingsDealStatuses", settings.dealStatuses]
+  ];
+  pairs.forEach(([id, values]) => {
+    const el = $(id);
+    if (el && document.activeElement !== el) el.value = listToText(values);
+  });
+  if ($("adminCareDueDays") && document.activeElement !== $("adminCareDueDays")) $("adminCareDueDays").value = careDueDays();
+  if ($("adminSettingsSystemLabels") && document.activeElement !== $("adminSettingsSystemLabels")) {
+    $("adminSettingsSystemLabels").value = objectToText(settings.systemLabels);
+  }
+}
+
+function adminCategorySettingsData() {
+  return {
+    sources: [],
+    sourceChannels: {},
+    channels: textToList($("adminSettingsSourceChannels").value),
+    customerTypes: textToList($("adminSettingsCustomerTypes").value),
+    statuses: textToList($("adminSettingsStatuses").value),
+    follows: textToList($("adminSettingsFollows").value),
+    careChannels: textToList($("adminSettingsCareChannels").value),
+    careResults: textToList($("adminSettingsCareResults").value),
+    dealStatuses: textToList($("adminSettingsDealStatuses").value),
+    systemLabels: {...DEFAULT_SETTINGS.systemLabels, ...textToObject($("adminSettingsSystemLabels").value)},
+    careDueDays: Math.max(0, Number($("adminCareDueDays").value || DEFAULT_SETTINGS.careDueDays)),
+    partnerTypes: settings.partnerTypes?.length ? settings.partnerTypes : DEFAULT_SETTINGS.partnerTypes,
+    partnerActivities: settings.partnerActivities?.length ? settings.partnerActivities : DEFAULT_SETTINGS.partnerActivities,
+    partnerLevels: settings.partnerLevels?.length ? settings.partnerLevels : DEFAULT_SETTINGS.partnerLevels,
+    partnerCapacity: settings.partnerCapacity?.length ? settings.partnerCapacity : DEFAULT_SETTINGS.partnerCapacity,
+    updatedByEmail: currentUser?.email || "",
+    updatedAt: serverTimestamp()
+  };
+}
+
+async function saveAdminCategorySettings() {
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu danh mục CRM.", true);
+  const data = adminCategorySettingsData();
+  if (!data.channels.length) return notice("Cần có ít nhất 1 kênh chi tiết.", true);
+  if (!data.customerTypes.length) data.customerTypes = DEFAULT_SETTINGS.customerTypes;
+  if (!data.statuses.length || !data.follows.length) return notice("Trạng thái và tình trạng chăm không được để trống.", true);
+  if (!data.careChannels.length || !data.careResults.length) return notice("Hình thức chăm và kết quả chăm không được để trống.", true);
+  if (!confirm("Lưu thay đổi danh mục CRM? Các dropdown mới sẽ áp dụng cho toàn bộ nhân viên.")) return;
+  try {
+    await setDoc(doc(db, "settings", "crm"), data, {merge:true});
+    await logAudit("updateAdminCategorySettings", "settings", "crm", {
+      channels: data.channels.length,
+      customerTypes: data.customerTypes.length,
+      statuses: data.statuses.length,
+      follows: data.follows.length,
+      careChannels: data.careChannels.length,
+      careResults: data.careResults.length,
+      dealStatuses: data.dealStatuses.length,
+      careDueDays: data.careDueDays
+    }).catch(err => notice("Đã lưu danh mục, nhưng chưa ghi được audit log: " + authMessage(err), true));
+    settings = normalizeSettings({...settings, ...data});
+    hydrateSelects();
+    renderAdminCategorySettingsForm();
+    renderAll();
+    notice("Đã lưu danh mục CRM.");
+  } catch (err) {
+    notice("Không lưu được danh mục CRM: " + authMessage(err), true);
+  }
+}
+
+function resetAdminCategorySettingsForm() {
+  renderAdminCategorySettingsForm();
+  notice("Đã khôi phục form danh mục CRM.");
 }
 
 async function seedSettings() {
@@ -4647,6 +4728,51 @@ function renderAuditTrail() {
   renderPager("auditPager", "audit", auditLogs.length, "log");
 }
 
+function hydrateAdminAuditFilters() {
+  const el = $("adminAuditEntityFilter");
+  if (!el) return;
+  const current = el.value;
+  const entities = uniq(auditLogs.map(a => clean(a.entity)).filter(Boolean)).sort((a,b) => a.localeCompare(b, "vi"));
+  fillSelect("adminAuditEntityFilter", entities, "", "Tất cả đối tượng");
+  if (entities.includes(current) || current === "") el.value = current;
+}
+
+function filteredAdminAuditRows() {
+  const entity = clean($("adminAuditEntityFilter")?.value);
+  const key = normalizeKey($("adminAuditSearch")?.value || "");
+  return auditLogs
+    .filter(a => !entity || clean(a.entity) === entity)
+    .filter(a => {
+      if (!key) return true;
+      return normalizeKey([a.email, a.action, a.entity, a.entityId, a.payloadJson, a.note].join(" ")).includes(key);
+    })
+    .sort(byDateDesc);
+}
+
+function renderAdminAuditPage() {
+  if (!canAccessAdminPanel()) return;
+  hydrateAdminAuditFilters();
+  const rows = filteredAdminAuditRows();
+  const page = pageRows("adminAudit", rows);
+  $("adminAuditRows").innerHTML = page.length ? page.map(a => `
+    <tr class="audit-row">
+      <td>${esc(fmtDate(a.createdAt))}</td>
+      <td>${esc(a.email || "")}</td>
+      <td><span class="audit-action">${esc(a.action || "")}</span></td>
+      <td>${esc([a.entity, a.entityId].filter(Boolean).join(" / "))}</td>
+      <td><div class="audit-payload" title="${esc(a.payloadJson || a.note || "")}">${esc(a.payloadJson || a.note || "")}</div></td>
+    </tr>
+  `).join("") : `<tr><td colspan="5" class="muted">Không có nhật ký phù hợp với bộ lọc.</td></tr>`;
+  renderPager("adminAuditPager", "adminAudit", rows.length, "log");
+}
+
+function resetAdminAuditFilters() {
+  if ($("adminAuditEntityFilter")) $("adminAuditEntityFilter").value = "";
+  if ($("adminAuditSearch")) $("adminAuditSearch").value = "";
+  resetPaging("adminAudit");
+  renderAdminAuditPage();
+}
+
 function renderTrash() {
   if (!isAdmin()) return;
   $("trashList").innerHTML = deletedCustomers.length ? deletedCustomers
@@ -7659,7 +7785,9 @@ function renderAdminShell() {
   if (subtitle) subtitle.textContent = meta.subtitle;
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
   if (meta.key === "users") renderUserAdmin();
+  if (meta.key === "categories") renderAdminCategorySettingsForm();
   if (meta.key === "settings") renderCompanySettingsForm();
+  if (meta.key === "audit-logs") renderAdminAuditPage();
 }
 
 function showLogin() {
@@ -7876,6 +8004,11 @@ on("addUserBtn", "click", () => runAction("addUserBtn", "addUser", "Đang thêm.
 }));
 on("saveCompanySettingsBtn", "click", () => runAction("saveCompanySettingsBtn", "saveCompanySettings", "Đang lưu...", saveCompanySettings));
 on("resetCompanySettingsBtn", "click", resetCompanySettingsForm);
+on("saveAdminCategoriesBtn", "click", () => runAction("saveAdminCategoriesBtn", "saveAdminCategories", "Đang lưu...", saveAdminCategorySettings));
+on("resetAdminCategoriesBtn", "click", resetAdminCategorySettingsForm);
+["adminAuditEntityFilter","adminAuditSearch"].forEach(id => on(id, "input", () => resetPagingAndRender("adminAudit", renderAdminAuditPage)));
+on("adminAuditEntityFilter", "change", () => resetPagingAndRender("adminAudit", renderAdminAuditPage));
+on("resetAdminAuditFilterBtn", "click", resetAdminAuditFilters);
 ["companyName","companyLogoUrl","companyPhone","companyEmail","companyShowroomAddress","companyFacebookUrl","companyZaloUrl","companyBrandColor","companyDefaultNotice"].forEach(id => {
   on(id, "input", () => renderCompanySettingsPreview());
 });
