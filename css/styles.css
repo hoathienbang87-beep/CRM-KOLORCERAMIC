@@ -28,6 +28,8 @@
     .login-card p{color:var(--muted);margin:0 0 18px}
     .field{margin-bottom:14px}
     .field.required-field label:after{content:" *";color:var(--rose);font-weight:900}
+    .checkline{display:flex;align-items:center;gap:9px;margin:0 0 14px;padding:10px 12px;border:1px solid #dbe7f4;background:#f8fbff;border-radius:8px;color:#12335f;font-weight:800}
+    .checkline input{width:auto;margin:0;accent-color:var(--brand)}
     .error{color:var(--bad);font-weight:700;margin-top:10px}
     .topbar{height:58px;background:linear-gradient(90deg,#ffffff 0,#f0fbf7 58%,#fff7e8 100%);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:sticky;top:0;z-index:10}
     .brand{font-weight:800;font-size:19px;line-height:1.2}

@@ -79,6 +79,8 @@ Test xong giai doan 2:
 
 Muc tieu: CRM tro thanh cong cu theo doi cham soc that su.
 
+Trang thai 2026-07-08: Da chuan hoa buoc dau. Form cham soc co them ngay cham va dau hieu khach den showroom; care log moi luu activityType, careDate, showroomVisit; timeline uu tien ngay cham that; so lan den showroom tu dong cap nhat khi luu/sua/xoa log; bao cao/xuat snapshot co them thong tin ngay cham va showroom visit.
+
 Viec can lam:
 
 | Viec | Quyet dinh | Ket qua can co |

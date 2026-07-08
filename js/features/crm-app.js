@@ -2033,7 +2033,9 @@ function channelQuickLabel(quick = activeChannelQuickFilter) {
 }
 
 const customerDeals = id => deals.filter(d => d.customerId === id).sort((a,b) => String(b.dealDate || "").localeCompare(String(a.dealDate || "")) || byDateDesc(a,b));
-const customerLogs = id => careLogs.filter(l => l.customerId === id).sort(byDateDesc);
+const careLogActivityDate = l => l?.careDate || l?.createdAt;
+const careLogSortDesc = (a,b) => (toDate(careLogActivityDate(b))?.getTime() || 0) - (toDate(careLogActivityDate(a))?.getTime() || 0) || byDateDesc(a,b);
+const customerLogs = id => careLogs.filter(l => l.customerId === id).sort(careLogSortDesc);
 const dealCounts = id => {
   const list = customerDeals(id);
   return {
@@ -2761,7 +2763,8 @@ function openQuoteProposal(customerId) {
   `).join("") : `<div class="muted">Chưa có đơn hàng/deal nào.</div>`;
   const logRows = logs.length ? logs.map(l => `
     <div class="activity-mini care">
-      <b>${esc(fmtDate(l.createdAt))} · ${esc(l.careResult || l.status || "Chăm sóc")}</b>
+      <b>${esc(fmtDate(careLogActivityDate(l)))} · ${esc(l.careResult || l.status || "Chăm sóc")}</b>
+      ${l.showroomVisit ? activityMetaPills(["Đến showroom"]) : ""}
       <span class="muted">${esc(l.note || "")}</span>
     </div>
   `).join("") : `<div class="muted">Chưa có lịch sử chăm sóc gần đây.</div>`;
@@ -4434,7 +4437,7 @@ async function exportOperationalSnapshot() {
   ]);
   const careRows = (allCareLogs.length ? allCareLogs : careLogs).map(l => [
     l.id, l.customerId, l.customerName, l.owner, l.ownerEmail, l.status, l.careChannel,
-    l.careResult, l.nextCareDate, l.note, fmtDate(l.createdAt), l.isDeleted ? "yes" : ""
+    l.careResult, l.careDate || "", l.nextCareDate, l.showroomVisit ? "yes" : "", l.note, fmtDate(l.createdAt), l.isDeleted ? "yes" : ""
   ]);
   const dealRows = (allDeals.length ? allDeals : deals).map(d => [
     d.id, d.customerId, orderCustomerName(d), orderCustomerPhone(d), orderOwnerName(d),
@@ -4470,7 +4473,7 @@ async function exportOperationalSnapshot() {
       ["Audit logs", auditRows.length, ""]
     ]),
     snapshotSheet("Customers", ["ID","Tên","Công ty","SĐT","SĐT chuẩn","Địa chỉ","Kênh","Loại khách","Mức tiềm năng","Owner","Owner email","Trạng thái","Follow","Hẹn chăm","Ngày tạo","Đã ẩn","Ngày ẩn","Ghi chú"], customerRows),
-    snapshotSheet("CareLogs", ["ID","Customer ID","Khách","Owner","Owner email","Trạng thái","Kênh chăm","Kết quả","Hẹn tiếp","Ghi chú","Ngày tạo","Đã ẩn"], careRows),
+    snapshotSheet("CareLogs", ["ID","Customer ID","Khách","Owner","Owner email","Trạng thái","Kênh chăm","Kết quả","Ngày chăm","Hẹn tiếp","Đến showroom","Ghi chú","Ngày tạo","Đã ẩn"], careRows),
     snapshotSheet("BasicPurchases", ["ID","Customer ID","Khách","SĐT","Owner","Owner email","Trạng thái","Ngày ghi nhận","Ngày mua","Giá trị","Nội dung mua","Đã ẩn","Ghi chú"], dealRows),
     snapshotSheet("KpiRules", ["ID","Tháng","Tên KPI","Chỉ tiêu","Cách tính","Active","Nhân viên gán","Target riêng","Diễn giải"], kpiRuleRows),
     snapshotSheet("KpiProposals", ["ID","Rule ID","KPI","Tháng","Owner","Owner email","Khách","SĐT","Công ty","Trạng thái","Người duyệt","Ngày duyệt","Đã ẩn","Nội dung","Minh chứng"], kpiProposalRows),
@@ -5038,9 +5041,12 @@ async function saveCareLog() {
   const careChannel = clean($("careChannel").value);
   const careResult = clean($("careResult").value);
   const careNote = clean($("careNote").value);
+  const careDate = clean($("careDate")?.value) || todayIso();
   const nextCareDateInput = clean($("careNextDate").value);
+  const showroomVisit = !!$("careShowroomVisit")?.checked;
   if (!careChannel) return notice("Vui lòng chọn hình thức chăm sóc.", true);
   if (!careResult) return notice("Vui lòng chọn kết quả chăm.", true);
+  if (careDate > todayIso()) return notice("Ngày chăm không nên nằm trong tương lai.", true);
   if (!careNote) return notice("Vui lòng nhập ghi chú chăm sóc để lưu lịch sử rõ ràng.", true);
   if (isFollowUpResult(careResult) && !nextCareDateInput) return notice("Kết quả là Hẹn lại thì cần nhập ngày hẹn chăm tiếp.", true);
   if (nextCareDateInput && nextCareDateInput < todayIso()) return notice("Ngày hẹn chăm tiếp không nên nằm trong quá khứ.", true);
@@ -5052,6 +5058,9 @@ async function saveCareLog() {
     customerId: c.id, customerName: c.name || "", phoneNormalized: c.phoneNormalized || "",
     owner: c.owner || "", ownerEmail: c.ownerEmail || "", status: nextStatus, follow: nextFollow,
     careChannel, careResult,
+    activityType: "care",
+    careDate,
+    showroomVisit,
     companyName: isPartnerChannel(c.channel) ? clean($("careCompanyName").value) : "",
     partnerType: isPartnerChannel(c.channel) ? clean($("carePartnerType").value) : "",
     partnerActivity: isPartnerChannel(c.channel) ? clean($("carePartnerActivity").value) : "",
@@ -5078,6 +5087,8 @@ async function saveCareLog() {
       need: log.need || c.need || "",
       note: log.note || c.note || "",
       nextCareDate: log.nextCareDate || "",
+      lastCareDate: careDate,
+      showroomVisitCount: showroomVisit ? showroomVisitCountFor(c) + 1 : showroomVisitCountFor(c),
       lastContactAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
@@ -5694,14 +5705,16 @@ function customerActivityItems(id) {
   const careRows = customerLogs(id).map(l => ({
     kind: "care",
     label: "Chăm sóc",
-    at: l.createdAt,
+    at: careLogActivityDate(l),
     title: l.careResult || l.status || "Ghi chăm sóc",
     text: l.note || "",
     meta: "",
     pills: [
+      l.careDate ? `Ngày chăm: ${fmtDate(l.careDate)}` : "",
       l.careChannel ? `Hình thức: ${l.careChannel}` : "",
       l.status ? `Trạng thái: ${l.status}` : "",
-      l.nextCareDate ? `Hẹn tiếp: ${fmtDate(l.nextCareDate)}` : "Chưa hẹn tiếp"
+      l.nextCareDate ? `Hẹn tiếp: ${fmtDate(l.nextCareDate)}` : "Chưa hẹn tiếp",
+      l.showroomVisit ? "Đến showroom" : ""
     ]
   }));
   const dealRows = customerDeals(id).map(d => ({
@@ -5936,6 +5949,8 @@ function openDrawer(id, mode="care") {
   toggleCarePartnerFields(c.channel);
   $("careNeed").value = clean(c.need);
   $("careNote").value = "";
+  if ($("careDate")) $("careDate").value = todayIso();
+  if ($("careShowroomVisit")) $("careShowroomVisit").checked = false;
   $("careNextDate").value = clean(c.nextCareDate);
   syncCareFormRules();
   $("dealStatus").value = systemLabel("depositStatus");
@@ -6024,7 +6039,9 @@ function parseCareLogEditInput(text) {
     if (key === "trangthai") data.status = value;
     if (key === "hinhthuc") data.careChannel = value;
     if (key === "ketqua") data.careResult = value;
+    if (key === "ngaycham") data.careDate = value;
     if (key === "hencham") data.nextCareDate = value;
+    if (key === "denshowroom") data.showroomVisit = ["yes","true","co","có","1"].includes(normalizeKey(value));
     if (key === "ghichu") data.note = value;
   });
   return data;
@@ -6033,7 +6050,7 @@ function parseCareLogEditInput(text) {
 function latestCareStateForCustomer(customerId, logList = careLogs) {
   const latest = logList
     .filter(l => l.customerId === customerId && !l.isDeleted)
-    .sort(byDateDesc)[0];
+    .sort(careLogSortDesc)[0];
   const c = customers.find(x => x.id === customerId);
   if (!latest) {
     const fallbackStatus = c?.status || systemLabel("leadStatus");
@@ -6054,6 +6071,7 @@ function latestCareStateForCustomer(customerId, logList = careLogs) {
     partnerCapacity: latest.partnerCapacity || c?.partnerCapacity || "",
     need: latest.need || c?.need || "",
     note: latest.note || c?.note || "",
+    lastCareDate: latest.careDate || "",
     lastContactAt: latest.createdAt || null
   };
   state.follow = computedFollowStatus({...c, status: state.status, nextCareDate: state.nextCareDate});
@@ -6068,13 +6086,17 @@ async function editCareLog(logId) {
     `Trạng thái: ${log.status || ""}`,
     `Hình thức: ${log.careChannel || ""}`,
     `Kết quả: ${log.careResult || ""}`,
+    `Ngày chăm: ${log.careDate || ""}`,
     `Hẹn chăm: ${log.nextCareDate || ""}`,
+    `Đến showroom: ${log.showroomVisit ? "có" : "không"}`,
     `Ghi chú: ${log.note || ""}`
   ].join("\n"));
   if (text === null) return;
   const updates = parseCareLogEditInput(text);
   if (!Object.keys(updates).length) return notice("Không có nội dung hợp lệ để sửa.", true);
   try {
+    const c = customers.find(item => item.id === log.customerId) || {};
+    const showroomDelta = typeof updates.showroomVisit === "boolean" && updates.showroomVisit !== !!log.showroomVisit ? (updates.showroomVisit ? 1 : -1) : 0;
     const nextLog = {...log, ...updates, updatedAt: new Date()};
     const nextLogs = careLogs.map(l => l.id === log.id ? nextLog : l);
     const customerState = latestCareStateForCustomer(log.customerId, nextLogs);
@@ -6087,6 +6109,7 @@ async function editCareLog(logId) {
     });
     batch.update(doc(db, "customers", log.customerId), {
       ...customerState,
+      showroomVisitCount: Math.max(0, showroomVisitCountFor(c) + showroomDelta),
       updatedByEmail: currentUser.email || "",
       updatedAt: serverTimestamp()
     });
@@ -6107,6 +6130,7 @@ async function deleteCareLog(logId) {
   if (!log) return notice("Không tìm thấy lịch sử chăm sóc.", true);
   if (!confirm("Xóa lịch sử chăm sóc này? Dòng này sẽ bị ẩn khỏi web và ghi lại audit log.")) return;
   try {
+    const c = customers.find(item => item.id === log.customerId) || {};
     const nextLogs = careLogs.map(l => l.id === log.id ? {...l, isDeleted: true} : l);
     const customerState = latestCareStateForCustomer(log.customerId, nextLogs);
     const batch = writeBatch(db);
@@ -6119,6 +6143,7 @@ async function deleteCareLog(logId) {
     });
     batch.update(doc(db, "customers", log.customerId), {
       ...customerState,
+      showroomVisitCount: log.showroomVisit ? Math.max(0, showroomVisitCountFor(c) - 1) : showroomVisitCountFor(c),
       updatedByEmail: currentUser.email || "",
       updatedAt: serverTimestamp()
     });
@@ -6138,7 +6163,7 @@ function renderHistories(id) {
     const title = $("dealListTitle").textContent.includes("hoàn thành") ? "completed" : "pending";
     showDealList(title);
   }
-  const careActionsByDate = new Map(customerLogs(id).map(l => [String(l.createdAt || ""), l]));
+  const careActionsByDate = new Map(customerLogs(id).flatMap(l => [[String(l.createdAt || ""), l], [String(careLogActivityDate(l) || ""), l]]));
   const timeline = customerActivityItems(id);
   $("logHistory").innerHTML = timeline.length ? timeline.map(item => {
     const careLog = item.kind === "care" ? careActionsByDate.get(String(item.at || "")) : null;
@@ -7027,11 +7052,11 @@ function saleActivityRows() {
     });
 
   careLogs
-    .filter(l => !l.isDeleted && inDateRange(l.createdAt, range) && ownerMatchesKey(l, ownerFilter))
+    .filter(l => !l.isDeleted && inDateRange(careLogActivityDate(l), range) && ownerMatchesKey(l, ownerFilter))
     .forEach(l => {
       const c = customerById(l.customerId);
       rows.push({
-        date: isoFromAny(l.createdAt),
+        date: isoFromAny(careLogActivityDate(l)),
         type: "Chăm sóc",
         owner: l.owner || customerOwnerName(c) || l.ownerEmail,
         ownerEmail: l.ownerEmail || customerOwnerKey(c),
@@ -7041,7 +7066,7 @@ function saleActivityRows() {
         channel: c.channel || "",
         status: l.status || c.status || "",
         amount: "",
-        note: [l.careChannel, l.careResult, l.note].filter(Boolean).join(" · "),
+        note: [l.careChannel, l.careResult, l.showroomVisit ? "Đến showroom" : "", l.note].filter(Boolean).join(" · "),
         bucket: "care",
         customerId: l.customerId
       });
@@ -7298,11 +7323,11 @@ function activityRowsForExport() {
   const rows = [];
 
   careLogs
-    .filter(l => !l.isDeleted && inDateRange(l.createdAt, range) && exportOwnerMatches(l, ownerFilter))
+    .filter(l => !l.isDeleted && inDateRange(careLogActivityDate(l), range) && exportOwnerMatches(l, ownerFilter))
     .forEach(l => {
       const c = customerById(l.customerId);
       rows.push({
-        date: isoFromAny(l.createdAt),
+        date: isoFromAny(careLogActivityDate(l)),
         type: "Chăm sóc KH",
         owner: l.owner || customerOwnerName(c) || l.ownerEmail,
         customer: l.customerName || c.name || "",
@@ -7316,7 +7341,7 @@ function activityRowsForExport() {
         nextCareDate: l.nextCareDate || "",
         dealStatus: "",
         amount: "",
-        note: l.note || ""
+        note: [l.showroomVisit ? "Đến showroom" : "", l.note].filter(Boolean).join(" · ")
       });
     });
 
