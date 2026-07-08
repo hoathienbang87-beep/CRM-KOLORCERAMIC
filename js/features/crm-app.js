@@ -3408,12 +3408,12 @@ async function exportKpiReport() {
       })
     ])
   ];
-  const proposalHeader = ["Nhân viên / Email","KPI","Tháng","SĐT","Bộ phận","Khách hàng","SĐT KH","Công ty","Kênh KH","Trạng thái","Nội dung","Minh chứng","Gửi lúc","Người duyệt","Ngày duyệt","Ghi chú duyệt"];
+  const proposalHeader = ["Nhân viên / Email","KPI","Tháng","Chỉ tiêu lúc gửi","SĐT","Bộ phận","Khách hàng","SĐT KH","Công ty","Kênh KH","Trạng thái","Nội dung","Minh chứng","Gửi lúc","Người duyệt","Ngày duyệt","Ghi chú duyệt"];
   const proposalTable = [
     [`Chi tiết đề xuất KPI tháng ${month} và các đề xuất còn chờ duyệt`, ...Array(proposalHeader.length - 1).fill("")],
     proposalHeader,
     ...proposalRows.map(p => [
-      personExportCell(p.owner, p.email || p.ownerEmail), p.kpiName || "", kpiProposalMonth(p), p.phone || "", p.department || "",
+      personExportCell(p.owner, p.email || p.ownerEmail), p.kpiName || "", kpiProposalMonth(p), p.kpiTargetForOwner || p.kpiRuleTarget || "", p.phone || "", p.department || "",
       p.customerName || "", p.customerPhone || "", p.customerCompanyName || "", p.customerChannel || "",
       isApprovedKpiProposal(p) ? "Đã duyệt" : isRejectedKpiProposal(p) ? "Từ chối" : "Chờ duyệt",
       p.content || "", p.evidenceUrl || "", fmtDate(p.createdAt), p.reviewedByEmail || "", fmtDate(p.reviewedAt), p.reviewNote || ""
@@ -3572,6 +3572,19 @@ function kpiRuleTargetForOwner(rule, ownerKey) {
   return Number(rule.target || 0);
 }
 
+function kpiRuleSnapshotForOwner(rule, ownerKey) {
+  return {
+    kpiRuleId: rule?.id || "",
+    kpiName: rule?.name || "",
+    kpiRuleDescription: rule?.description || "",
+    kpiRuleCountMode: rule?.countMode || "approvedProposals",
+    kpiRuleTarget: Number(rule?.target || 0),
+    kpiTargetForOwner: kpiRuleTargetForOwner(rule || {}, ownerKey),
+    kpiAssignedOwners: kpiRuleAssignedOwners(rule || {}),
+    snapshottedAt: new Date().toISOString()
+  };
+}
+
 function renderKpiAssignmentBuilder() {
   if (!isManager()) return;
   const users = kpiAssignableUsers();
@@ -3715,7 +3728,7 @@ function renderKpiApprovalPanel() {
         </div>
         <div class="kpi-approval-actions">
           <button class="small" data-kpi-proposal-detail="${esc(p.id)}">Chi tiết</button>
-          ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Xóa test</button>` : ""}
+          ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Ẩn test</button>` : ""}
           <button class="small primary" data-approve-kpi-proposal="${esc(p.id)}">Duyệt</button>
           <button class="small danger" data-reject-kpi-proposal="${esc(p.id)}">Từ chối</button>
         </div>
@@ -3798,11 +3811,11 @@ function kpiProposalDetailHtml(p) {
         <div class="detail-row-head">
           <div>
             <b>${esc(p.kpiName || rule?.name || "KPI")}</b>
-            <div class="detail-meta">
-              <span>Tháng: ${esc(kpiProposalMonth(p) || rule?.month || "")}</span>
-              <span>Trạng thái: ${esc(statusLabel)}</span>
-              ${rule ? `<span>Chỉ tiêu: ${esc(rule.target || 0)}</span>` : ""}
-            </div>
+          <div class="detail-meta">
+            <span>Tháng: ${esc(kpiProposalMonth(p) || rule?.month || "")}</span>
+            <span>Trạng thái: ${esc(statusLabel)}</span>
+            <span>Chỉ tiêu lúc gửi: ${esc(p.kpiTargetForOwner || p.kpiRuleTarget || rule?.target || 0)}</span>
+          </div>
           </div>
         </div>
         <div class="grid2">
@@ -3823,6 +3836,7 @@ function kpiProposalDetailHtml(p) {
           <b>Nội dung sale gửi</b>
           <div class="detail-note">${esc(p.content || "Chưa có nội dung.")}</div>
         </div>
+        ${p.kpiRuleDescription ? `<div><b>Điều kiện KPI lúc gửi</b><div class="detail-note">${esc(p.kpiRuleDescription)}</div></div>` : ""}
         ${evidencePreviewHtml(p.evidenceUrl)}
         <div class="detail-meta">
           <span>Gửi lúc: ${esc(fmtDate(p.createdAt) || "")}</span>
@@ -3834,7 +3848,7 @@ function kpiProposalDetailHtml(p) {
           <div class="actions">
             ${canEditKpiProposal(p) ? `<button class="small primary" data-edit-kpi-proposal="${esc(p.id)}">Sửa đề xuất</button>` : ""}
             ${canSoftDeleteKpiProposal(p) ? `<button class="small danger" data-soft-delete-kpi-proposal="${esc(p.id)}">Xóa đề xuất</button>` : ""}
-            ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Xóa KPI test</button>` : ""}
+            ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Ẩn KPI test</button>` : ""}
           </div>
         ` : ""}
       </div>
@@ -3865,7 +3879,7 @@ function kpiProposalCard(p) {
           <button class="small" data-kpi-proposal-detail="${esc(p.id)}">Chi tiết</button>
           ${canEditKpiProposal(p) ? `<button class="small primary" data-edit-kpi-proposal="${esc(p.id)}">Sửa</button>` : ""}
           ${canSoftDeleteKpiProposal(p) ? `<button class="small danger" data-soft-delete-kpi-proposal="${esc(p.id)}">Xóa đề xuất</button>` : ""}
-          ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Xóa test</button>` : ""}
+          ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Ẩn test</button>` : ""}
         </div>
       </div>
       <div class="detail-note kpi-content-preview">${esc(p.content || "")}</div>
@@ -4251,6 +4265,7 @@ async function submitKpiProposal() {
   const manualEvidence = clean($("proposalEvidenceUrl").value);
   const content = clean($("proposalContent").value);
   if (!content) return notice("Vui lòng nhập nội dung công việc đạt KPI.", true);
+  const ruleSnapshot = kpiRuleSnapshotForOwner(rule, ownerEmail());
   const data = {
     kpiRuleId: rule.id,
     kpiName: rule.name || "",
@@ -4263,6 +4278,8 @@ async function submitKpiProposal() {
     content,
     evidenceUrl: manualEvidence,
     ...(kpiProposalCustomerContext || {}),
+    ...ruleSnapshot,
+    ruleSnapshotJson: JSON.stringify(ruleSnapshot),
     status: "pending",
     isDeleted: false,
     updatedAt: serverTimestamp()
@@ -4299,8 +4316,11 @@ async function reviewKpiProposal(proposalId, status) {
   if (!isManager()) return notice("Chỉ admin/manager được duyệt đề xuất KPI.", true);
   const proposal = kpiProposals.find(p => p.id === proposalId);
   if (!proposal) return notice("Không tìm thấy đề xuất KPI.", true);
+  if (!isPendingKpiProposal(proposal)) return notice("Đề xuất KPI này đã được xử lý, không duyệt/từ chối lại để giữ log.", true);
   const nextStatus = status === "approved" ? "approved" : "rejected";
   const reviewNote = nextStatus === "rejected" ? clean(prompt("Lý do từ chối đề xuất KPI này?", "") || "") : "";
+  const rule = kpiRules.find(r => r.id === proposal.kpiRuleId) || {};
+  const reviewSnapshot = kpiRuleSnapshotForOwner(rule, proposal.ownerEmail || proposal.email || proposal.owner);
   try {
     const batch = writeBatch(db);
     batch.update(doc(db, "kpiProposals", proposalId), {
@@ -4308,6 +4328,7 @@ async function reviewKpiProposal(proposalId, status) {
       reviewNote,
       reviewedByEmail: currentUser?.email || "",
       reviewedAt: serverTimestamp(),
+      reviewedSnapshotJson: JSON.stringify(reviewSnapshot),
       updatedAt: serverTimestamp()
     });
     batch.set(doc(collection(db, "auditLogs")), {
@@ -4326,15 +4347,21 @@ async function reviewKpiProposal(proposalId, status) {
 }
 
 async function deleteKpiProposal(proposalId) {
-  if (!isAdmin()) return notice("Chỉ admin được xóa KPI test.", true);
+  if (!isAdmin()) return notice("Chỉ admin được ẩn KPI test.", true);
   const proposal = kpiProposals.find(p => p.id === proposalId);
   if (!proposal) return notice("Không tìm thấy đề xuất KPI.", true);
-  if (!confirm(`Xóa KPI test của ${proposal.owner || proposal.ownerEmail || "nhân viên"}? Dòng này sẽ không còn xuất trong báo cáo KPI.`)) return;
+  if (!confirm(`Ẩn KPI test của ${proposal.owner || proposal.ownerEmail || "nhân viên"}? Dòng này sẽ không còn xuất trong báo cáo KPI nhưng vẫn giữ audit log.`)) return;
   try {
     const batch = writeBatch(db);
-    batch.delete(doc(db, "kpiProposals", proposalId));
+    batch.update(doc(db, "kpiProposals", proposalId), {
+      isDeleted: true,
+      deletedByEmail: currentUser?.email || "",
+      deletedAt: serverTimestamp(),
+      updatedByEmail: currentUser?.email || "",
+      updatedAt: serverTimestamp()
+    });
     batch.set(doc(collection(db, "auditLogs")), {
-      action: "deleteKpiProposal",
+      action: "softDeleteAdminKpiProposal",
       entity: "kpiProposals",
       entityId: proposalId,
       email: currentUser?.email || "",
@@ -4343,9 +4370,9 @@ async function deleteKpiProposal(proposalId) {
     });
     await batch.commit();
     closeDetailModal();
-    notice("Đã xóa KPI test khỏi báo cáo.");
+    notice("Đã ẩn KPI test khỏi báo cáo.");
   } catch (err) {
-    notice("Không xóa được KPI test: " + authMessage(err), true);
+    notice("Không ẩn được KPI test: " + authMessage(err), true);
   }
 }
 
@@ -4451,8 +4478,8 @@ async function exportOperationalSnapshot() {
   ]);
   const kpiProposalRows = kpiProposals.map(p => [
     p.id, p.kpiRuleId, p.kpiName, p.month, p.owner, p.ownerEmail, p.customerName,
-    p.customerPhone, p.customerCompanyName, p.status, p.reviewedByEmail, fmtDate(p.reviewedAt),
-    p.isDeleted ? "yes" : "", p.content, p.evidenceUrl
+    p.customerPhone, p.customerCompanyName, p.status, p.kpiTargetForOwner || p.kpiRuleTarget || "",
+    p.reviewedByEmail, fmtDate(p.reviewedAt), p.isDeleted ? "yes" : "", p.content, p.evidenceUrl
   ]);
   const userRows = users.map(u => [
     u.uid || u.id, u.email, u.name, u.role, u.active === false ? "locked" : "active",
@@ -4476,7 +4503,7 @@ async function exportOperationalSnapshot() {
     snapshotSheet("CareLogs", ["ID","Customer ID","Khách","Owner","Owner email","Trạng thái","Kênh chăm","Kết quả","Ngày chăm","Hẹn tiếp","Đến showroom","Ghi chú","Ngày tạo","Đã ẩn"], careRows),
     snapshotSheet("BasicPurchases", ["ID","Customer ID","Khách","SĐT","Owner","Owner email","Trạng thái","Ngày ghi nhận","Ngày mua","Giá trị","Nội dung mua","Đã ẩn","Ghi chú"], dealRows),
     snapshotSheet("KpiRules", ["ID","Tháng","Tên KPI","Chỉ tiêu","Cách tính","Active","Nhân viên gán","Target riêng","Diễn giải"], kpiRuleRows),
-    snapshotSheet("KpiProposals", ["ID","Rule ID","KPI","Tháng","Owner","Owner email","Khách","SĐT","Công ty","Trạng thái","Người duyệt","Ngày duyệt","Đã ẩn","Nội dung","Minh chứng"], kpiProposalRows),
+    snapshotSheet("KpiProposals", ["ID","Rule ID","KPI","Tháng","Owner","Owner email","Khách","SĐT","Công ty","Trạng thái","Chỉ tiêu lúc gửi","Người duyệt","Ngày duyệt","Đã ẩn","Nội dung","Minh chứng"], kpiProposalRows),
     snapshotSheet("Users", ["ID","Email","Tên","Role","Active","Team","Can export","Cập nhật"], userRows),
     snapshotSheet("AuditLogs", ["ID","Thời gian","Email","Action","Entity","Entity ID","Payload"], auditRows)
   ];
@@ -5576,6 +5603,9 @@ async function restoreCustomer(customerId) {
     allDeals.filter(d => d.customerId === c.id && d.isDeleted).forEach(d => {
       batch.update(doc(db, "deals", d.id), {isDeleted:false, restoredAt:serverTimestamp(), restoredByEmail:currentUser.email || ""});
     });
+    kpiProposals.filter(p => p.customerId === c.id && p.isDeleted).forEach(p => {
+      batch.update(doc(db, "kpiProposals", p.id), {isDeleted:false, restoredAt:serverTimestamp(), restoredByEmail:currentUser.email || ""});
+    });
     if (c.phoneNormalized) {
       batch.set(doc(db, "phoneIndex", c.phoneNormalized), {
         customerId: c.id,
@@ -5600,14 +5630,20 @@ async function permanentlyDeleteCustomer(customerId) {
   if (!isAdmin()) return notice("Chỉ admin được xóa vĩnh viễn.", true);
   const c = deletedCustomers.find(x => x.id === customerId);
   if (!c) return notice("Không tìm thấy khách trong thùng rác.", true);
-  const ok = confirm(`XÓA VĨNH VIỄN khách "${c.name || c.id}" và toàn bộ careLogs/deals liên quan? Không thể khôi phục.`);
+  const ok = confirm(`XÓA VĨNH VIỄN khách "${c.name || c.id}" và toàn bộ careLogs/deals liên quan? KPI liên quan sẽ được ẩn mềm để giữ log đối chiếu.`);
   if (!ok) return;
   try {
     const batch = writeBatch(db);
     batch.delete(doc(db, "customers", c.id));
     allCareLogs.filter(l => l.customerId === c.id).forEach(l => batch.delete(doc(db, "careLogs", l.id)));
     allDeals.filter(d => d.customerId === c.id).forEach(d => batch.delete(doc(db, "deals", d.id)));
-    kpiProposals.filter(p => p.customerId === c.id).forEach(p => batch.delete(doc(db, "kpiProposals", p.id)));
+    kpiProposals.filter(p => p.customerId === c.id).forEach(p => batch.update(doc(db, "kpiProposals", p.id), {
+      isDeleted: true,
+      deletedByEmail: currentUser.email || "",
+      deletedAt: serverTimestamp(),
+      updatedByEmail: currentUser.email || "",
+      updatedAt: serverTimestamp()
+    }));
     if (c.phoneNormalized) batch.delete(doc(db, "phoneIndex", c.phoneNormalized));
     batch.set(doc(collection(db, "auditLogs")), {
       action: "permanentDeleteCustomer", entity: "customers", entityId: c.id,

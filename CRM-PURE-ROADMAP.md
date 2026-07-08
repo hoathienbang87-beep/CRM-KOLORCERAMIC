@@ -103,6 +103,8 @@ Test xong giai doan 3:
 
 Muc tieu: KPI cong bang, co bang chung, khong mat du lieu qua thang.
 
+Trang thai 2026-07-08: Da chuan hoa buoc dau. KPI rule dang active duoc hieu la ap dung lau dai qua cac thang; bang tien do chi dem de xuat da duyet; de xuat pending qua thang van hien trong khung duyet; sale chi sua/xoa mem de xuat pending cua minh; de xuat da duyet/tu choi bi khoa; de xuat KPI moi luu snapshot chi tieu/dieu kien KPI luc gui va luc duyet; admin an KPI test bang xoa mem thay vi xoa cung.
+
 Viec can lam:
 
 | Viec | Quyet dinh | Ket qua can co |
