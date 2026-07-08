@@ -324,6 +324,10 @@
     .health-card.bad{background:#fff1f0;border-color:#ffcbc7}
     .health-card.bad:before{background:var(--rose)}
     .health-card b{font-size:20px}
+    .ops-warning-list{display:grid;gap:8px;margin-top:12px}
+    .ops-warning{border:1px solid #f6c65b;border-left:4px solid #f59e0b;background:#fff8df;border-radius:8px;padding:10px 12px;color:#704300;font-weight:800}
+    .ops-warning.good{border-color:#bdebd2;border-left-color:#087443;background:#f0fdf4;color:#075e36}
+    .ops-warning small{display:block;margin-top:3px;color:#64748b;font-weight:700}
     .trash-card{background:linear-gradient(145deg,#fff,#fbfdff)}
     .trash-card-grid{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:12px;align-items:start}
     .trash-actions{display:grid;gap:8px}

@@ -95,6 +95,7 @@ let editingDealId = "";
 let editingQuoteId = "";
 let kpiProposalCustomerContext = null;
 let inventoryQtyCache = new Map();
+let renderQueuedWhileHidden = false;
 const pagingState = {
   customers: {limit: 40, step: 40},
   tasks: {limit: 30, step: 30},
@@ -253,8 +254,21 @@ const viewDependencies = {
   reports: ["customers", "careLogs", "deals", "kpiProposals", "auditLogs", "settings", "users"],
   admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "kpiRules", "kpiProposals"]
 };
-const scheduleRenderAll = debounce(() => renderAll(), 180);
+const scheduleRenderAll = debounce(() => {
+  if (document.hidden) {
+    renderQueuedWhileHidden = true;
+    return;
+  }
+  renderAll();
+}, 180);
 const scheduleRenderChart = debounce(() => requestChartRender(), 180);
+
+const OPERATIONS_WARN_LIMITS = {
+  customers: 1200,
+  careLogs: 5000,
+  auditLogs: 8000,
+  kpiProposals: 2500
+};
 
 function markDirty(...names) {
   names.flat().filter(Boolean).forEach(name => dirtyCollections.add(name));
@@ -4600,11 +4614,43 @@ function renderHealthCheck() {
 }
 
 function renderDataSafetyPanel() {
-  if (!isAdmin()) return;
+  if (!canAccessAdminPanel()) return;
   if ($("safetyCustomersCount")) $("safetyCustomersCount").textContent = allCustomers.length || customers.length;
   if ($("safetyDealsCount")) $("safetyDealsCount").textContent = allDeals.length || deals.length;
   if ($("safetyPaymentsCount")) $("safetyPaymentsCount").textContent = allPayments.length || payments.length;
   if ($("safetyAuditCount")) $("safetyAuditCount").textContent = auditLogs.length;
+  renderOperationsWarnings();
+}
+
+function renderOperationsWarnings() {
+  const box = $("operationsWarnings");
+  if (!box) return;
+  const warnings = [];
+  const counts = {
+    customers: allCustomers.length || customers.length,
+    careLogs: allCareLogs.length || careLogs.length,
+    auditLogs: auditLogs.length,
+    kpiProposals: kpiProposals.length
+  };
+  if (counts.customers >= OPERATIONS_WARN_LIMITS.customers) {
+    warnings.push(["Dữ liệu khách đã lớn", `${counts.customers} khách. Nên ưu tiên phân trang/query theo bộ lọc ở Supabase nếu app bắt đầu chậm.`]);
+  }
+  if (counts.careLogs >= OPERATIONS_WARN_LIMITS.careLogs) {
+    warnings.push(["Lịch sử chăm sóc nhiều", `${counts.careLogs} log. Nên chỉ tải timeline theo khách khi mở hồ sơ, tránh tải toàn bộ lâu dài.`]);
+  }
+  if (counts.auditLogs >= OPERATIONS_WARN_LIMITS.auditLogs) {
+    warnings.push(["Audit log nhiều", `${counts.auditLogs} log. Nên archive log cũ theo tháng hoặc tạo view/RPC báo cáo.`]);
+  }
+  if (counts.kpiProposals >= OPERATIONS_WARN_LIMITS.kpiProposals) {
+    warnings.push(["KPI proposal nhiều", `${counts.kpiProposals} đề xuất. Nên lọc theo tháng/trạng thái ở query.`]);
+  }
+  if (!warnings.length) {
+    box.innerHTML = `<div class="ops-warning good">Nền dữ liệu hiện chưa vượt ngưỡng cảnh báo.<small>Tiếp tục backup trước deploy và test đủ 3 role sau mỗi thay đổi lớn.</small></div>`;
+    return;
+  }
+  box.innerHTML = warnings.map(([title, note]) => `
+    <div class="ops-warning">${esc(title)}<small>${esc(note)}</small></div>
+  `).join("");
 }
 
 function jsonCell(value) {
@@ -4942,6 +4988,10 @@ async function deleteUserAdmin(uid) {
 }
 
 function renderAll() {
+  if (document.hidden) {
+    renderQueuedWhileHidden = true;
+    return;
+  }
   const adminVisible = $("adminAppView") && !$("adminAppView").classList.contains("hide");
   if (adminVisible) {
     renderAdminDashboard();
@@ -8107,6 +8157,12 @@ on("cancelCustomerInfoBtn", "click", () => toggleCustomerInfoEdit(false));
 on("saveCustomerInfoBtn", "click", () => runAction("saveCustomerInfoBtn", "saveCustomerInfo", "Đang lưu...", saveCustomerInfo));
 on("deleteCustomerBtn", "click", () => runAction("deleteCustomerBtn", "deleteCustomer", "Đang xóa...", deleteCustomer));
 window.addEventListener("resize", scheduleRenderChart);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !renderQueuedWhileHidden) return;
+  renderQueuedWhileHidden = false;
+  renderAll();
+  scheduleRenderChart();
+});
 window.addEventListener("popstate", () => {
   if (currentUser && appUser) showApp();
   else showLogin();
