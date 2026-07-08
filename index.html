@@ -44,14 +44,20 @@
       <aside class="panel">
         <h2>Thêm khách mới</h2>
         <div class="field"><label>Khách hàng</label><input id="name"></div>
-        <div class="field"><label>SĐT</label><input id="phone"></div>
+        <div class="field"><label>SĐT</label><input id="phone"><div id="phoneHint" class="muted">Có thể để trống nếu khách chưa có SĐT.</div></div>
         <div class="field"><label>Địa chỉ</label><textarea id="address"></textarea></div>
         <select id="source" class="hide"></select>
-        <select id="customerType" class="hide"></select>
-        <div class="field"><label>Kênh chi tiết</label><select id="channel"></select></div>
+        <div class="grid2">
+          <div class="field"><label>Kênh chi tiết</label><select id="channel"></select></div>
+          <div class="field"><label>Loại khách</label><select id="customerType"></select></div>
+        </div>
+        <div class="field">
+          <label>Mức tiềm năng</label>
+          <select id="potentialLevel"></select>
+        </div>
         <div class="field"><label>Nhân viên phụ trách</label><select id="owner"></select></div>
         <div id="partnerFields" class="grid2 hide">
-          <div class="field"><label>Tên công ty</label><input id="companyName"></div>
+          <div class="field"><label>Tên công ty</label><input id="customerCompanyName"></div>
           <div class="field"><label>Loại TK/XD</label><select id="partnerType"></select></div>
           <div class="field"><label>Level quan hệ</label><select id="partnerLevel"></select></div>
           <div class="field"><label>Hoạt động TK/XD</label><select id="partnerActivity"></select></div>
@@ -196,8 +202,8 @@
           </div>
           <div class="settings-grid">
             <textarea id="settingsSources" class="hide"></textarea>
-            <textarea id="settingsCustomerTypes" class="hide"></textarea>
             <div class="field settings-wide"><label>Kênh chi tiết</label><textarea id="settingsSourceChannels" placeholder="Mỗi dòng một kênh chi tiết"></textarea></div>
+            <div class="field"><label>Loại khách</label><textarea id="settingsCustomerTypes" placeholder="Mỗi dòng một loại khách"></textarea></div>
             <div class="field"><label>Trạng thái</label><textarea id="settingsStatuses"></textarea></div>
             <div class="field"><label>Tình trạng chăm</label><textarea id="settingsFollows"></textarea></div>
             <div class="field"><label>Hình thức chăm</label><textarea id="settingsCareChannels"></textarea></div>
@@ -209,7 +215,7 @@
             <div class="field"><label>Trạng thái mua căn bản</label><textarea id="settingsDealStatuses"></textarea></div>
             <div class="field settings-wide"><label>Nhãn hệ thống</label><textarea id="settingsSystemLabels"></textarea></div>
           </div>
-          <div class="muted">Mỗi dòng là một giá trị. Kênh chi tiết không còn phụ thuộc Nguồn hay Phân loại KH.</div>
+          <div class="muted">Mỗi dòng là một giá trị. Kênh chi tiết và Loại khách được quản lý độc lập để nhập khách nhanh hơn.</div>
         </div>
 
         <div id="customerSearchPanel" class="panel" style="margin-top:14px">
@@ -222,7 +228,7 @@
             <div><label>Tình trạng chăm</label><select id="filterFollow"></select></div>
             <select id="filterSource" class="hide"></select>
             <div><label>Kênh chi tiết</label><select id="filterChannel"></select></div>
-            <select id="filterCustomerType" class="hide"></select>
+            <div><label>Loại khách</label><select id="filterCustomerType"></select></div>
             <div><label>Tuần</label><input id="filterWeek" type="week" autocomplete="off"></div>
             <div><label>Tháng</label><input id="filterMonth" type="month" autocomplete="off"></div>
             <div class="toolbar-actions">
@@ -575,9 +581,9 @@
         <div id="editCreatedAtField" class="field hide"><label>Ngày tạo</label><input id="editCreatedAt" type="date"></div>
         <div class="field"><label>Địa chỉ</label><textarea id="editAddress"></textarea></div>
         <select id="editSource" class="hide"></select>
-        <select id="editCustomerType" class="hide"></select>
         <div class="grid2">
           <div class="field"><label>Kênh chi tiết</label><select id="editChannel"></select></div>
+          <div class="field"><label>Loại khách</label><select id="editCustomerType"></select></div>
           <div class="field"><label>Nhân viên phụ trách</label><select id="editOwner"></select></div>
         </div>
         <div id="editPartnerFields" class="grid2 hide">

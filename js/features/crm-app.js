@@ -106,6 +106,7 @@ let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI_EVIDENCE_MAX_FILES = 6;
 const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
+const POTENTIAL_LEVELS = ["Bình thường", "Tiềm năng", "Nóng", "VIP / Đối tác"];
 const DEFAULT_COMPANY_SETTINGS = {
   companyName: "Kolorceramic THT",
   logoUrl: "",
@@ -433,7 +434,7 @@ function customerOwnerName(c) {
 function togglePartnerFields() {
   const show = isPartnerChannel($("channel").value);
   $("partnerFields").classList.toggle("hide", !show);
-  if (!show) ["companyName","partnerType","partnerActivity","partnerLevel","partnerCapacity"].forEach(id => { if ($(id)) $(id).value = ""; });
+  if (!show) ["customerCompanyName","partnerType","partnerActivity","partnerLevel","partnerCapacity"].forEach(id => { if ($(id)) $(id).value = ""; });
 }
 
 function toggleCarePartnerFields() {
@@ -444,10 +445,12 @@ function toggleCarePartnerFields() {
 function hydrateSelects() {
   fillSelect("source", settings.sources);
   fillSelect("customerType", settings.customerTypes);
+  fillSelect("potentialLevel", POTENTIAL_LEVELS);
   hydrateChannelOptions();
   fillSelect("owner", ownerOptions());
   fillSelect("editSource", settings.sources);
   fillSelect("editCustomerType", settings.customerTypes);
+  fillSelect("editPotentialLevel", POTENTIAL_LEVELS);
   fillSelect("editOwner", ownerOptions());
   fillSelect("editPartnerType", settings.partnerTypes);
   fillSelect("editPartnerActivity", settings.partnerActivities);
@@ -480,6 +483,7 @@ function hydrateSelects() {
   $("filterWeek").value ||= "";
   $("filterMonth").value ||= "";
   $("kpiRuleMonth").value ||= currentMonth();
+  if (!$("potentialLevel").value) $("potentialLevel").value = "Bình thường";
   $("careDueDays").value = careDueDays();
   togglePartnerFields();
   if (!isManager()) {
@@ -753,6 +757,7 @@ async function saveCareSettings() {
 
 function renderDropdownSettingsForm() {
   const pairs = [
+    ["settingsCustomerTypes", settings.customerTypes],
     ["settingsStatuses", settings.statuses],
     ["settingsFollows", settings.follows],
     ["settingsCareChannels", settings.careChannels],
@@ -778,7 +783,7 @@ async function saveDropdownSettings() {
     sources: [],
     sourceChannels: {},
     channels,
-    customerTypes: [],
+    customerTypes: textToList($("settingsCustomerTypes").value),
     statuses: textToList($("settingsStatuses").value),
     follows: textToList($("settingsFollows").value),
     careChannels: textToList($("settingsCareChannels").value),
@@ -793,6 +798,7 @@ async function saveDropdownSettings() {
     updatedAt: serverTimestamp()
   };
   if (!data.channels.length) return notice("Cần có ít nhất 1 kênh chi tiết.", true);
+  if (!data.customerTypes.length) data.customerTypes = DEFAULT_SETTINGS.customerTypes;
   if (!data.statuses.length || !data.follows.length) return notice("Trạng thái và tình trạng chăm không được để trống.", true);
   try {
     await setDoc(doc(db, "settings", "crm"), data, {merge:true});
@@ -1990,11 +1996,12 @@ function visibleCustomers() {
   const dealStatus = clean($("filterDealStatus").value);
   const follow = clean($("filterFollow").value);
   const channel = clean($("filterChannel").value);
+  const customerType = clean($("filterCustomerType").value);
   const week = clean($("filterWeek").value);
   const month = clean($("filterMonth").value);
 
   return customers.filter(canSeeCustomer).filter(c => {
-    const haystack = normalizeKey([c.name,c.companyName,c.phoneRaw,c.phoneNormalized,c.address,c.channel,c.owner,c.ownerEmail,customerOwnerName(c),c.status,c.follow,computedFollowStatus(c),c.need,c.note].join(" "));
+    const haystack = normalizeKey([c.name,c.companyName,c.phoneRaw,c.phoneNormalized,c.address,c.channel,c.customerType,c.owner,c.ownerEmail,customerOwnerName(c),c.status,c.follow,computedFollowStatus(c),c.need,c.note].join(" "));
     if (q && !haystack.includes(q)) return false;
     if (owner && !sameIdentity(customerOwnerKey(c), owner) && !sameIdentity(c.owner, owner)) return false;
     if (status === "__NO_PHONE__" && c.phoneNormalized) return false;
@@ -2002,6 +2009,7 @@ function visibleCustomers() {
     if (dealStatus && !customerDeals(c.id).some(d => normalizeKey(normalizeDealStatus(d.dealStatus)) === normalizeKey(dealStatus))) return false;
     if (!followMatchesFilter(c, follow)) return false;
     if (channel && normalizeKey(canonicalChannel(c.channel)) !== normalizeKey(channel)) return false;
+    if (customerType && normalizeKey(c.customerType) !== normalizeKey(customerType)) return false;
     if (!customerMatchesChannelQuick(c)) return false;
     if (week && weekOf(c.createdAt) !== week) return false;
     if (!week && month && monthOf(c.createdAt) !== month) return false;
@@ -2984,7 +2992,7 @@ function taskRows() {
       const c = t.customer;
       if (owner && !sameIdentity(customerOwnerKey(c), owner) && !sameIdentity(customerOwnerName(c), owner)) return false;
       if (!key) return true;
-      return normalizeKey([c.name, c.companyName, c.phoneRaw, c.phoneNormalized, c.address, c.channel, customerOwnerName(c), c.status, c.need, c.note, computedFollowStatus(c), careScheduleText(c)].join(" ")).includes(key);
+      return normalizeKey([c.name, c.companyName, c.customerType, c.phoneRaw, c.phoneNormalized, c.address, c.channel, customerOwnerName(c), c.status, c.need, c.note, computedFollowStatus(c), careScheduleText(c)].join(" ")).includes(key);
     })
     .sort((a,b) => {
       const rank = {overdue: 0, today: 1, "no-date": 2, upcoming: 3};
@@ -3142,7 +3150,7 @@ function renderCustomers() {
     const rowClass = ["customer-row", isFailStatus(st) || isCanceledDeal(st) ? "row-fail" : "", purchaseTimes ? "row-success row-vip" : "", isCareOverdue(c) ? "row-overdue" : ""].filter(Boolean).join(" ");
     const careBadge = `<br><span class="pill ${esc(careSchedulePillClass(c))}">${esc(careScheduleText(c))}</span>`;
     const contactText = c.phoneRaw || c.phoneNormalized || "Không SĐT";
-    const customerMeta = [c.companyName, c.address].filter(Boolean).join(" · ");
+    const customerMeta = [c.companyName, c.customerType, c.address].filter(Boolean).join(" · ");
     const statusClass = isFailStatus(st) || isCanceledDeal(st) ? "red" : purchaseTimes ? "green" : "orange";
     return `<tr class="${rowClass}">
       <td>
@@ -4421,7 +4429,7 @@ async function exportOperationalSnapshot() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const customerRows = (allCustomers.length ? allCustomers : customers).map(c => [
     c.id, c.name, c.companyName, c.phoneRaw, c.phoneNormalized, c.address, c.channel,
-    c.owner, c.ownerEmail, c.status, c.follow, c.nextCareDate, fmtDate(c.createdAt),
+    c.customerType, potentialLevelFor(c), c.owner, c.ownerEmail, c.status, c.follow, c.nextCareDate, fmtDate(c.createdAt),
     c.isDeleted ? "yes" : "", fmtDate(c.deletedAt), c.note
   ]);
   const careRows = (allCareLogs.length ? allCareLogs : careLogs).map(l => [
@@ -4461,7 +4469,7 @@ async function exportOperationalSnapshot() {
       ["Users", userRows.length, ""],
       ["Audit logs", auditRows.length, ""]
     ]),
-    snapshotSheet("Customers", ["ID","Tên","Công ty","SĐT","SĐT chuẩn","Địa chỉ","Kênh","Owner","Owner email","Trạng thái","Follow","Hẹn chăm","Ngày tạo","Đã ẩn","Ngày ẩn","Ghi chú"], customerRows),
+    snapshotSheet("Customers", ["ID","Tên","Công ty","SĐT","SĐT chuẩn","Địa chỉ","Kênh","Loại khách","Mức tiềm năng","Owner","Owner email","Trạng thái","Follow","Hẹn chăm","Ngày tạo","Đã ẩn","Ngày ẩn","Ghi chú"], customerRows),
     snapshotSheet("CareLogs", ["ID","Customer ID","Khách","Owner","Owner email","Trạng thái","Kênh chăm","Kết quả","Hẹn tiếp","Ghi chú","Ngày tạo","Đã ẩn"], careRows),
     snapshotSheet("BasicPurchases", ["ID","Customer ID","Khách","SĐT","Owner","Owner email","Trạng thái","Ngày ghi nhận","Ngày mua","Giá trị","Nội dung mua","Đã ẩn","Ghi chú"], dealRows),
     snapshotSheet("KpiRules", ["ID","Tháng","Tên KPI","Chỉ tiêu","Cách tính","Active","Nhân viên gán","Target riêng","Diễn giải"], kpiRuleRows),
@@ -4926,12 +4934,33 @@ function clearDealEditMode() {
 }
 
 function clearForm() {
-  ["name","phone","address","companyName","need","note"].forEach(id => { if ($(id)) $(id).value = ""; });
+  ["name","phone","address","customerCompanyName","need","note"].forEach(id => { if ($(id)) $(id).value = ""; });
   ["source","channel","customerType","partnerType","partnerActivity","partnerLevel","partnerCapacity"].forEach(id => { if ($(id)) $(id).value = ""; });
+  if ($("potentialLevel")) $("potentialLevel").value = "Bình thường";
+  renderPhoneHint();
   hydrateChannelOptions();
   togglePartnerFields();
   if (isManager()) $("owner").value = "";
   $("name")?.focus();
+}
+
+function renderPhoneHint() {
+  const hint = $("phoneHint");
+  if (!hint) return;
+  const phone = phoneNorm($("phone")?.value || "");
+  if (!phone) {
+    hint.textContent = "Có thể để trống nếu khách chưa có SĐT.";
+    hint.className = "muted";
+    return;
+  }
+  const existing = customers.find(c => !c.isDeleted && phoneNorm(c.phoneNormalized || c.phoneRaw || "") === phone);
+  if (existing) {
+    hint.textContent = `Có thể trùng với khách: ${existing.name || "Không tên"} (${customerOwnerName(existing) || "chưa phụ trách"}).`;
+    hint.className = "error";
+    return;
+  }
+  hint.textContent = "SĐT mới, chưa thấy trùng trong dữ liệu đã tải.";
+  hint.className = "muted";
 }
 
 async function saveCustomer() {
@@ -4941,15 +4970,15 @@ async function saveCustomer() {
   const selectedOwnerEmail = clean(selectedOwner.email);
   const data = {
     name: clean($("name").value), phoneRaw: clean($("phone").value), phoneNormalized: phone,
-    address: clean($("address").value), source: "", channel: clean($("channel").value), customerType: "",
+    address: clean($("address").value), source: "", channel: clean($("channel").value), customerType: clean($("customerType").value),
     owner, ownerEmail: selectedOwnerEmail, need: clean($("need").value), note: clean($("note").value),
     noPhone: !phone,
-    companyName: isPartnerChannel(clean($("channel").value)) ? clean($("companyName").value) : "",
+    companyName: isPartnerChannel(clean($("channel").value)) ? clean($("customerCompanyName").value) : "",
     partnerType: isPartnerChannel(clean($("channel").value)) ? clean($("partnerType").value) : "",
     partnerActivity: isPartnerChannel(clean($("channel").value)) ? clean($("partnerActivity").value) : "",
     partnerLevel: isPartnerChannel(clean($("channel").value)) ? clean($("partnerLevel").value) : "",
     partnerCapacity: isPartnerChannel(clean($("channel").value)) ? clean($("partnerCapacity").value) : "",
-    potentialLevel: "Bình thường",
+    potentialLevel: clean($("potentialLevel").value) || "Bình thường",
     showroomVisitCount: 0,
     basicPurchaseCount: 0,
     basicPurchaseValue: 0,
@@ -4958,6 +4987,7 @@ async function saveCustomer() {
     createdAt: serverTimestamp(), updatedAt: serverTimestamp()
   };
   if (!data.name) return notice("Vui lòng nhập tên khách.", true);
+  if (!data.channel) return notice("Vui lòng chọn kênh chi tiết.", true);
   if (isPartnerChannel(data.channel) && !data.companyName) return notice("Vui lòng nhập tên công ty.", true);
   if (!data.ownerEmail && !data.owner) return notice("Vui lòng chọn nhân viên phụ trách.", true);
 
@@ -5748,6 +5778,7 @@ function renderCustomerInfo(c) {
     infoCell("SĐT", c.phoneRaw || c.phoneNormalized || "Không SĐT"),
     infoCell("Địa chỉ", c.address),
     infoCell("Kênh chi tiết", c.channel),
+    infoCell("Loại khách", c.customerType),
     isPartnerChannel(c.channel) ? infoCell("Tên công ty", c.companyName) : "",
     infoCell("Nhân viên phụ trách", customerOwnerName(c)),
     infoCell("Mức tiềm năng", potentialLevelFor(c)),
@@ -5770,7 +5801,7 @@ function fillCustomerInfoEdit(c) {
   $("editChannel").value = clean(c.channel);
   $("editOwner").value = clean(c.ownerEmail || c.owner);
   $("editSource").value = "";
-  $("editCustomerType").value = "";
+  $("editCustomerType").value = clean(c.customerType);
   $("editCompanyName").value = clean(c.companyName);
   ["editPartnerType","editPartnerActivity","editPartnerLevel","editPartnerCapacity"].forEach(id => { if ($(id)) $(id).value = ""; });
   $("editPartnerType").value = clean(c.partnerType);
@@ -5811,7 +5842,7 @@ async function saveCustomerInfo() {
     address: clean($("editAddress").value),
     source: "",
     channel: clean($("editChannel").value),
-    customerType: "",
+    customerType: clean($("editCustomerType").value),
     owner: clean(selectedOwner.name),
     ownerEmail: clean(selectedOwner.email),
     companyName: isPartnerChannel(clean($("editChannel").value)) ? clean($("editCompanyName").value) : "",
@@ -5833,6 +5864,7 @@ async function saveCustomerInfo() {
     if (createdAtInput) data.createdAt = new Date(createdAtInput + "T00:00:00");
   }
   if (!data.name) return notice("Vui lòng nhập tên khách.", true);
+  if (!data.channel) return notice("Vui lòng chọn kênh chi tiết.", true);
   if (isPartnerChannel(data.channel) && !data.companyName) return notice("Vui lòng nhập tên công ty.", true);
   if (!data.ownerEmail && !data.owner) return notice("Vui lòng chọn nhân viên phụ trách.", true);
   try {
@@ -7391,9 +7423,9 @@ async function exportCsv() {
   const rows = visibleCustomers();
   if (!rows.length) return notice("Không có khách hàng phù hợp với bộ lọc hiện tại.", true);
   const filterLabel = activeCustomerFilterLabel();
-  const header = ["Khách hàng","Tên công ty","SĐT","Ngày tạo","Kênh chi tiết","Phụ trách","Trạng thái","Tình trạng chăm","Mức tiềm năng","Đến showroom","Số lần mua","Giá trị mua","Hẹn chăm","Nhu cầu","Ghi chú"];
+  const header = ["Khách hàng","Tên công ty","SĐT","Ngày tạo","Kênh chi tiết","Loại khách","Phụ trách","Trạng thái","Tình trạng chăm","Mức tiềm năng","Đến showroom","Số lần mua","Giá trị mua","Hẹn chăm","Nhu cầu","Ghi chú"];
   const dataRows = [
-    [`Danh sách khách hàng - ${filterLabel}`, "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+    [`Danh sách khách hàng - ${filterLabel}`, "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
     header,
     ...rows.map(c => [
       c.name || "",
@@ -7401,6 +7433,7 @@ async function exportCsv() {
       c.phoneRaw || c.phoneNormalized || "",
       fmtDate(c.createdAt),
       canonicalChannel(c.channel),
+      c.customerType || "",
       customerOwnerName(c),
       c.status || "",
       computedFollowStatus(c),
@@ -7753,6 +7786,7 @@ on("importBtn", "click", () => $("importFile").click());
 on("importFile", "change", handleImportFile);
 on("saveCustomerBtn", "click", () => runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer));
 on("clearBtn", "click", clearForm);
+on("phone", "input", renderPhoneHint);
 on("enableNotifyBtn", "click", () => runAction("enableNotifyBtn", "enableNotify", "Đang bật...", enableBrowserNotifications));
 on("resetFilterBtn", "click", resetFilters);
 on("exportBtn", "click", exportCsv);

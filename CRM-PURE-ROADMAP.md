@@ -55,6 +55,8 @@ Test xong giai doan 1:
 
 Muc tieu: moi khach hang co ho so ro, du de cham soc va danh gia.
 
+Trang thai: da thuc hien buoc chuan hoa dau tien ngay 2026-07-08. Form them nhanh da co Loai khach va Muc tiem nang, canh bao trung SDT khi nhap, ho so drawer hien Loai khach, export/snapshot co them phan loai va tiem nang. Da tach id ten cong ty cua khach khoi id cau hinh cong ty de tranh luu nham.
+
 Viec can lam:
 
 | Viec | Quyet dinh | Ket qua can co |
