@@ -34,6 +34,8 @@ Khong nen lam tiep neu chua co backup va commit sach.
 
 Muc tieu: nhan vien vao app chi thay nhung gi phuc vu CRM hang ngay.
 
+Trang thai: da thuc hien buoc UI/runtime chinh ngay 2026-07-08. Menu shell da duoc rut ve CRM, Khach hang, KPI, Bao cao, Quan tri; snapshot van hanh da bo cac sheet ERP/CMS; cac nhan hien thi chinh cua luong mua can ban da duoc doi khoi ngon ngu don hang chi tiet.
+
 Viec can lam:
 
 | Viec | Quyet dinh | Ket qua can co |

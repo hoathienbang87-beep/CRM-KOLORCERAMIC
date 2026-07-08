@@ -2628,19 +2628,18 @@ function dealDetailRows(rows) {
         <div class="detail-meta">
           <span class="pill ${statusClass}">${esc(statusText)}</span>
           ${d.completedAt ? `<span>Ngày mua: ${esc(fmtDate(d.completedAt))}</span>` : ""}
-          ${d.deliveryDate ? `<span>Hẹn giao: ${esc(fmtDate(d.deliveryDate))}</span>` : ""}
+          ${d.deliveryDate ? `<span>Ngày liên quan: ${esc(fmtDate(d.deliveryDate))}</span>` : ""}
         </div>
         <div>
           <b>${esc(money(dealAmount(d)))}</b>${orderProductText(d) ? ` · ${esc(orderProductText(d))}` : ""}
           <div class="detail-meta">
-            <span>Đã thu: ${esc(money(dealPaidAmount(d.id)))}</span>
-            <span>Còn nợ: ${esc(money(dealDebtAmount(d)))}</span>
+            <span>Giá trị ghi nhận: ${esc(money(dealAmount(d)))}</span>
           </div>
         </div>
         ${d.note ? `<div class="detail-note">${esc(d.note)}</div>` : ""}
       </div>
     `;
-  }).join("")}</div>` : `<div class="muted">Không có đơn hàng trong nhóm này.</div>`;
+  }).join("")}</div>` : `<div class="muted">Không có dữ liệu mua căn bản trong nhóm này.</div>`;
 }
 
 function openCareDashboardDetail(type) {
@@ -4432,32 +4431,8 @@ async function exportOperationalSnapshot() {
   const dealRows = (allDeals.length ? allDeals : deals).map(d => [
     d.id, d.customerId, orderCustomerName(d), orderCustomerPhone(d), orderOwnerName(d),
     orderOwnerEmail(d), orderStatusLabel(d), fmtDate(d.dealDate || d.createdAt),
-    fmtDate(d.completedAt), fmtDate(d.deliveryDate), deliveryStatusLabel(deliveryStats(d).status),
-    dealAmount(d), dealPaidAmount(d.id), dealDebtAmount(d), orderProductText(d),
+    fmtDate(d.completedAt), dealAmount(d), orderProductText(d),
     d.isDeleted ? "yes" : "", d.note
-  ]);
-  const orderItemRows = orderItems.map(i => [
-    i.id, i.dealId, i.customerId, i.productId, i.productSku, i.productName || i.product,
-    i.qty, i.deliveredQty, i.unitPrice || i.price, i.discountAmount, i.lineTotal, i.unit
-  ]);
-  const paymentRows = (allPayments.length ? allPayments : payments).map(p => [
-    p.id, p.paymentNo, p.dealId, p.customerId, p.customerName, p.owner, p.ownerEmail,
-    p.amount, p.method, p.status, fmtDate(p.paymentDate || p.createdAt),
-    p.receivedByEmail || p.createdByEmail, p.isDeleted ? "yes" : "", p.note
-  ]);
-  const inventoryRows = (allInventoryMovements.length ? allInventoryMovements : inventoryMovements).map(m => [
-    m.id, m.productId, m.productSku, m.productName, m.movementType, m.qty, m.unit,
-    m.warehouse, m.refType, m.refId, m.createdByEmail, fmtDate(m.createdAt),
-    m.isDeleted ? "yes" : "", m.note
-  ]);
-  const productRows = products.map(p => [
-    p.id, productSku(p), p.name, p.size, p.surface, p.origin, p.color, p.price || "",
-    p.priceText || "", productInventoryQty(p), p.active === false ? "no" : "yes", p.description
-  ]);
-  const quoteRows = (allQuotes.length ? allQuotes : quotes).map(q => [
-    q.id, q.quoteNo, q.customerId, q.customerName, q.customerPhone, q.customerCompanyName,
-    q.owner, q.ownerEmail, quoteStatusLabel(q.status), fmtDate(q.quoteDate || q.createdAt),
-    fmtDate(q.validUntil), q.subtotal, q.discountAmount, q.totalAmount, q.convertedDealId, q.isDeleted ? "yes" : "", q.note
   ]);
   const kpiRuleRows = kpiRules.map(r => [
     r.id, r.month, r.name, r.target, r.countMode, r.active === false ? "no" : "yes",
@@ -4481,25 +4456,14 @@ async function exportOperationalSnapshot() {
       ["Thời điểm xuất", new Date().toLocaleString("vi-VN"), "Snapshot Excel để đối chiếu nhanh"],
       ["Customers", customerRows.length, "Gồm cả khách đang ẩn nếu đã tải"],
       ["Care logs", careRows.length, ""],
-      ["Deals", dealRows.length, ""],
-      ["Order items", orderItemRows.length, ""],
-      ["Payments", paymentRows.length, ""],
-      ["Inventory", inventoryRows.length, ""],
-      ["Products", productRows.length, ""],
-      ["Quotes", quoteRows.length, ""],
+      ["Basic purchases", dealRows.length, "Ghi nhận mua/cọc/hủy ở mức đánh giá giá trị khách hàng"],
       ["KPI proposals", kpiProposalRows.length, ""],
       ["Users", userRows.length, ""],
       ["Audit logs", auditRows.length, ""]
     ]),
     snapshotSheet("Customers", ["ID","Tên","Công ty","SĐT","SĐT chuẩn","Địa chỉ","Kênh","Owner","Owner email","Trạng thái","Follow","Hẹn chăm","Ngày tạo","Đã ẩn","Ngày ẩn","Ghi chú"], customerRows),
     snapshotSheet("CareLogs", ["ID","Customer ID","Khách","Owner","Owner email","Trạng thái","Kênh chăm","Kết quả","Hẹn tiếp","Ghi chú","Ngày tạo","Đã ẩn"], careRows),
-    snapshotSheet("Deals", ["ID","Customer ID","Khách","SĐT","Owner","Owner email","Trạng thái","Ngày đơn","Ngày mua","Hẹn giao","Giao hàng","Giá trị","Đã thu","Còn nợ","Sản phẩm","Đã ẩn","Ghi chú"], dealRows),
-    snapshotSheet("OrderItems", ["ID","Deal ID","Customer ID","Product ID","SKU","Sản phẩm","SL","Đã giao","Đơn giá","Chiết khấu","Thành tiền","Đơn vị"], orderItemRows),
-    snapshotSheet("Payments", ["ID","Mã thu","Deal ID","Customer ID","Khách","Owner","Owner email","Số tiền","Hình thức","Trạng thái","Ngày thu","Người ghi","Đã xóa mềm","Ghi chú"], paymentRows),
-    snapshotSheet("Inventory", ["ID","Product ID","SKU","Sản phẩm","Loại","SL","Đơn vị","Kho","Ref type","Ref ID","Người tạo","Ngày tạo","Đã xóa mềm","Ghi chú"], inventoryRows),
-    snapshotSheet("Products", ["ID","SKU","Tên","Size","Bề mặt","Xuất xứ","Màu","Giá","Giá text","Tồn","Active","Mô tả"], productRows),
-    snapshotSheet("Quotes", ["ID","Mã BG","Customer ID","Khách","SĐT","Công ty","Owner","Owner email","Trạng thái","Ngày","Hiệu lực","Tạm tính","Chiết khấu","Tổng","Deal chuyển đổi","Đã ẩn","Ghi chú"], quoteRows),
-    snapshotSheet("QuoteItems", ["ID","Quote ID","Product ID","SKU","Sản phẩm","SL","Đơn giá","Chiết khấu","Thành tiền"], quoteItems.map(i => [i.id, i.quoteId, i.productId, i.productSku, i.productName || i.productLabel, i.qty, i.unitPrice, i.discountAmount, i.lineTotal])),
+    snapshotSheet("BasicPurchases", ["ID","Customer ID","Khách","SĐT","Owner","Owner email","Trạng thái","Ngày ghi nhận","Ngày mua","Giá trị","Nội dung mua","Đã ẩn","Ghi chú"], dealRows),
     snapshotSheet("KpiRules", ["ID","Tháng","Tên KPI","Chỉ tiêu","Cách tính","Active","Nhân viên gán","Target riêng","Diễn giải"], kpiRuleRows),
     snapshotSheet("KpiProposals", ["ID","Rule ID","KPI","Tháng","Owner","Owner email","Khách","SĐT","Công ty","Trạng thái","Người duyệt","Ngày duyệt","Đã ẩn","Nội dung","Minh chứng"], kpiProposalRows),
     snapshotSheet("Users", ["ID","Email","Tên","Role","Active","Team","Can export","Cập nhật"], userRows),
@@ -4511,9 +4475,6 @@ async function exportOperationalSnapshot() {
     await logAudit("exportOperationalSnapshot", "exports", "operationalSnapshot", {
       customers: customerRows.length,
       deals: dealRows.length,
-      payments: paymentRows.length,
-      inventory: inventoryRows.length,
-      products: productRows.length,
       auditLogs: auditRows.length
     }).catch(err => notice("Snapshot đã xuất, nhưng chưa ghi được audit log: " + authMessage(err), true));
     notice("Đã xuất snapshot vận hành.");
@@ -4760,7 +4721,7 @@ function dealItemTemplate(item={}) {
   const meta = [item.surface, item.origin, item.color, item.priceText || (item.price ? money(item.price) : "")].filter(Boolean).join(" · ");
   return `<div class="deal-item-row" data-deal-item>
     <input type="hidden" data-deal-product-id value="${esc(productId)}">
-    <div class="field"><label>Nội dung / sản phẩm khách mua</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="VD: Gạch phòng khách, mẫu showroom..."><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
+    <div class="field"><label>Nội dung mua căn bản</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="VD: gạch phòng khách, mẫu showroom, hạng mục khách quan tâm..."><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
     <div class="field hide"><label>Mã hàng</label><input data-deal-code value="${esc(item.code || "")}"></div>
     <div class="field"><label>Số lượng / ghi chú ngắn</label><input data-deal-qty value="${esc(item.qty || "")}" placeholder="VD: 1 lần mua, 30m2..."></div>
     <button class="small" type="button" data-remove-deal-item>Xóa</button>
@@ -5198,8 +5159,8 @@ async function updateDeal(dealId) {
 async function completeDeal(dealId) {
   const deal = deals.find(d => d.id === dealId);
   if (!deal || deal.completed) return;
-  if (!canEditDeal(deal)) return notice("Bạn không có quyền hoàn thành đơn hàng này.", true);
-  if (isFailStatus(deal.dealStatus) || isCanceledDeal(deal.dealStatus)) return notice("Đơn đã hủy/rớt không thể hoàn thành.", true);
+  if (!canEditDeal(deal)) return notice("Bạn không có quyền hoàn thành ghi nhận mua căn bản này.", true);
+  if (isFailStatus(deal.dealStatus) || isCanceledDeal(deal.dealStatus)) return notice("Ghi nhận đã hủy/rớt không thể hoàn thành.", true);
   try {
     const batch = writeBatch(db);
     const customerRef = doc(db, "customers", deal.customerId);
@@ -5223,7 +5184,7 @@ async function completeDeal(dealId) {
       email: currentUser.email || "", payloadJson: JSON.stringify({customerId: deal.customerId}), createdAt: serverTimestamp()
     });
     await batch.commit();
-    notice("Đã hoàn thành đơn hàng. Đơn này đã được tính vào lần mua.");
+    notice("Đã hoàn thành ghi nhận mua căn bản. Lần mua này đã được tính vào hồ sơ khách.");
   } catch (err) {
     notice(authMessage(err), true);
   }
@@ -5232,8 +5193,8 @@ async function completeDeal(dealId) {
 async function cancelDeal(dealId) {
   const deal = deals.find(d => d.id === dealId);
   if (!deal || deal.completed || isCanceledDeal(deal.dealStatus)) return;
-  if (!canEditDeal(deal)) return notice("Bạn không có quyền hủy đơn hàng này.", true);
-  const ok = confirm("Hủy đơn hàng này vì khách đổi ý?");
+  if (!canEditDeal(deal)) return notice("Bạn không có quyền hủy ghi nhận mua căn bản này.", true);
+  const ok = confirm("Hủy ghi nhận mua căn bản này vì khách đổi ý?");
   if (!ok) return;
   try {
     const batch = writeBatch(db);
@@ -5261,7 +5222,7 @@ async function cancelDeal(dealId) {
       email: currentUser.email || "", payloadJson: JSON.stringify({customerId: deal.customerId}), createdAt: serverTimestamp()
     });
     await batch.commit();
-    notice("Đã hủy đơn hàng.");
+    notice("Đã hủy ghi nhận mua căn bản.");
   } catch (err) {
     notice(authMessage(err), true);
   }
@@ -5269,7 +5230,7 @@ async function cancelDeal(dealId) {
 
 function openDeliveryModal(dealId) {
   const deal = deals.find(d => d.id === dealId);
-  if (!deal) return notice("Không tìm thấy đơn hàng.", true);
+  if (!deal) return notice("Không tìm thấy ghi nhận mua căn bản.", true);
   const rows = dealOrderItems(deal);
   const stats = deliveryStats(deal);
   const canSave = canUpdateDelivery(deal);
@@ -5993,19 +5954,19 @@ function closeDrawer() {
 function dealCard(d) {
   return `
     <div class="deal-item">
-      <b>${esc(d.dealStatus || "")}</b> · Ngày đơn: ${esc(fmtDate(d.dealDate))} · ${esc(d.product || "")}
+      <b>${esc(d.dealStatus || "")}</b> · Ngày ghi nhận: ${esc(fmtDate(d.dealDate))} · ${esc(d.product || "")}
       <div class="muted">${esc(d.orderCustomerName || d.customerName || "")} · ${esc(d.orderPhone || d.phoneRaw || d.phoneNormalized || "Không SĐT")}</div>
-      ${d.deliveryAddress ? `<div class="muted">Giao: ${esc(d.deliveryAddress)}</div>` : ""}
+      ${d.deliveryAddress ? `<div class="muted">Địa chỉ: ${esc(d.deliveryAddress)}</div>` : ""}
       ${d.taxCode ? `<div class="muted">MST: ${esc(d.taxCode)}</div>` : ""}
-      ${d.deliveryDate ? `<div class="muted">Hẹn giao: ${esc(fmtDate(d.deliveryDate))}</div>` : ""}
+      ${d.deliveryDate ? `<div class="muted">Ngày liên quan: ${esc(fmtDate(d.deliveryDate))}</div>` : ""}
       <div class="muted">Cọc: ${esc(d.depositPercent ?? 0)}% · Giá trị: ${esc(money(d.amount || 0))}</div>
       ${Array.isArray(d.items) && d.items.length ? `<div class="muted">${esc(d.items.map(item => `${item.product || item.productLabel || ""}${item.code ? " - " + item.code : ""}${item.size ? " - " + item.size : ""}${item.qty ? " - SL: " + item.qty : ""}`).join("; "))}</div>` : ""}
       <div>${d.completed ? `<span class="pill green">Hoàn thành</span> ${d.completedAt ? `<span class="muted">· ${esc(fmtDate(d.completedAt))}</span>` : ""}` : isCanceledDeal(d.dealStatus) ? `<span class="pill red">${esc(systemLabel("canceledStatus"))}</span> ${d.canceledAt ? `<span class="muted">· ${esc(fmtDate(d.canceledAt))}</span>` : ""}` : `<span class="pill orange">Đang xử lý</span>`}</div>
       <div class="muted">${esc(d.note || "")}</div>
       <div class="actions">
         <button class="small" data-review-deal="${esc(d.id)}">Xem lại</button>
-        ${canEditDeal(d) ? `<button class="small primary" data-edit-deal="${esc(d.id)}">Sửa đơn</button>` : ""}
-        ${canEditDeal(d) && (isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")) ? `<button class="small primary" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" data-cancel-deal="${esc(d.id)}">Hủy đơn</button>` : ""}
+        ${canEditDeal(d) ? `<button class="small primary" data-edit-deal="${esc(d.id)}">Sửa</button>` : ""}
+        ${canEditDeal(d) && (isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")) ? `<button class="small primary" data-complete-deal="${esc(d.id)}">Hoàn thành</button><button class="small danger" data-cancel-deal="${esc(d.id)}">Hủy</button>` : ""}
         ${isManager() ? `<button class="small danger" data-delete-deal="${esc(d.id)}">Xóa mềm</button>` : ""}
       </div>
     </div>
@@ -6015,8 +5976,8 @@ function dealCard(d) {
 function showDealList(kind) {
   if (!selectedCustomerId) return;
   const ds = customerDeals(selectedCustomerId).filter(d => kind === "completed" ? isCompletedDeal(d) : isActiveDeal(d) || sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
-  $("dealListTitle").textContent = kind === "completed" ? "Đơn đã hoàn thành" : "Đơn đang xử lý";
-  $("dealListContent").innerHTML = ds.length ? ds.map(dealCard).join("") : "Chưa có đơn hàng.";
+  $("dealListTitle").textContent = kind === "completed" ? "Mua căn bản đã hoàn thành" : "Mua căn bản đang theo dõi";
+  $("dealListContent").innerHTML = ds.length ? ds.map(dealCard).join("") : "Chưa có dữ liệu mua căn bản.";
   $("dealListSection").classList.remove("hide");
   $("dealListSection").scrollIntoView({behavior:"smooth", block:"nearest"});
 }
@@ -7415,7 +7376,7 @@ function activeCustomerFilterLabel() {
     clean($("searchBox").value) ? `Tìm kiếm: ${clean($("searchBox").value)}` : "",
     selectedOptionText("filterOwner") ? `Nhân viên: ${selectedOptionText("filterOwner")}` : "",
     selectedOptionText("filterStatus") ? `Trạng thái: ${selectedOptionText("filterStatus")}` : "",
-    selectedOptionText("filterDealStatus") ? `Đơn hàng: ${selectedOptionText("filterDealStatus")}` : "",
+    selectedOptionText("filterDealStatus") ? `Mua căn bản: ${selectedOptionText("filterDealStatus")}` : "",
     selectedOptionText("filterFollow") ? `Tình trạng chăm: ${selectedOptionText("filterFollow")}` : "",
     selectedOptionText("filterChannel") ? `Kênh chi tiết: ${selectedOptionText("filterChannel")}` : "",
     channelQuickLabel() ? `Lọc nhanh: ${channelQuickLabel()}` : "",
