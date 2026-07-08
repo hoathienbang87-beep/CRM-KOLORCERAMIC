@@ -1,5 +1,6 @@
 // Diem vao chinh cua CRM.
 // Static shell render truoc, module nghiep vu gan event sau.
+import { MAINTENANCE_CONFIG } from "./config/maintenance.generated.js";
 import { renderAppShell } from "./components/app-shell.js";
 
 const SUPABASE_CDN_URLS = [
@@ -14,6 +15,13 @@ function setLoginStatus(message, isError = false) {
   box.style.color = isError ? "#b42318" : "";
 }
 
+function showMaintenance() {
+  document.getElementById("maintenanceView")?.classList.remove("hide");
+  document.getElementById("loginView")?.classList.add("hide");
+  document.getElementById("appView")?.classList.add("hide");
+  document.getElementById("adminAppView")?.classList.add("hide");
+}
+
 function loadScript(src, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
@@ -22,7 +30,7 @@ function loadScript(src, timeoutMs = 12000) {
       if (done) return;
       done = true;
       script.remove();
-      reject(new Error(`Tải thư viện quá lâu: ${src}`));
+      reject(new Error(`Tai thu vien qua lau: ${src}`));
     }, timeoutMs);
     script.src = src;
     script.async = true;
@@ -37,7 +45,7 @@ function loadScript(src, timeoutMs = 12000) {
       done = true;
       clearTimeout(timer);
       script.remove();
-      reject(new Error(`Không tải được thư viện: ${src}`));
+      reject(new Error(`Khong tai duoc thu vien: ${src}`));
     };
     document.head.appendChild(script);
   });
@@ -48,22 +56,26 @@ async function ensureSupabaseLoaded() {
   const errors = [];
   for (const src of SUPABASE_CDN_URLS) {
     try {
-      setLoginStatus("Đang tải kết nối Supabase...");
+      setLoginStatus("Dang tai ket noi Supabase...");
       await loadScript(src);
       if (window.supabase?.createClient) return;
     } catch (err) {
       errors.push(err.message);
     }
   }
-  throw new Error(`Không tải được thư viện Supabase. Hãy kiểm tra mạng/CDN rồi tải lại trang. ${errors.join(" | ")}`);
+  throw new Error(`Khong tai duoc thu vien Supabase. Hay kiem tra mang/CDN roi tai lai trang. ${errors.join(" | ")}`);
 }
 
-renderAppShell();
-try {
-  await ensureSupabaseLoaded();
-  setLoginStatus("");
-  await import("./features/crm-app.js");
-} catch (err) {
-  console.error(err);
-  setLoginStatus(err?.message || "Không tải được app CRM.", true);
+if (MAINTENANCE_CONFIG.enabled) {
+  showMaintenance();
+} else {
+  renderAppShell();
+  try {
+    await ensureSupabaseLoaded();
+    setLoginStatus("");
+    await import("./features/crm-app.js");
+  } catch (err) {
+    console.error(err);
+    setLoginStatus(err?.message || "Khong tai duoc app CRM.", true);
+  }
 }
