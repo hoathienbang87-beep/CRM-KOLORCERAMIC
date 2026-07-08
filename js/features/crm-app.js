@@ -61,8 +61,6 @@ let currentUser = null;
 let appUser = null;
 let settings = {...DEFAULT_SETTINGS};
 let companySettings = {};
-let websitePages = [];
-let websiteSections = [];
 let allCustomers = [];
 let customers = [];
 let deletedCustomers = [];
@@ -118,26 +116,6 @@ const DEFAULT_COMPANY_SETTINGS = {
   zaloUrl: "",
   brandColor: "#147a68",
   defaultNotice: ""
-};
-const DEFAULT_CMS_PAGE = {
-  slug: "home",
-  title: "Trang chủ",
-  status: "draft",
-  sortOrder: 0,
-  description: ""
-};
-const DEFAULT_CMS_SECTION = {
-  pageId: "home",
-  sectionKey: "hero",
-  sectionType: "hero",
-  title: "",
-  subtitle: "",
-  body: "",
-  imageUrl: "",
-  ctaLabel: "",
-  ctaUrl: "",
-  isVisible: true,
-  sortOrder: 0
 };
 
 const roleKey = () => clean(appUser?.role).toLowerCase();
@@ -346,7 +324,6 @@ function loadMorePage(key) {
   const renderers = {
     customers: renderCustomers,
     tasks: renderTaskBoard,
-    products: renderProducts,
     saleActivity: renderSaleActivityReport,
     audit: renderAuditTrail
   };
@@ -375,10 +352,7 @@ function authMessage(err) {
 
 function on(id, eventName, handler, options) {
   const el = $(id);
-  if (!el) {
-    console.warn(`CRM: missing element #${id}`);
-    return;
-  }
+  if (!el) return;
   el.addEventListener(eventName, handler, options);
 }
 
@@ -430,9 +404,7 @@ function hydrateOwnerDependentFilters() {
   const options = ownerOptions();
   [
     ["filterOwner", "Tất cả nhân viên"],
-    ["quoteFilterOwner", "Tất cả nhân viên"],
     ["taskOwnerFilter", "Tất cả nhân viên"],
-    ["orderFilterOwner", "Tất cả nhân viên"],
     ["reportActivityOwner", "Tất cả nhân viên"],
     ["erpReportOwner", "Tất cả nhân viên"]
   ].forEach(([id, label]) => {
@@ -502,8 +474,6 @@ function hydrateSelects() {
   fillSelect("filterSource", settings.sources, "", "Tất cả nguồn");
   hydrateFilterChannelOptions();
   fillSelect("filterCustomerType", settings.customerTypes, "", "Tất cả phân loại");
-  hydrateOrderFilters();
-  hydrateProductFilters();
   hydrateProposalKpiOptions();
   renderDropdownSettingsForm();
   // Không tự lọc theo tháng hiện tại. Bộ lọc Tháng/Tuần để trống thì hiển thị tất cả dữ liệu.
@@ -518,15 +488,12 @@ function hydrateSelects() {
     $("editOwner").disabled = true;
     $("filterOwner").value = ownerEmail();
     $("filterOwner").disabled = true;
-    $("orderFilterOwner").value = ownerEmail();
-    $("orderFilterOwner").disabled = true;
     $("exportBtn").classList.toggle("hide", !canExportData());
     $("deleteCustomerBtn").classList.add("hide");
     $("seedBtn").classList.add("hide");
     $("syncPhoneBtn").classList.add("hide");
     $("syncOwnerBtn").classList.add("hide");
     $("importBtn").classList.add("hide");
-    $("importProductsBtn")?.classList.add("hide");
     $("kpiRulePanel").classList.add("hide");
     $("kpiApprovalPanel").classList.add("hide");
     $("careSettingsPanel").classList.add("hide");
@@ -541,14 +508,12 @@ function hydrateSelects() {
     $("owner").disabled = false;
     $("editOwner").disabled = false;
     $("filterOwner").disabled = false;
-    $("orderFilterOwner").disabled = false;
     $("exportBtn").classList.remove("hide");
     $("deleteCustomerBtn").classList.remove("hide");
     $("seedBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("syncPhoneBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("syncOwnerBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("importBtn").classList.toggle("hide", !canAccessAdminPanel());
-    $("importProductsBtn")?.classList.toggle("hide", !isManager());
     $("kpiRulePanel").classList.remove("hide");
     $("kpiApprovalPanel").classList.remove("hide");
     $("careSettingsPanel").classList.toggle("hide", !canAccessAdminPanel());
@@ -757,240 +722,6 @@ function resetCompanySettingsForm() {
   notice("Đã khôi phục form cấu hình công ty.");
 }
 
-function normalizeCmsPage(raw = {}) {
-  const slug = normalizeCmsSlug(raw.slug || raw.id || DEFAULT_CMS_PAGE.slug);
-  return {
-    ...DEFAULT_CMS_PAGE,
-    ...raw,
-    id: raw.id || slug,
-    slug,
-    status: ["draft","published","hidden"].includes(clean(raw.status)) ? clean(raw.status) : DEFAULT_CMS_PAGE.status,
-    isPublished: raw.isPublished === true || raw.status === "published",
-    sortOrder: Number(raw.sortOrder ?? raw.sort_order ?? 0) || 0
-  };
-}
-
-function normalizeCmsSection(raw = {}) {
-  const pageId = normalizeCmsSlug(raw.pageId || raw.page_id || DEFAULT_CMS_SECTION.pageId);
-  const sectionKey = normalizeCmsSlug(raw.sectionKey || raw.section_key || DEFAULT_CMS_SECTION.sectionKey);
-  return {
-    ...DEFAULT_CMS_SECTION,
-    ...raw,
-    id: raw.id || `${pageId}_${sectionKey}`,
-    pageId,
-    sectionKey,
-    sectionType: clean(raw.sectionType || raw.section_type || DEFAULT_CMS_SECTION.sectionType),
-    isVisible: raw.isVisible !== false && raw.is_visible !== false,
-    sortOrder: Number(raw.sortOrder ?? raw.sort_order ?? 0) || 0
-  };
-}
-
-function normalizeCmsSlug(value) {
-  return normalizeKey(value).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "home";
-}
-
-function cmsPageLabel(pageId) {
-  const page = websitePages.find(p => p.id === pageId || p.slug === pageId);
-  return page ? `${page.title || page.slug} (${page.slug})` : pageId;
-}
-
-function fillCmsPageOptions() {
-  const select = $("cmsSectionPage");
-  if (!select) return;
-  const pages = websitePages.length ? websitePages : [normalizeCmsPage(DEFAULT_CMS_PAGE)];
-  const selected = select.value || "home";
-  select.innerHTML = pages.map(p => `<option value="${esc(p.id || p.slug)}">${esc(p.title || p.slug)}</option>`).join("");
-  select.value = pages.some(p => (p.id || p.slug) === selected) ? selected : (pages[0]?.id || "home");
-}
-
-function renderCmsPageForm(page = normalizeCmsPage(DEFAULT_CMS_PAGE)) {
-  const pairs = [
-    ["cmsPageSlug", page.slug],
-    ["cmsPageTitle", page.title],
-    ["cmsPageStatus", page.status],
-    ["cmsPageSortOrder", page.sortOrder],
-    ["cmsPageDescription", page.description || ""]
-  ];
-  pairs.forEach(([id, value]) => {
-    const el = $(id);
-    if (el && document.activeElement !== el) el.value = value ?? "";
-  });
-}
-
-function renderCmsSectionForm(section = normalizeCmsSection({pageId: $("cmsSectionPage")?.value || "home"})) {
-  fillCmsPageOptions();
-  const pairs = [
-    ["cmsSectionPage", section.pageId],
-    ["cmsSectionKey", section.sectionKey],
-    ["cmsSectionType", section.sectionType],
-    ["cmsSectionSortOrder", section.sortOrder],
-    ["cmsSectionVisible", String(section.isVisible !== false)],
-    ["cmsSectionTitle", section.title || ""],
-    ["cmsSectionSubtitle", section.subtitle || ""],
-    ["cmsSectionBody", section.body || ""],
-    ["cmsSectionImageUrl", section.imageUrl || ""],
-    ["cmsSectionCtaLabel", section.ctaLabel || ""],
-    ["cmsSectionCtaUrl", section.ctaUrl || ""]
-  ];
-  pairs.forEach(([id, value]) => {
-    const el = $(id);
-    if (el && document.activeElement !== el) el.value = value ?? "";
-  });
-}
-
-function renderCmsAdmin() {
-  if (!canAccessAdminPanel()) return;
-  websitePages = websitePages.map(normalizeCmsPage).sort((a,b) => a.sortOrder - b.sortOrder || clean(a.title).localeCompare(clean(b.title)));
-  websiteSections = websiteSections.map(normalizeCmsSection).sort((a,b) => a.pageId.localeCompare(b.pageId) || a.sortOrder - b.sortOrder || a.sectionKey.localeCompare(b.sectionKey));
-  fillCmsPageOptions();
-  renderCmsTables();
-  if (!$("cmsPageSlug")?.value) renderCmsPageForm(websitePages[0] || normalizeCmsPage(DEFAULT_CMS_PAGE));
-  if (!$("cmsSectionKey")?.value) renderCmsSectionForm(websiteSections[0] || normalizeCmsSection({pageId: $("cmsSectionPage")?.value || "home"}));
-}
-
-function renderCmsTables() {
-  const pageRows = $("cmsPageRows");
-  if (pageRows) {
-    pageRows.innerHTML = websitePages.length ? websitePages.map(page => {
-      const count = websiteSections.filter(s => s.pageId === page.id || s.pageId === page.slug).length;
-      return `
-        <tr>
-          <td><b>${esc(page.title || page.slug)}</b><div class="muted">${esc(page.slug)}</div></td>
-          <td><span class="tag">${esc(page.status)}</span></td>
-          <td>${esc(count)}</td>
-          <td class="row-actions">
-            <button data-edit-cms-page="${esc(page.id)}" type="button">Sửa</button>
-            <button data-new-cms-section="${esc(page.id)}" type="button">Thêm section</button>
-          </td>
-        </tr>
-      `;
-    }).join("") : `<tr><td colspan="4" class="muted">Chưa có trang CMS. Hãy tạo trang đầu tiên.</td></tr>`;
-  }
-  const sectionRows = $("cmsSectionRows");
-  if (sectionRows) {
-    sectionRows.innerHTML = websiteSections.length ? websiteSections.map(section => `
-      <tr>
-        <td><b>${esc(section.title || section.sectionKey)}</b><div class="muted">${esc(section.sectionType)} · ${esc(section.sectionKey)}</div></td>
-        <td>${esc(cmsPageLabel(section.pageId))}</td>
-        <td><span class="tag">${section.isVisible !== false ? "Hiển thị" : "Ẩn"}</span></td>
-        <td class="row-actions">
-          <button data-edit-cms-section="${esc(section.id)}" type="button">Sửa</button>
-          <button data-toggle-cms-section="${esc(section.id)}" type="button">${section.isVisible !== false ? "Ẩn" : "Hiện"}</button>
-        </td>
-      </tr>
-    `).join("") : `<tr><td colspan="4" class="muted">Chưa có section CMS.</td></tr>`;
-  }
-}
-
-function cmsPageFormData() {
-  const slug = normalizeCmsSlug($("cmsPageSlug")?.value || DEFAULT_CMS_PAGE.slug);
-  const status = clean($("cmsPageStatus")?.value) || "draft";
-  return normalizeCmsPage({
-    id: slug,
-    slug,
-    title: clean($("cmsPageTitle")?.value) || slug,
-    status,
-    isPublished: status === "published",
-    sortOrder: Number($("cmsPageSortOrder")?.value || 0) || 0,
-    description: clean($("cmsPageDescription")?.value),
-    updatedByEmail: currentUser?.email || "",
-    updatedAt: serverTimestamp()
-  });
-}
-
-function cmsSectionFormData() {
-  const pageId = normalizeCmsSlug($("cmsSectionPage")?.value || "home");
-  const sectionKey = normalizeCmsSlug($("cmsSectionKey")?.value || "section");
-  return normalizeCmsSection({
-    id: `${pageId}_${sectionKey}`,
-    pageId,
-    sectionKey,
-    sectionType: clean($("cmsSectionType")?.value) || "content",
-    title: clean($("cmsSectionTitle")?.value),
-    subtitle: clean($("cmsSectionSubtitle")?.value),
-    body: clean($("cmsSectionBody")?.value),
-    imageUrl: clean($("cmsSectionImageUrl")?.value),
-    ctaLabel: clean($("cmsSectionCtaLabel")?.value),
-    ctaUrl: clean($("cmsSectionCtaUrl")?.value),
-    isVisible: $("cmsSectionVisible")?.value !== "false",
-    sortOrder: Number($("cmsSectionSortOrder")?.value || 0) || 0,
-    updatedByEmail: currentUser?.email || "",
-    updatedAt: serverTimestamp()
-  });
-}
-
-async function saveCmsPage() {
-  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu CMS.", true);
-  const data = cmsPageFormData();
-  try {
-    await setDoc(doc(db, "websitePages", data.id), data, {merge:true});
-    await logAudit("saveWebsitePage", "websitePages", data.id, data)
-      .catch(err => notice("Đã lưu trang, nhưng chưa ghi được audit log: " + authMessage(err), true));
-    websitePages = uniqById([...websitePages.filter(p => p.id !== data.id), data]);
-    renderCmsAdmin();
-    notice("Đã lưu trang CMS.");
-  } catch (err) {
-    notice("Không lưu được trang CMS. Hãy chắc chắn đã chạy file SQL CMS. " + authMessage(err), true);
-  }
-}
-
-async function saveCmsSection() {
-  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu CMS.", true);
-  const data = cmsSectionFormData();
-  if (!websitePages.some(p => p.id === data.pageId || p.slug === data.pageId)) return notice("Hãy tạo/lưu trang trước khi thêm section.", true);
-  try {
-    await setDoc(doc(db, "websiteSections", data.id), data, {merge:true});
-    await logAudit("saveWebsiteSection", "websiteSections", data.id, data)
-      .catch(err => notice("Đã lưu section, nhưng chưa ghi được audit log: " + authMessage(err), true));
-    websiteSections = uniqById([...websiteSections.filter(s => s.id !== data.id), data]);
-    renderCmsAdmin();
-    notice("Đã lưu section CMS.");
-  } catch (err) {
-    notice("Không lưu được section CMS. Hãy chắc chắn đã chạy file SQL CMS. " + authMessage(err), true);
-  }
-}
-
-function uniqById(items) {
-  return [...new Map(items.filter(Boolean).map(item => [item.id, item])).values()];
-}
-
-function resetCmsForms() {
-  renderCmsPageForm(normalizeCmsPage(DEFAULT_CMS_PAGE));
-  renderCmsSectionForm(normalizeCmsSection(DEFAULT_CMS_SECTION));
-  notice("Đã xóa form CMS.");
-}
-
-function editCmsPage(pageId) {
-  const page = websitePages.find(p => p.id === pageId);
-  if (!page) return;
-  renderCmsPageForm(page);
-}
-
-function editCmsSection(sectionId) {
-  const section = websiteSections.find(s => s.id === sectionId);
-  if (!section) return;
-  renderCmsSectionForm(section);
-}
-
-function newCmsSection(pageId) {
-  renderCmsSectionForm(normalizeCmsSection({pageId, sectionKey: "section", sortOrder: websiteSections.filter(s => s.pageId === pageId).length + 1}));
-}
-
-async function toggleCmsSection(sectionId) {
-  const section = websiteSections.find(s => s.id === sectionId);
-  if (!section) return;
-  await setDoc(doc(db, "websiteSections", section.id), {
-    ...section,
-    isVisible: section.isVisible === false,
-    updatedByEmail: currentUser?.email || "",
-    updatedAt: serverTimestamp()
-  }, {merge:true});
-  await logAudit("toggleWebsiteSection", "websiteSections", section.id, {isVisible: section.isVisible === false})
-    .catch(err => notice("Đã đổi trạng thái section, nhưng chưa ghi được audit log: " + authMessage(err), true));
-  section.isVisible = section.isVisible === false;
-  renderCmsAdmin();
-}
-
 async function seedSettings() {
   if (!isAdmin()) return notice("Chỉ admin được tạo SETTINGS.", true);
   await setDoc(doc(db, "settings", "crm"), DEFAULT_SETTINGS, {merge:true});
@@ -1038,9 +769,6 @@ function renderDropdownSettingsForm() {
   if ($("settingsSystemLabels") && document.activeElement !== $("settingsSystemLabels")) {
     $("settingsSystemLabels").value = objectToText(settings.systemLabels);
   }
-  if ($("settingsQuoteTemplateUrl") && document.activeElement !== $("settingsQuoteTemplateUrl")) {
-    $("settingsQuoteTemplateUrl").value = clean(settings.quoteTemplateUrl);
-  }
 }
 
 async function saveDropdownSettings() {
@@ -1061,7 +789,6 @@ async function saveDropdownSettings() {
     partnerCapacity: settings.partnerCapacity?.length ? settings.partnerCapacity : DEFAULT_SETTINGS.partnerCapacity,
     dealStatuses: textToList($("settingsDealStatuses").value),
     systemLabels: {...DEFAULT_SETTINGS.systemLabels, ...textToObject($("settingsSystemLabels").value)},
-    quoteTemplateUrl: clean($("settingsQuoteTemplateUrl").value),
     updatedByEmail: currentUser?.email || "",
     updatedAt: serverTimestamp()
   };
@@ -2195,8 +1922,6 @@ function watchData() {
   allInventoryMovements = [];
   products = [];
   users = [];
-  websitePages = [];
-  websiteSections = [];
   kpiRules = [];
   kpiProposals = [];
   auditLogs = [];
@@ -2465,7 +2190,6 @@ function setMainView(view) {
   $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView);
   $("kpiRulePanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpiApprovalPanel")?.classList.toggle("hide", !isKpiView || !isManager());
-  ["ordersPanel","productsPanel","quotesPanel"].forEach(id => $(id)?.classList.add("hide"));
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
   $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
@@ -7903,18 +7627,12 @@ function resetFilters() {
 document.addEventListener("click", e => {
   const careId = e.target.closest("[data-open-care]")?.dataset.openCare || e.target.closest("[data-care-open]")?.dataset.careOpen;
   const dealId = e.target.closest("[data-open-deal]")?.dataset.openDeal;
-  const docId = e.target.closest("[data-open-template]")?.dataset.openTemplate;
-  const quoteCreateDealId = e.target.closest("[data-quote-create-deal]")?.dataset.quoteCreateDeal;
-  const quoteOpenTemplateId = e.target.closest("[data-quote-open-template]")?.dataset.quoteOpenTemplate;
-  const quoteCopyId = e.target.closest("[data-quote-copy]")?.dataset.quoteCopy;
   const taskSnoozeBtn = e.target.closest("[data-task-snooze]");
   const completeDealId = e.target.closest("[data-complete-deal]")?.dataset.completeDeal;
   const cancelDealId = e.target.closest("[data-cancel-deal]")?.dataset.cancelDeal;
   const deleteDealId = e.target.closest("[data-delete-deal]")?.dataset.deleteDeal;
   const editDealId = e.target.closest("[data-edit-deal]")?.dataset.editDeal;
   const reviewDealId = e.target.closest("[data-review-deal]")?.dataset.reviewDeal;
-  const deliveryDealId = e.target.closest("[data-delivery-deal]")?.dataset.deliveryDeal;
-  const saveDeliveryId = e.target.closest("[data-save-delivery]")?.dataset.saveDelivery;
   const pipelineLabel = e.target.closest("[data-pipeline-detail]")?.dataset.pipelineDetail;
   const editKpiRuleId = e.target.closest("[data-edit-kpi-rule]")?.dataset.editKpiRule;
   const disableKpiRuleId = e.target.closest("[data-disable-kpi-rule]")?.dataset.disableKpiRule;
@@ -7940,25 +7658,9 @@ document.addEventListener("click", e => {
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
-  const openQuoteId = e.target.closest("[data-open-quote]")?.dataset.openQuote;
-  const editQuoteId = e.target.closest("[data-edit-quote]")?.dataset.editQuote;
-  const deleteQuoteId = e.target.closest("[data-delete-quote]")?.dataset.deleteQuote;
-  const convertQuoteId = e.target.closest("[data-convert-quote]")?.dataset.convertQuote;
-  const payDealId = e.target.closest("[data-pay-deal]")?.dataset.payDeal;
-  const deletePaymentId = e.target.closest("[data-delete-payment]")?.dataset.deletePayment;
-  const printPaymentId = e.target.closest("[data-print-payment]")?.dataset.printPayment;
-  const printDeliveryId = e.target.closest("[data-print-delivery]")?.dataset.printDelivery;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
-  const editCmsPageId = e.target.closest("[data-edit-cms-page]")?.dataset.editCmsPage;
-  const newCmsSectionPageId = e.target.closest("[data-new-cms-section]")?.dataset.newCmsSection;
-  const editCmsSectionId = e.target.closest("[data-edit-cms-section]")?.dataset.editCmsSection;
-  const toggleCmsSectionId = e.target.closest("[data-toggle-cms-section]")?.dataset.toggleCmsSection;
   if (loadMoreKey) loadMorePage(loadMoreKey);
-  if (editCmsPageId) editCmsPage(editCmsPageId);
-  if (newCmsSectionPageId) newCmsSection(newCmsSectionPageId);
-  if (editCmsSectionId) editCmsSection(editCmsSectionId);
-  if (toggleCmsSectionId) runAction(`toggleCmsSection:${toggleCmsSectionId}`, "toggleCmsSection", "Đang cập nhật...", () => toggleCmsSection(toggleCmsSectionId));
   if (channelQuick) {
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
     $("filterChannel").value = "";
@@ -7976,18 +7678,6 @@ document.addEventListener("click", e => {
     openDrawer(careId, "care");
   }
   if (dealId) openDrawer(dealId, "deal");
-  if (docId) openQuoteProposal(docId);
-  if (quoteCreateDealId) createDealFromQuote(quoteCreateDealId);
-  if (quoteOpenTemplateId) openQuoteTemplate(quoteOpenTemplateId);
-  if (quoteCopyId) copyQuoteCustomerInfo(quoteCopyId);
-  if (openQuoteId) openQuoteDetail(openQuoteId);
-  if (editQuoteId) editQuote(editQuoteId);
-  if (deleteQuoteId) softDeleteQuote(deleteQuoteId);
-  if (convertQuoteId) convertQuoteToDeal(convertQuoteId);
-  if (payDealId) selectPaymentDeal(payDealId);
-  if (deletePaymentId) softDeletePayment(deletePaymentId);
-  if (printPaymentId) printPaymentReceipt(printPaymentId);
-  if (printDeliveryId) printDeliveryNote(printDeliveryId);
   if (taskSnoozeBtn) snoozeTask(taskSnoozeBtn.dataset.taskSnooze, Number(taskSnoozeBtn.dataset.days || 1));
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
@@ -7995,8 +7685,6 @@ document.addEventListener("click", e => {
   if (deleteDealId) softDeleteDeal(deleteDealId);
   if (editDealId) editDeal(editDealId);
   if (reviewDealId) reviewDeal(reviewDealId);
-  if (deliveryDealId) openDeliveryModal(deliveryDealId);
-  if (saveDeliveryId) runAction(`saveDelivery:${saveDeliveryId}`, "saveDelivery", "Đang lưu...", () => saveDelivery(saveDeliveryId));
   if (pipelineLabel) openPipelineDetail(pipelineLabel);
   if (editKpiRuleId) editKpiRule(editKpiRuleId);
   if (disableKpiRuleId) disableKpiRule(disableKpiRuleId);
@@ -8011,17 +7699,6 @@ document.addEventListener("click", e => {
   if (deleteKpiProposalId) deleteKpiProposal(deleteKpiProposalId);
   if (approveKpiProposalId) reviewKpiProposal(approveKpiProposalId, "approved");
   if (rejectKpiProposalId) reviewKpiProposal(rejectKpiProposalId, "rejected");
-  const saveProductId = e.target.closest("[data-save-product]")?.dataset.saveProduct;
-  const deleteProductId = e.target.closest("[data-delete-product]")?.dataset.deleteProduct;
-  const inventoryProductId = e.target.closest("[data-inventory-product]")?.dataset.inventoryProduct;
-  const deleteInventoryId = e.target.closest("[data-delete-inventory]")?.dataset.deleteInventory;
-  if (saveProductId) runAction(`saveProduct:${saveProductId}`, "saveProduct", "Đang lưu...", () => saveProduct(saveProductId));
-  if (deleteProductId) runAction(`deleteProduct:${deleteProductId}`, "deleteProduct", "Đang xóa...", () => deleteProduct(deleteProductId));
-  if (inventoryProductId) {
-    setMainView("products");
-    selectInventoryProduct(inventoryProductId);
-  }
-  if (deleteInventoryId) softDeleteInventoryMovement(deleteInventoryId);
   if (editCareLogId) editCareLog(editCareLogId);
   if (deleteCareLogId) deleteCareLog(deleteCareLogId);
   if (restoreCustomerId) restoreCustomer(restoreCustomerId);
@@ -8032,11 +7709,6 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-remove-deal-item]")) {
     e.target.closest("[data-deal-item]")?.remove();
     if (!document.querySelector("[data-deal-item]")) addDealItem();
-  }
-  if (e.target.closest("[data-remove-quote-item]")) {
-    e.target.closest("[data-quote-item]")?.remove();
-    if (!document.querySelector("[data-quote-item]")) addQuoteItem();
-    updateQuoteTotals();
   }
 });
 
@@ -8103,28 +7775,6 @@ on("adminLogoutBtn", "click", async () => {
 document.querySelectorAll("[data-admin-route]").forEach(btn => {
   btn.addEventListener("click", () => goToRoute(btn.dataset.adminRoute || "/admin"));
 });
-["orderFilterYear","orderFilterMonth","orderFilterOwner","orderFilterStatus"].forEach(id => on(id, "change", renderOrders));
-on("resetOrderFilterBtn", "click", resetOrderFilters);
-on("savePaymentBtn", "click", () => runAction("savePaymentBtn", "savePayment", "Đang lưu...", savePayment));
-on("clearPaymentBtn", "click", clearPaymentForm);
-on("paymentDeal", "change", () => {
-  const d = deals.find(item => item.id === $("paymentDeal").value);
-  if (!d) return;
-  $("paymentAmount").value = dealDebtAmount(d) || dealAmount(d);
-  if (!$("paymentDate").value) $("paymentDate").value = todayIso();
-});
-["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => on(id, "input", () => resetPagingAndRender("products", renderProducts)));
-on("resetProductFilterBtn", "click", () => {
-  ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => $(id).value = "");
-  resetPaging("products");
-  renderProducts();
-});
-on("saveInventoryBtn", "click", () => runAction("saveInventoryBtn", "saveInventoryMovement", "Đang lưu...", saveInventoryMovement));
-on("clearInventoryBtn", "click", clearInventoryForm);
-["quoteSearchBox","quoteFilterOwner","quoteFilterStatus"].forEach(id => on(id, "input", renderQuotes));
-["quoteFilterOwner","quoteFilterStatus"].forEach(id => on(id, "change", renderQuotes));
-on("resetQuoteFilterBtn", "click", resetQuoteFilters);
-on("exportQuotesBtn", "click", exportQuotes);
 on("kpiRuleTarget", "input", () => {
   document.querySelectorAll("[data-kpi-target-email]").forEach(input => {
     if (!clean(input.value)) input.value = $("kpiRuleTarget").value;
@@ -8155,14 +7805,11 @@ on("syncPhoneBtn", "click", () => runAction("syncPhoneBtn", "syncPhone", "Đang 
 on("syncOwnerBtn", "click", () => runAction("syncOwnerBtn", "syncOwner", "Đang đồng bộ...", syncOwnerEmail));
 on("importBtn", "click", () => $("importFile").click());
 on("importFile", "change", handleImportFile);
-on("importProductsBtn", "click", () => $("importProductsFile").click());
-on("importProductsFile", "change", handleImportProductsFile);
 on("saveCustomerBtn", "click", () => runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer));
 on("clearBtn", "click", clearForm);
 on("enableNotifyBtn", "click", () => runAction("enableNotifyBtn", "enableNotify", "Đang bật...", enableBrowserNotifications));
 on("resetFilterBtn", "click", resetFilters);
 on("exportBtn", "click", exportCsv);
-on("exportOrdersBtn", "click", () => runAction("exportOrdersBtn", "exportOrders", "Đang xuất...", exportOrders));
 on("exportKpiBtn", "click", () => runAction("exportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
 on("reportExportManagementBtn", "click", () => runAction("reportExportManagementBtn", "exportManagementReport", "Đang xuất...", exportManagementReport));
 on("reportExportKpiBtn", "click", () => runAction("reportExportKpiBtn", "exportKpi", "Đang xuất...", exportKpiReport));
@@ -8185,23 +7832,11 @@ on("cancelEditDealBtn", "click", clearDealEditMode);
 on("saveKpiRuleBtn", "click", () => runAction("saveKpiRuleBtn", "saveKpiRule", "Đang lưu...", saveKpiRule));
 on("cancelEditKpiRuleBtn", "click", resetKpiRuleForm);
 on("addDealItemBtn", "click", () => addDealItem());
-on("saveQuoteBtn", "click", () => runAction("saveQuoteBtn", "saveQuote", "Đang lưu...", saveQuote));
-on("clearQuoteBtn", "click", clearQuoteForm);
-on("cancelEditQuoteBtn", "click", clearQuoteForm);
-on("addQuoteItemBtn", "click", () => addQuoteItem());
 on("dealItems", "input", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
 });
 on("dealItems", "change", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
-});
-on("quoteItems", "input", e => {
-  if (e.target.matches("[data-quote-product]")) applyProductToQuoteInput(e.target);
-  if (e.target.matches("[data-quote-qty],[data-quote-price],[data-quote-discount]")) updateQuoteTotals();
-});
-on("quoteItems", "change", e => {
-  if (e.target.matches("[data-quote-product]")) applyProductToQuoteInput(e.target);
-  updateQuoteTotals();
 });
 on("showPendingDealsBtn", "click", () => showDealList("pending"));
 on("showCompletedDealsBtn", "click", () => showDealList("completed"));

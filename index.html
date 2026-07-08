@@ -101,182 +101,6 @@
           <div id="pipelineGrid" class="pipeline-grid"></div>
         </div>
 
-        <div id="ordersPanel" class="panel hide" style="margin-bottom:14px">
-          <div class="pro-section-title">
-            <h3>Đơn hàng</h3>
-            <button id="exportOrdersBtn" class="small primary" type="button">Xuất đơn hàng</button>
-          </div>
-          <div class="grid4">
-            <div class="field"><label>Năm</label><select id="orderFilterYear"></select></div>
-            <div class="field"><label>Tháng</label><select id="orderFilterMonth"></select></div>
-            <div class="field"><label>Nhân viên</label><select id="orderFilterOwner"></select></div>
-            <div class="field"><label>Tình trạng đơn</label><select id="orderFilterStatus"></select></div>
-            <div class="field"><label>&nbsp;</label><button id="resetOrderFilterBtn" type="button">Xóa lọc</button></div>
-          </div>
-          <div id="orderSummaryGrid" class="executive-grid order-summary-grid"></div>
-          <div class="section payment-section">
-            <div class="pro-section-title">
-              <h3>Công nợ / Thanh toán</h3>
-              <span id="paymentSummaryText" class="muted"></span>
-            </div>
-            <div class="grid4">
-              <div class="field"><label>Đơn hàng</label><select id="paymentDeal"></select></div>
-              <div class="field"><label>Ngày thu</label><input id="paymentDate" type="date"></div>
-              <div class="field"><label>Số tiền</label><input id="paymentAmount" type="number" min="0" step="1000" placeholder="0"></div>
-              <div class="field"><label>Hình thức</label><select id="paymentMethod">
-                <option>Chuyển khoản</option>
-                <option>Tiền mặt</option>
-                <option>Quẹt thẻ</option>
-                <option>Khác</option>
-              </select></div>
-            </div>
-            <div class="field"><label>Ghi chú</label><input id="paymentNote" placeholder="Mã giao dịch, nội dung chuyển khoản, người nhận..."></div>
-            <div class="actions">
-              <button id="savePaymentBtn" class="primary" type="button">Lưu thanh toán</button>
-              <button id="clearPaymentBtn" type="button">Xóa form</button>
-            </div>
-            <div class="table-title payment-title">Lịch sử thanh toán</div>
-            <div class="table-wrap payment-table-wrap">
-              <table class="admin-table payment-table">
-                <thead>
-                  <tr><th>Mã thu</th><th>Khách hàng</th><th>Đơn hàng</th><th>Ngày thu</th><th>Số tiền</th><th>Hình thức</th><th>Người ghi nhận</th><th>Ghi chú</th><th>Thao tác</th></tr>
-                </thead>
-                <tbody id="paymentRows"></tbody>
-              </table>
-            </div>
-          </div>
-          <div class="table-title">Thông tin đơn hàng / deal</div>
-          <div class="table-wrap order-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Khách hàng</th><th>SĐT</th><th>Nhân viên</th><th>Trạng thái</th><th>Ngày đơn</th><th>Ngày mua</th><th>Hẹn giao</th><th>Sản phẩm</th><th>Giá trị</th><th>Ghi chú</th><th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody id="orderRows"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div id="productsPanel" class="panel hide" style="margin-bottom:14px">
-          <div class="pro-section-title">
-            <h3>Sản phẩm</h3>
-            <div class="actions">
-              <button id="importProductsBtn" class="small primary hide" type="button">Import sản phẩm CSV</button>
-              <input id="importProductsFile" class="hide" type="file" accept=".csv,text/csv">
-            </div>
-          </div>
-          <div class="toolbar product-toolbar">
-            <div class="toolbar-search"><label>Tìm sản phẩm</label><input id="productSearchBox" placeholder="Tên, mã, size, bề mặt, xuất xứ..."></div>
-            <div><label>Size</label><select id="productFilterSize"></select></div>
-            <div><label>Bề mặt</label><select id="productFilterSurface"></select></div>
-            <div><label>Xuất xứ</label><select id="productFilterOrigin"></select></div>
-            <div class="toolbar-actions"><button id="resetProductFilterBtn" type="button">Xóa lọc</button></div>
-          </div>
-          <div id="inventorySummaryGrid" class="executive-grid inventory-summary-grid"></div>
-          <div id="inventoryFormPanel" class="section inventory-section">
-            <div class="pro-section-title">
-              <h3>Nhập / Xuất kho</h3>
-              <span class="muted">Số xuất kho sẽ tự ghi âm để tính tồn.</span>
-            </div>
-            <div class="grid4">
-              <div class="field"><label>Sản phẩm</label><select id="inventoryProduct"></select></div>
-              <div class="field"><label>Loại phiếu</label><select id="inventoryType">
-                <option value="in">Nhập kho</option>
-                <option value="out">Xuất kho</option>
-                <option value="return">Khách trả / hoàn kho</option>
-                <option value="adjustment">Điều chỉnh +/-</option>
-              </select></div>
-              <div class="field"><label>Số lượng</label><input id="inventoryQty" type="number" step="0.01" placeholder="0"></div>
-              <div class="field"><label>Kho</label><input id="inventoryWarehouse" value="main" placeholder="main"></div>
-            </div>
-            <div class="grid4">
-              <div class="field"><label>Tham chiếu</label><select id="inventoryRefType">
-                <option value="">Không có</option>
-                <option value="deal">Đơn hàng</option>
-                <option value="quote">Báo giá</option>
-                <option value="manual">Thủ công</option>
-              </select></div>
-              <div class="field"><label>Mã tham chiếu</label><input id="inventoryRefId" placeholder="Mã đơn / mã báo giá nếu có"></div>
-              <div class="field grid-wide"><label>Ghi chú</label><input id="inventoryNote" placeholder="Lý do nhập/xuất/điều chỉnh..."></div>
-            </div>
-            <div class="actions">
-              <button id="saveInventoryBtn" class="primary" type="button">Lưu phiếu kho</button>
-              <button id="clearInventoryBtn" type="button">Xóa form</button>
-            </div>
-          </div>
-          <div class="table-title">Lịch sử nhập / xuất kho</div>
-          <div class="table-wrap inventory-table-wrap">
-            <table class="admin-table inventory-table">
-              <thead>
-                <tr><th>Thời gian</th><th>Sản phẩm</th><th>Loại</th><th>Số lượng</th><th>Kho</th><th>Tham chiếu</th><th>Người tạo</th><th>Ghi chú</th><th>Thao tác</th></tr>
-              </thead>
-              <tbody id="inventoryRows"></tbody>
-            </table>
-          </div>
-          <div class="table-title">Danh mục sản phẩm</div>
-          <div class="table-wrap product-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Code</th><th>Tên sản phẩm</th><th>Size</th><th>Bề mặt</th><th>Xuất xứ</th><th>Màu</th><th>Giá</th><th>Tồn kho</th><th>Mô tả</th><th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody id="productRows"></tbody>
-            </table>
-          </div>
-          <div id="productPager" class="list-pager"></div>
-        </div>
-
-        <div id="quotesPanel" class="panel hide" style="margin-bottom:14px">
-          <div class="pro-section-title">
-            <h3>Báo giá / Đề xuất</h3>
-            <button id="exportQuotesBtn" class="small primary" type="button">Xuất báo giá</button>
-          </div>
-          <div class="section">
-            <h3 id="quoteFormTitle">Tạo báo giá</h3>
-            <div class="grid4">
-              <div class="field"><label>Khách hàng</label><select id="quoteCustomer"></select></div>
-              <div class="field"><label>Trạng thái</label><select id="quoteStatus"></select></div>
-              <div class="field"><label>Ngày báo giá</label><input id="quoteDate" type="date"></div>
-              <div class="field"><label>Hiệu lực đến</label><input id="quoteValidUntil" type="date"></div>
-            </div>
-            <div class="actions" style="justify-content:space-between;margin-bottom:8px">
-              <label style="margin:0">Sản phẩm báo giá</label>
-              <button id="addQuoteItemBtn" class="small" type="button">Thêm SP</button>
-            </div>
-            <div id="quoteItems"></div>
-            <div class="grid3 quote-total-grid">
-              <div><span>Tạm tính</span><b id="quoteSubtotal">0</b></div>
-              <div><span>Chiết khấu</span><b id="quoteDiscountTotal">0</b></div>
-              <div><span>Tổng báo giá</span><b id="quoteTotalAmount">0</b></div>
-            </div>
-            <div class="field"><label>Ghi chú</label><textarea id="quoteNote" placeholder="Điều kiện báo giá, phương án đề xuất, ghi chú nội bộ..."></textarea></div>
-            <div class="actions">
-              <button id="saveQuoteBtn" class="primary" type="button">Lưu báo giá</button>
-              <button id="clearQuoteBtn" type="button">Xóa form</button>
-              <button id="cancelEditQuoteBtn" class="hide" type="button">Hủy sửa</button>
-            </div>
-          </div>
-          <div class="toolbar quote-toolbar">
-            <div class="toolbar-search"><label>Tìm báo giá</label><input id="quoteSearchBox" placeholder="Mã, khách hàng, SĐT, ghi chú..."></div>
-            <div><label>Nhân viên</label><select id="quoteFilterOwner"></select></div>
-            <div><label>Trạng thái</label><select id="quoteFilterStatus"></select></div>
-            <div class="toolbar-actions"><button id="resetQuoteFilterBtn" type="button">Xóa lọc</button></div>
-          </div>
-          <div class="table-title">Danh sách báo giá</div>
-          <div class="table-wrap quote-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Mã BG</th><th>Khách hàng</th><th>Nhân viên</th><th>Trạng thái</th><th>Ngày</th><th>Hiệu lực</th><th>Giá trị</th><th>Ghi chú</th><th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody id="quoteRows"></tbody>
-            </table>
-          </div>
-        </div>
-
         <div id="reportsPanel" class="panel hide" style="margin-bottom:14px">
           <div class="pro-section-title">
             <h3>Báo cáo</h3>
@@ -382,9 +206,8 @@
             <textarea id="settingsPartnerActivities" class="hide"></textarea>
             <textarea id="settingsPartnerLevels" class="hide"></textarea>
             <textarea id="settingsPartnerCapacity" class="hide"></textarea>
-            <div class="field"><label>Trạng thái đơn hàng</label><textarea id="settingsDealStatuses"></textarea></div>
+            <div class="field"><label>Trạng thái mua căn bản</label><textarea id="settingsDealStatuses"></textarea></div>
             <div class="field settings-wide"><label>Nhãn hệ thống</label><textarea id="settingsSystemLabels"></textarea></div>
-            <div class="field settings-wide"><label>Link báo giá / đề xuất</label><input id="settingsQuoteTemplateUrl"></div>
           </div>
           <div class="muted">Mỗi dòng là một giá trị. Kênh chi tiết không còn phụ thuộc Nguồn hay Phân loại KH.</div>
         </div>
@@ -539,14 +362,14 @@
           <div class="muted" style="margin-bottom:10px">Dùng trước khi import, cleanup, xóa user/khách hoặc chỉnh dữ liệu lớn. File snapshot là bản xem nhanh trong Excel, không thay thế backup Supabase CLI.</div>
           <div class="health-grid">
             <div class="health-card good"><div class="muted">Khách đang quản lý</div><b id="safetyCustomersCount">0</b><div class="muted">Gồm cả dữ liệu đã tải theo quyền admin</div></div>
-            <div class="health-card"><div class="muted">Đơn / Deal</div><b id="safetyDealsCount">0</b><div class="muted">Đơn đang xử lý, đã mua, đã hủy</div></div>
-            <div class="health-card"><div class="muted">Thanh toán</div><b id="safetyPaymentsCount">0</b><div class="muted">Khoản thu và khoản đã xóa mềm</div></div>
+            <div class="health-card"><div class="muted">Mua căn bản</div><b id="safetyDealsCount">0</b><div class="muted">Lần mua/cọc/hủy ghi nhận cho hồ sơ KH</div></div>
+            <div class="health-card"><div class="muted">Dữ liệu thu cũ</div><b id="safetyPaymentsCount">0</b><div class="muted">Chỉ để đối soát lịch sử, không vận hành như công nợ</div></div>
             <div class="health-card warn"><div class="muted">Audit log</div><b id="safetyAuditCount">0</b><div class="muted">Dấu vết thao tác quan trọng</div></div>
           </div>
           <div class="panel soft-panel" style="margin-top:12px">
             <div class="table-title">Checklist deploy nhanh</div>
             <div class="muted">Trước deploy: xuất snapshot, backup Supabase nếu có đổi SQL/RLS, test local admin/manager/sale, kiểm tra không commit .env hoặc file backup.</div>
-            <div class="muted">Sau deploy: mở trang production, đăng nhập Google, thêm thử chăm sóc/KPI/đơn hàng, kiểm tra báo cáo và export, xem Vercel logs nếu có lỗi.</div>
+            <div class="muted">Sau deploy: mở trang production, đăng nhập Google, thêm thử khách/chăm sóc/KPI/mua căn bản, kiểm tra báo cáo và export, xem Vercel logs nếu có lỗi.</div>
           </div>
         </div>
 
@@ -682,7 +505,7 @@
               <div class="field settings-wide"><label>Địa chỉ showroom</label><textarea id="companyShowroomAddress" placeholder="Địa chỉ showroom / văn phòng"></textarea></div>
               <div class="field"><label>Facebook</label><input id="companyFacebookUrl" placeholder="https://facebook.com/..."></div>
               <div class="field"><label>Zalo</label><input id="companyZaloUrl" placeholder="https://zalo.me/... hoặc số Zalo"></div>
-              <div class="field settings-wide"><label>Thông báo mặc định</label><textarea id="companyDefaultNotice" placeholder="Thông báo mặc định hiển thị cho nhân viên hoặc website"></textarea></div>
+              <div class="field settings-wide"><label>Thông báo mặc định</label><textarea id="companyDefaultNotice" placeholder="Thông báo mặc định hiển thị cho nhân viên"></textarea></div>
             </div>
             <div class="company-preview" id="companySettingsPreview">
               <span class="muted">Xem trước</span>
@@ -702,7 +525,7 @@
           </div>
           <div class="admin-empty-state">
             <b>Trang nhật ký đã sẵn sàng khung.</b>
-            <span>Giai đoạn sau sẽ nối với audit log và lọc theo loại thao tác admin/CMS.</span>
+            <span>Giai đoạn sau sẽ nối với audit log và lọc theo loại thao tác CRM.</span>
           </div>
         </section>
 
