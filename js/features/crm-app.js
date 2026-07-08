@@ -2496,31 +2496,26 @@ function renderKpis() {
   if (!$("kpis")) return;
   const rows = customers.filter(canSeeCustomer);
   const rowIds = new Set(rows.map(c => c.id));
-  const filteredDeals = deals.filter(d => rowIds.has(d.customerId));
-  const completed = filteredDeals.filter(isCompletedDeal);
-  const pending = filteredDeals.filter(isActiveDeal);
   const due = rows.filter(isCareDue);
   const overdue = rows.filter(isCareOverdue);
-  const withPhone = rows.filter(c => c.phoneNormalized);
-  const uniquePhones = new Set(withPhone.map(c => c.phoneNormalized).filter(Boolean)).size;
-  const noPhoneCount = rows.length - withPhone.length;
   const thisMonth = currentMonth();
   const monthLead = rows.filter(c => monthOf(c.createdAt) === thisMonth).length;
-  const revenue = completed.reduce((sum, d) => sum + dealAmount(d), 0);
-  const pendingValue = pending.reduce((sum, d) => sum + dealAmount(d), 0);
-  const boughtCustomers = rows.filter(c => customerHasCompletedDeal(c.id));
+  const monthCare = careLogs.filter(l => !l.isDeleted && monthOf(l.createdAt) === thisMonth && rowIds.has(l.customerId)).length;
+  const noDate = rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate)).length;
+  const showroomVisits = rows.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
+  const boughtCustomers = rows.filter(c => basicPurchaseCountFor(c) > 0);
+  const purchaseValue = rows.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
   const conversionRate = rows.length ? Math.round(boughtCustomers.length / rows.length * 100) : 0;
   const items = [
     ["Tổng khách", rows.length],
     ["Khách mới tháng này", monthLead],
     ["Cần chăm", due.length],
     ["Quá hạn chăm", overdue.length],
-    ["Đơn đang xử lý", pending.length],
-    ["Đơn hoàn thành", completed.length],
-    [systemLabel("depositStatus"), filteredDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")).length],
-    [systemLabel("canceledStatus"), filteredDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus")).length],
-    ["Doanh số hoàn thành", money(revenue)],
-    ["Giá trị đang xử lý", money(pendingValue)],
+    ["Chưa có lịch chăm", noDate],
+    ["Lượt chăm tháng", monthCare],
+    ["Đến showroom", showroomVisits],
+    ["Khách đã mua", boughtCustomers.length],
+    ["Giá trị mua căn bản", money(purchaseValue)],
     ["Tỉ lệ mua", conversionRate + "%"]
   ];
   $("kpis").innerHTML = items.map(([label,num]) => `<div class="kpi"><div class="muted">${esc(label)}</div><div class="num">${esc(num)}</div></div>`).join("");
@@ -2539,30 +2534,29 @@ function renderExecutiveDashboard() {
   $("executiveDashboard")?.classList.toggle("hide", !isManager());
   if (!isManager()) return;
   const rows = currentReportCustomers();
-  const reportDeals = currentReportDeals();
   const month = currentMonth();
   const monthCustomers = rows.filter(c => monthOf(c.createdAt) === month);
-  const completedMonth = reportDeals.filter(d => isCompletedDeal(d) && monthOf(d.completedAt || d.dealDate || d.createdAt) === month);
-  const pendingDeals = reportDeals.filter(isActiveDeal);
-  const completedDeals = reportDeals.filter(isCompletedDeal);
-  const boughtCustomers = rows.filter(c => customerHasCompletedDeal(c.id));
-  const pendingValue = pendingDeals.reduce((sum, d) => sum + dealAmount(d), 0);
+  const rowIds = new Set(rows.map(c => c.id));
+  const monthCareLogs = careLogs.filter(l => !l.isDeleted && rowIds.has(l.customerId) && monthOf(l.createdAt || l.careDate) === month);
+  const boughtCustomers = rows.filter(c => basicPurchaseCountFor(c) > 0);
+  const purchaseTimes = rows.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0);
+  const purchaseValue = rows.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
   const pendingKpi = kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length;
   const dueCare = rows.filter(isCareDue);
   const overdueCare = rows.filter(isCareOverdue);
-  const depositDeals = reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
-  const canceledDeals = reportDeals.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus"));
+  const noDateCare = rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate));
+  const showroomVisits = rows.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
   const cards = [
     ["Khách đang quản lý", rows.length, "", "managed-customers"],
     ["Khách mới tháng này", monthCustomers.length, "", "month-customers"],
-    ["Doanh số tháng", money(completedMonth.reduce((sum,d) => sum + dealAmount(d), 0)), "", "month-revenue"],
-    ["Deal đang xử lý", pendingDeals.length, pendingDeals.length ? "warn" : "", "pending-deals"],
-    ["Giá trị đang xử lý", money(pendingValue), pendingValue ? "warn" : "", "pending-deals"],
-    ["Đơn hoàn thành", completedDeals.length, "", "completed-deals"],
-    [systemLabel("depositStatus"), depositDeals.length, "", "deposit-deals"],
-    [systemLabel("canceledStatus"), canceledDeals.length, "", "canceled-deals"],
+    ["Lượt chăm tháng", monthCareLogs.length, "", ""],
     ["Cần chăm", dueCare.length, dueCare.length ? "warn" : "", "due-care"],
     ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "bad" : "", "overdue-care"],
+    ["Chưa có lịch chăm", noDateCare.length, noDateCare.length ? "warn" : "", ""],
+    ["Đến showroom", showroomVisits, "", ""],
+    ["Khách đã mua", boughtCustomers.length, "", ""],
+    ["Số lần mua", purchaseTimes, "", ""],
+    ["Giá trị mua căn bản", money(purchaseValue), "", ""],
     ["KPI chờ duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
     ["Tỉ lệ mua", rows.length ? Math.round(boughtCustomers.length / rows.length * 100) + "%" : "0%", ""]
   ];
@@ -3478,22 +3472,21 @@ function renderKpiTable() {
     </th>
   `).join("");
   $("kpiHead").innerHTML = `<tr>
-    <th>Nhân viên</th><th>Chỉ tiêu</th><th>Thực hiện</th><th>Đơn hoàn thành</th><th>${esc(systemLabel("depositStatus"))}</th><th>${esc(systemLabel("boughtStatus"))}</th><th>${esc(systemLabel("canceledStatus"))}</th><th>Doanh số</th>${dynamicHeads}<th>Tỉ lệ mua</th><th>${esc(systemLabel("dueFollow"))}</th><th>Quá hạn</th>
+    <th>Nhân viên</th><th>Tổng khách</th><th>Khách mới kỳ này</th><th>Lượt chăm</th><th>${esc(systemLabel("dueFollow"))}</th><th>Quá hạn</th><th>Đến showroom</th><th>Khách đã mua</th><th>Số lần mua</th><th>Giá trị mua</th>${dynamicHeads}<th>Tỉ lệ mua</th>
   </tr>`;
   $("kpiRows").innerHTML = ownerKeys.map(o => {
     const profile = ownerProfileByValue(o);
     const cs = customers.filter(c => canSeeCustomer(c) && (sameIdentity(customerOwnerKey(c), o) || sameIdentity(c.owner, o)));
     if (!cs.length && !isManager() && !monthRules.some(rule => kpiRuleAppliesToOwner(rule, o))) return "";
     const ids = new Set(cs.map(c => c.id));
-    const ds = deals.filter(d => ids.has(d.customerId));
     const monthLead = week ? cs.filter(c => weekOf(c.createdAt) === week).length : month ? cs.filter(c => monthOf(c.createdAt) === month).length : cs.length;
-    const closeCount = ds.filter(isCompletedDeal).length;
-    const dealCount = ds.filter(isCompletedDeal).length;
-    const boughtCustomerCount = cs.filter(c => customerHasCompletedDeal(c.id)).length;
-    const cancelCount = ds.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus")).length;
+    const careCount = careLogs.filter(l => !l.isDeleted && ids.has(l.customerId) && (week ? weekOf(l.createdAt) === week : month ? monthOf(l.createdAt) === month : true)).length;
     const due = cs.filter(isCareDue).length;
     const overdue = cs.filter(isCareOverdue).length;
-    const revenue = ds.filter(isKpiRevenueDeal).reduce((sum, d) => sum + dealAmount(d), 0);
+    const showroomVisits = cs.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
+    const boughtCustomerCount = cs.filter(c => basicPurchaseCountFor(c) > 0).length;
+    const purchaseTimes = cs.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0);
+    const purchaseValue = cs.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
     const rate = cs.length ? Math.round(boughtCustomerCount / cs.length * 100) : 0;
     const ruleCells = monthRules.map(rule => {
       if (!kpiRuleAppliesToOwner(rule, o)) return `<td><span class="muted">Không gán</span></td>`;
@@ -3502,8 +3495,8 @@ function renderKpiTable() {
       const cls = target && value >= target ? "green" : "";
       return `<td><button class="kpi-progress-btn ${cls}" type="button" title="Xem chi tiết KPI đã gửi" data-kpi-owner-detail="${esc(rule.id)}" data-owner-key="${esc(o)}">${kpiProgressHtml(value, target)}</button></td>`;
     }).join("");
-    return `<tr class="kpi-row"><td><b>${esc(profile.name || o)}</b><div class="muted">${esc(profile.email && profile.email !== profile.name ? profile.email : "")}</div></td><td>${cs.length}</td><td>${monthLead}</td><td>${dealCount}</td><td>${ds.filter(d=>sameLabel(normalizeDealStatus(d.dealStatus),"depositStatus")).length}</td><td>${closeCount}</td><td>${cancelCount}</td><td>${esc(money(revenue))}</td>${ruleCells}<td><span class="pill ${rate >= 30 ? "green" : rate ? "orange" : ""}">${rate}%</span></td><td>${due}</td><td>${overdue}</td></tr>`;
-  }).join("") || `<tr><td colspan="${9 + monthRules.length}" class="muted">Chưa có KPI.</td></tr>`;
+    return `<tr class="kpi-row"><td><b>${esc(profile.name || o)}</b><div class="muted">${esc(profile.email && profile.email !== profile.name ? profile.email : "")}</div></td><td>${cs.length}</td><td>${monthLead}</td><td>${careCount}</td><td>${due}</td><td>${overdue}</td><td>${showroomVisits}</td><td>${boughtCustomerCount}</td><td>${purchaseTimes}</td><td>${esc(money(purchaseValue))}</td>${ruleCells}<td><span class="pill ${rate >= 30 ? "green" : rate ? "orange" : ""}">${rate}%</span></td></tr>`;
+  }).join("") || `<tr><td colspan="${11 + monthRules.length}" class="muted">Chưa có KPI.</td></tr>`;
 }
 
 function kpiProposalStatusLabel(p) {
@@ -3571,24 +3564,25 @@ function kpiReportData() {
     const profile = ownerProfileByValue(o);
     const cs = customers.filter(c => canSeeCustomer(c) && (sameIdentity(customerOwnerKey(c), o) || sameIdentity(c.owner, o)));
     const ids = new Set(cs.map(c => c.id));
-    const ds = deals.filter(d => ids.has(d.customerId));
-    const closeCount = ds.filter(isCompletedDeal).length;
-    const boughtCustomerCount = cs.filter(c => customerHasCompletedDeal(c.id)).length;
-    const revenue = ds.filter(isKpiRevenueDeal).reduce((sum, d) => sum + dealAmount(d), 0);
+    const careCount = careLogs.filter(l => !l.isDeleted && ids.has(l.customerId) && (week ? weekOf(l.createdAt) === week : month ? monthOf(l.createdAt) === month : true)).length;
+    const boughtCustomerCount = cs.filter(c => basicPurchaseCountFor(c) > 0).length;
+    const purchaseTimes = cs.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0);
+    const purchaseValue = cs.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
+    const showroomVisits = cs.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
     const rate = cs.length ? Math.round(boughtCustomerCount / cs.length * 100) : 0;
     const row = {
       owner: clean(profile.name || o),
       email: clean(profile.email && profile.email !== profile.name ? profile.email : o),
       totalCustomers: cs.length,
       monthLead: week ? cs.filter(c => weekOf(c.createdAt) === week).length : month ? cs.filter(c => monthOf(c.createdAt) === month).length : cs.length,
-      completedDeals: closeCount,
-      depositDeals: ds.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus")).length,
-      boughtDeals: closeCount,
-      canceledDeals: ds.filter(d => sameLabel(normalizeDealStatus(d.dealStatus), "canceledStatus")).length,
-      revenue,
-      conversionRate: rate,
+      careCount,
       dueCare: cs.filter(isCareDue).length,
       overdueCare: cs.filter(isCareOverdue).length,
+      showroomVisits,
+      boughtCustomers: boughtCustomerCount,
+      purchaseTimes,
+      purchaseValue,
+      conversionRate: rate,
       rules: {}
     };
     monthRules.forEach(rule => {
@@ -3603,7 +3597,7 @@ function kpiReportData() {
     return row;
   }).filter(row => row.totalCustomers || isManager());
   const proposalRows = kpiProposals
-    .filter(p => kpiProposalMonth(p) === month && !p.isDeleted)
+    .filter(p => !p.isDeleted && (kpiProposalMonth(p) === month || isPendingKpiProposal(p)))
     .sort(byDateDesc);
   return {month, week, monthRules, summaryRows, proposalRows};
 }
@@ -3662,17 +3656,17 @@ async function exportKpiReport() {
   const {month, week, monthRules, summaryRows, proposalRows} = report;
   const dynamicHeads = monthRules.flatMap(rule => [`${rule.name} - đạt`, `${rule.name} - chỉ tiêu`, `${rule.name} - tỷ lệ`]);
   const summaryHeader = [
-    "Nhân viên / Email","Tổng khách","Khách mới kỳ này","Đơn hoàn thành",
-    systemLabel("depositStatus"), systemLabel("boughtStatus"), systemLabel("canceledStatus"),
-    "Doanh số","Tỉ lệ mua", systemLabel("dueFollow"), "Quá hạn", ...dynamicHeads
+    "Nhân viên / Email","Tổng khách","Khách mới kỳ này","Lượt chăm",
+    systemLabel("dueFollow"), "Quá hạn", "Đến showroom", "Khách đã mua",
+    "Số lần mua", "Giá trị mua", "Tỉ lệ mua", ...dynamicHeads
   ];
   const summaryTable = [
     [`Báo cáo KPI tháng ${month}${week ? " · tuần " + week : ""}`, ...Array(Math.max(0, summaryHeader.length - 1)).fill("")],
     summaryHeader,
     ...summaryRows.map(row => [
-      personExportCell(row.owner, row.email), row.totalCustomers, row.monthLead, row.completedDeals,
-      row.depositDeals, row.boughtDeals, row.canceledDeals, money(row.revenue),
-      `${row.conversionRate}%`, row.dueCare, row.overdueCare,
+      personExportCell(row.owner, row.email), row.totalCustomers, row.monthLead, row.careCount,
+      row.dueCare, row.overdueCare, row.showroomVisits, row.boughtCustomers,
+      row.purchaseTimes, money(row.purchaseValue), `${row.conversionRate}%`,
       ...monthRules.flatMap(rule => {
         const item = row.rules[rule.id] || {value:"", target:""};
         const percent = item.target ? Math.round(item.value / item.target * 100) + "%" : "";
@@ -3682,7 +3676,7 @@ async function exportKpiReport() {
   ];
   const proposalHeader = ["Nhân viên / Email","KPI","Tháng","SĐT","Bộ phận","Khách hàng","SĐT KH","Công ty","Kênh KH","Trạng thái","Nội dung","Minh chứng","Gửi lúc","Người duyệt","Ngày duyệt","Ghi chú duyệt"];
   const proposalTable = [
-    [`Chi tiết đề xuất KPI tháng ${month}`, ...Array(proposalHeader.length - 1).fill("")],
+    [`Chi tiết đề xuất KPI tháng ${month} và các đề xuất còn chờ duyệt`, ...Array(proposalHeader.length - 1).fill("")],
     proposalHeader,
     ...proposalRows.map(p => [
       personExportCell(p.owner, p.email || p.ownerEmail), p.kpiName || "", kpiProposalMonth(p), p.phone || "", p.department || "",
@@ -3712,7 +3706,9 @@ async function logManagementExport(report) {
     email: currentUser?.email || "",
     payloadJson: JSON.stringify({
       totalCustomers: report.customers.length,
-      deals: report.deals.length,
+      boughtCustomers: report.boughtCustomers,
+      purchaseTimes: report.purchaseTimes,
+      purchaseValue: report.purchaseValue,
       pipelineGroups: report.pipeline.length,
       pendingKpi: report.pendingKpi
     }),
@@ -3722,14 +3718,17 @@ async function logManagementExport(report) {
 
 async function exportManagementReport() {
   if (!isManager()) return notice("Chỉ admin/manager được xuất báo cáo quản trị.", true);
+  const reportCustomers = currentReportCustomers();
+  const reportCustomerIds = new Set(reportCustomers.map(c => c.id));
   const report = {
-    customers: currentReportCustomers(),
-    deals: currentReportDeals(),
+    customers: reportCustomers,
     pipeline: pipelineReportData(),
+    careThisMonth: careLogs.filter(l => !l.isDeleted && reportCustomerIds.has(l.customerId) && monthOf(l.createdAt || l.careDate) === currentMonth()).length,
+    boughtCustomers: reportCustomers.filter(c => basicPurchaseCountFor(c) > 0).length,
+    purchaseTimes: reportCustomers.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0),
+    purchaseValue: reportCustomers.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0),
     pendingKpi: kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length
   };
-  const completed = report.deals.filter(isCompletedDeal);
-  const pending = report.deals.filter(isActiveDeal);
   const summaryRows = [
     ["Báo cáo quản trị CRM", ""],
     ["Thời điểm xuất", new Date().toLocaleString("vi-VN")],
@@ -3738,9 +3737,10 @@ async function exportManagementReport() {
     ["Khách mới tháng này", report.customers.filter(c => monthOf(c.createdAt) === currentMonth()).length],
     ["Cần chăm", report.customers.filter(isCareDue).length],
     ["Quá hạn chăm", report.customers.filter(isCareOverdue).length],
-    ["Deal đang xử lý", pending.length],
-    ["Đơn hoàn thành", completed.length],
-    ["Doanh số hoàn thành", money(completed.reduce((sum,d) => sum + dealAmount(d), 0))],
+    ["Lượt chăm tháng", report.careThisMonth],
+    ["Khách đã mua căn bản", report.boughtCustomers],
+    ["Số lần mua căn bản", report.purchaseTimes],
+    ["Giá trị mua căn bản", money(report.purchaseValue)],
     ["KPI chờ duyệt", report.pendingKpi]
   ];
   const pipelineRows = [
@@ -7101,7 +7101,8 @@ function renderReportCenter() {
   const dueCare = reportCustomers.filter(c => isCareDue(c));
   const overdueCare = reportCustomers.filter(c => isCareOverdue(c));
   const monthCareLogs = careLogs.filter(l => monthOf(l.createdAt || l.careDate) === month);
-  const boughtCustomers = reportCustomers.filter(c => customerDeals(c.id).some(isCompletedDeal));
+  const boughtCustomers = reportCustomers.filter(c => basicPurchaseCountFor(c) > 0);
+  const purchaseValue = reportCustomers.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
   const cards = [
     ["Khách đang quản lý", reportCustomers.length, ""],
     ["Khách mới tháng này", monthCustomers.length, ""],
@@ -7109,6 +7110,7 @@ function renderReportCenter() {
     ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "warn" : ""],
     ["Lượt chăm tháng", monthCareLogs.length, ""],
     ["Khách đã mua căn bản", boughtCustomers.length, ""],
+    ["Giá trị mua căn bản", money(purchaseValue), ""],
     ["KPI chờ duyệt", kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length, kpiProposals.some(p => isPendingKpiProposal(p) && !p.isDeleted) ? "warn" : ""]
   ];
   $("reportCenterTime").textContent = `Cập nhật ${new Date().toLocaleString("vi-VN")}`;
@@ -7393,15 +7395,13 @@ function saleActivitySummary(rows) {
   const map = new Map();
   rows.forEach(r => {
     const id = clean(r.ownerEmail || r.owner || "Không rõ");
-    const cur = map.get(id) || {owner: r.owner || id, ownerEmail: r.ownerEmail || "", taskOpen:0, taskOverdue:0, care:0, quote:0, deal:0, completed:0, payment:0, revenue:0};
+    const cur = map.get(id) || {owner: r.owner || id, ownerEmail: r.ownerEmail || "", taskOpen:0, taskOverdue:0, care:0, deal:0, completed:0, revenue:0};
     if (r.bucket === "task") {
       cur.taskOpen += 1;
       if (r.taskType === "overdue") cur.taskOverdue += 1;
     }
     if (r.bucket === "care") cur.care += 1;
-    if (r.bucket === "quote") cur.quote += 1;
     if (r.bucket === "deal") cur.deal += 1;
-    if (r.bucket === "payment") cur.payment += 1;
     if (r.bucket === "completed") {
       cur.completed += 1;
       cur.revenue += Number(r.amount || 0);
@@ -7457,7 +7457,7 @@ function renderSaleActivityReport() {
   ` : `<div class="muted" style="padding:12px">Không có hoạt động trong khoảng ${esc(range.label)}.</div>`;
   const timelinePage = pageRows("saleActivity", rows);
   $("saleActivityTimeline").innerHTML = timelinePage.length ? timelinePage.map(r => {
-    const cls = r.bucket === "deal" || r.bucket === "completed" || r.bucket === "payment" ? "deal" : r.bucket === "quote" ? "kpi" : r.taskType === "overdue" ? "bad" : "care";
+    const cls = r.bucket === "deal" || r.bucket === "completed" ? "deal" : r.taskType === "overdue" ? "bad" : "care";
     return `
     <div class="activity-mini report-activity ${esc(cls)}">
       <div class="activity-mini-head">
@@ -7673,8 +7673,8 @@ async function exportSaleActivityReport() {
   if (!rows.length) return notice("Không có hoạt động phù hợp để xuất.", true);
   const summaryRows = [
     [`Báo cáo hoạt động sale - ${range.label}`, "", "", "", "", "", "", ""],
-    ["Nhân viên","Email","Việc mở","Việc quá hạn","Chăm sóc","Báo giá","Ghi nhận mua","Khách đã mua","Giá trị mua"],
-    ...summary.map(s => [s.owner, s.ownerEmail, s.taskOpen, s.taskOverdue, s.care, s.quote, s.deal, s.completed, s.revenue])
+    ["Nhân viên","Email","Việc mở","Việc quá hạn","Chăm sóc","Ghi nhận mua","Khách đã mua","Giá trị mua"],
+    ...summary.map(s => [s.owner, s.ownerEmail, s.taskOpen, s.taskOverdue, s.care, s.deal, s.completed, s.revenue])
   ];
   const detailRows = [
     [`Chi tiết hoạt động - ${range.label}`, "", "", "", "", "", "", "", "", ""],
