@@ -701,7 +701,48 @@ Nên có các bảng:
 - Bảng KPI pending.
 - Bảng khách tiềm năng cao.
 
-## 17. Roadmap triển khai
+## 17. Bảng chức năng giữ / bỏ / sửa / thêm
+
+Bảng này dùng để chốt phạm vi CRM thuần, tránh dự án bị kéo ngược về ERP/CMS hoặc app bán hàng phức tạp.
+
+| Nhóm | Chức năng | Quyết định | Lý do | Ưu tiên |
+|---|---|---|---|---|
+| Đăng nhập | Supabase Auth, đăng nhập Google/email | Giữ | Đây là nền đăng nhập hiện tại, phù hợp cho CRM nội bộ | Cao |
+| Phân quyền | Role `owner/admin/manager/sale` | Giữ và siết lại | Cần để sale chỉ thấy dữ liệu của mình, manager/admin xem và duyệt rộng hơn | Cao |
+| Khách hàng | Thêm khách mới | Giữ và sửa | Là chức năng lõi, nhưng nên có chế độ thêm nhanh với ít trường bắt buộc | Cao |
+| Khách hàng | Hồ sơ khách hàng/drawer chi tiết | Giữ và sửa | Đây là trung tâm CRM, cần gom timeline, chăm sóc, showroom visit, mua căn bản vào một nơi dễ xem | Cao |
+| Khách hàng | Chống trùng SĐT | Giữ và nâng cấp | Giúp dữ liệu sạch, tránh sale tạo trùng khách | Cao |
+| Khách hàng | Kênh chi tiết | Giữ | Đang là trường quan trọng để biết khách đến từ đâu | Cao |
+| Khách hàng | Nguồn khách / loại khách / mức tiềm năng | Thêm hoặc khôi phục có chọn lọc | Phục vụ đánh giá chất lượng khách, nhưng không nên làm form quá nặng | Trung bình |
+| Chăm sóc | Ghi chú chăm sóc khách | Giữ và sửa | Cần chuẩn hóa loại hoạt động, nội dung, ngày hẹn tiếp theo, người thực hiện | Cao |
+| Chăm sóc | Timeline chăm sóc | Giữ và nâng cấp | Sale và quản lý cần nhìn nhanh toàn bộ lịch sử làm việc với khách | Cao |
+| Chăm sóc | Nhắc lịch / task chăm sóc | Thêm | Nên tách rõ thành task/follow-up riêng thay vì chỉ dựa vào ngày trong khách hàng | Cao |
+| Chăm sóc | Cảnh báo quá hạn chăm | Giữ và kiểm thử | Đây là chức năng rất quan trọng cho CRM, cần đúng logic như bản cũ | Cao |
+| Showroom | Số lần khách đến showroom | Sửa | Không chỉ lưu tổng số, nên có log ngày đến, ai tiếp, kết quả | Trung bình |
+| Mua căn bản | Ghi nhận số lần mua và giá trị mua căn bản | Giữ nhưng đơn giản hóa | Chỉ để đánh giá giá trị khách hàng, không biến thành quản lý đơn hàng chi tiết | Cao |
+| Đơn hàng/deal | Quản lý đơn hàng chi tiết | Bỏ khỏi phạm vi | Không còn phù hợp với CRM thuần theo định hướng mới | Cao |
+| Báo giá | Báo giá/đề xuất bán hàng chi tiết | Bỏ hoặc lưu archive | Đây là luồng bán hàng/ERP, không phải lõi chăm sóc CRM hiện tại | Cao |
+| Sản phẩm | Quản lý sản phẩm/mẫu gạch | Bỏ khỏi app CRM | Dễ làm dự án phình thành catalog/ERP, không cần cho sale chăm khách | Cao |
+| Kho | Tồn kho/nhập xuất hàng | Bỏ | Ngoài phạm vi CRM thuần | Cao |
+| Thanh toán | Công nợ/phiếu thu/thanh toán | Bỏ | Ngoài phạm vi CRM thuần | Cao |
+| CMS website | Banner, trang chủ, bài viết, media website | Bỏ khỏi CRM | Admin CRM không nên kiêm CMS website trong app này | Cao |
+| KPI | KPI rule | Giữ và sửa | Cần giữ quy tắc KPI, nhưng phải rõ KPI tự động và KPI cần duyệt | Cao |
+| KPI | KPI proposal kèm ảnh minh chứng | Giữ và siết logic | Phù hợp cho việc sale đề xuất thành tích, cần chỉ sửa/xóa khi còn pending | Cao |
+| KPI | KPI tự động từ dữ liệu chăm sóc | Thêm | Giảm phụ thuộc nhập tay, công bằng hơn cho sale | Cao |
+| KPI | KPI snapshot theo tháng | Thêm | Tránh qua tháng bị mất KPI chưa duyệt hoặc thay đổi rule làm lệch số cũ | Cao |
+| Báo cáo | Báo cáo hoạt động sale | Giữ và nâng cấp | Cần theo task, chăm sóc, khách mới, khách quá hạn, KPI, giá trị mua căn bản | Cao |
+| Dashboard sale | Màn "hôm nay tôi cần làm gì" | Thêm | Giúp sale dùng app hằng ngày thay vì chỉ nhập liệu | Cao |
+| Dashboard quản lý | Tổng quan chất lượng chăm sóc | Sửa | Nên trả lời câu hỏi quản lý: ai đang bỏ quên khách, kênh nào hiệu quả, KPI nào chờ duyệt | Cao |
+| Quản trị | Quản lý nhân viên | Giữ và đơn giản hóa | Cần thêm/khóa/sửa nhân viên nhanh, không phải vào Supabase thủ công | Cao |
+| Quản trị | Settings CRM | Giữ | Dùng để quản lý danh mục kênh, trạng thái, loại khách, KPI cơ bản | Trung bình |
+| Audit | Nhật ký thao tác quan trọng | Giữ và mở rộng | Cần biết ai sửa khách, đổi owner, duyệt KPI, xóa mềm dữ liệu | Cao |
+| Xóa dữ liệu | Xóa cứng khách/KPI/log | Bỏ hoặc khóa rất chặt | Nên dùng xóa mềm để tránh mất dữ liệu vận hành | Cao |
+| Import/export | Import CSV, xuất Excel theo bộ lọc | Giữ và sửa | Hữu ích cho vận hành, nhưng phải theo quyền và bộ lọc hiện tại | Trung bình |
+| UI mobile | Dùng trên điện thoại/tablet | Sửa | CRM sale cần thao tác nhanh, hiện app vẫn hơi nặng và nhiều bảng rộng | Trung bình |
+| Code legacy | Hàm ERP/CMS còn sót trong `crm-app.js` | Bỏ/dọn tiếp | Giảm rối, giảm lỗi dây chuyền, dễ bảo trì | Cao |
+| Database legacy | Bảng ERP/CMS cũ | Giữ archive read-only hoặc loại khỏi app | Không nên xóa vội nếu còn dữ liệu cũ, nhưng không cho app CRM gọi nữa | Trung bình |
+
+## 18. Roadmap triển khai
 
 ### Giai đoạn 1: Rút gọn scope
 
@@ -764,7 +805,7 @@ Việc làm:
 - Kiểm tra audit log.
 - Viết checklist deploy cố định.
 
-## 18. Kết luận cuối
+## 19. Kết luận cuối
 
 CRM-KOLORCERAMIC đang đi đúng hướng sau khi rút khỏi ERP/CMS, nhưng để thành CRM dùng thật bền vững thì trọng tâm tiếp theo không phải thêm tính năng lớn, mà là làm chắc ba trục:
 
@@ -778,4 +819,3 @@ CRM-KOLORCERAMIC đang đi đúng hướng sau khi rút khỏi ERP/CMS, nhưng �
 2. Dọn code legacy ERP/CMS còn nằm trong `crm-app.js`.
 3. Thiết kế follow-up task và showroom visit riêng.
 4. Thiết kế KPI tự động + KPI snapshot.
-
