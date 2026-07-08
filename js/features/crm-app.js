@@ -2234,25 +2234,30 @@ function renderKpis() {
   const overdue = rows.filter(isCareOverdue);
   const thisMonth = currentMonth();
   const monthLead = rows.filter(c => monthOf(c.createdAt) === thisMonth).length;
-  const monthCare = careLogs.filter(l => !l.isDeleted && monthOf(l.createdAt) === thisMonth && rowIds.has(l.customerId)).length;
+  const monthCare = careLogs.filter(l => !l.isDeleted && monthOf(careLogActivityDate(l)) === thisMonth && rowIds.has(l.customerId)).length;
   const noDate = rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate)).length;
   const showroomVisits = rows.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
   const boughtCustomers = rows.filter(c => basicPurchaseCountFor(c) > 0);
   const purchaseValue = rows.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
   const conversionRate = rows.length ? Math.round(boughtCustomers.length / rows.length * 100) : 0;
   const items = [
-    ["Tổng khách", rows.length],
-    ["Khách mới tháng này", monthLead],
-    ["Cần chăm", due.length],
-    ["Quá hạn chăm", overdue.length],
-    ["Chưa có lịch chăm", noDate],
-    ["Lượt chăm tháng", monthCare],
-    ["Đến showroom", showroomVisits],
-    ["Khách đã mua", boughtCustomers.length],
-    ["Giá trị mua căn bản", money(purchaseValue)],
-    ["Tỉ lệ mua", conversionRate + "%"]
+    ["Tổng khách", rows.length, "managed-customers"],
+    ["Khách mới tháng này", monthLead, "month-customers"],
+    ["Cần chăm", due.length, "due-care"],
+    ["Quá hạn chăm", overdue.length, "overdue-care"],
+    ["Chưa có lịch chăm", noDate, "no-date-care"],
+    ["Lượt chăm tháng", monthCare, "month-care"],
+    ["Đến showroom", showroomVisits, "showroom-visits"],
+    ["Khách đã mua", boughtCustomers.length, "bought-customers"],
+    ["Giá trị mua căn bản", money(purchaseValue), "purchase-value"],
+    ["Tỉ lệ mua", conversionRate + "%", "bought-customers"]
   ];
-  $("kpis").innerHTML = items.map(([label,num]) => `<div class="kpi"><div class="muted">${esc(label)}</div><div class="num">${esc(num)}</div></div>`).join("");
+  $("kpis").innerHTML = items.map(([label,num,action]) => `
+    <button class="kpi clickable" type="button" data-dashboard-action="${esc(action)}">
+      <div class="muted">${esc(label)}</div>
+      <div class="num">${esc(num)}</div>
+    </button>
+  `).join("");
 }
 
 function currentReportCustomers() {
@@ -2271,7 +2276,7 @@ function renderExecutiveDashboard() {
   const month = currentMonth();
   const monthCustomers = rows.filter(c => monthOf(c.createdAt) === month);
   const rowIds = new Set(rows.map(c => c.id));
-  const monthCareLogs = careLogs.filter(l => !l.isDeleted && rowIds.has(l.customerId) && monthOf(l.createdAt || l.careDate) === month);
+  const monthCareLogs = careLogs.filter(l => !l.isDeleted && rowIds.has(l.customerId) && monthOf(careLogActivityDate(l)) === month);
   const boughtCustomers = rows.filter(c => basicPurchaseCountFor(c) > 0);
   const purchaseTimes = rows.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0);
   const purchaseValue = rows.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
@@ -2653,7 +2658,6 @@ function dealDetailRows(rows) {
 }
 
 function openCareDashboardDetail(type) {
-  if (!isManager()) return;
   const isOverdue = type === "overdue-care";
   const rows = currentReportCustomers()
     .filter(isOverdue ? isCareOverdue : isCareDue)
@@ -2669,19 +2673,24 @@ function openCareDashboardDetail(type) {
 }
 
 function openDashboardCustomerDetail(type) {
-  if (!isManager()) return;
   const rows = currentReportCustomers();
   const month = currentMonth();
-  const matched = type === "month-customers" ? rows.filter(c => monthOf(c.createdAt) === month) : rows;
+  const config = {
+    "managed-customers": ["Khách đang quản lý", rows],
+    "month-customers": ["Khách mới tháng này", rows.filter(c => monthOf(c.createdAt) === month)],
+    "no-date-care": ["Chưa có lịch chăm", rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate))],
+    "showroom-visits": ["Khách đã đến showroom", rows.filter(c => showroomVisitCountFor(c) > 0)],
+    "bought-customers": ["Khách đã mua căn bản", rows.filter(c => basicPurchaseCountFor(c) > 0)]
+  }[type] || ["Khách đang quản lý", rows];
+  const [title, matched] = config;
   openDetailModal(
-    type === "month-customers" ? "Khách mới tháng này" : "Khách đang quản lý",
+    title,
     `${matched.length} khách`,
     customerDetailRows([...matched].sort(byDateDesc))
   );
 }
 
 function openDashboardDealDetail(type) {
-  if (!isManager()) return;
   const reportDeals = currentReportDeals();
   const month = currentMonth();
   const pendingDeals = reportDeals.filter(isActiveDeal);
@@ -2703,6 +2712,79 @@ function openDashboardDealDetail(type) {
     title,
     `${rows.length} đơn · Tổng giá trị ${money(total)}`,
     dealDetailRows([...rows].sort((a,b) => String(orderDate(b)).localeCompare(String(orderDate(a))) || byDateDesc(a,b)))
+  );
+}
+
+function activityDetailRows(rows) {
+  return rows.length ? `<div class="detail-list">${rows.map(r => `
+    <div class="activity-mini report-activity ${esc(r.bucket === "deal" || r.bucket === "completed" ? "deal" : r.taskType === "overdue" ? "bad" : "care")}">
+      <div class="activity-mini-head">
+        <div>
+          <span class="activity-type">${esc(r.type || "Hoạt động")}</span>
+          <b>${esc(r.customer || "Không tên")}</b>
+        </div>
+        <span class="muted">${esc(fmtDate(r.date) || "")}</span>
+      </div>
+      <div class="report-activity-meta">
+        <span>${esc(r.owner || "Không rõ NV")}</span>
+        <span>${esc(r.phone || "Không SĐT")}</span>
+        ${r.channel ? `<span>${esc(r.channel)}</span>` : ""}
+      </div>
+      <div class="report-activity-body">${r.amount ? `<b>${esc(money(r.amount))}</b> · ` : ""}${esc(r.note || "Không có ghi chú.")}</div>
+      ${r.customerId ? `<div class="actions"><button class="small" type="button" data-care-open="${esc(r.customerId)}">Mở khách</button></div>` : ""}
+    </div>
+  `).join("")}</div>` : `<div class="muted">Không có hoạt động trong nhóm này.</div>`;
+}
+
+function openDashboardActivityDetail(type) {
+  const month = currentMonth();
+  const reportCustomerIds = new Set(currentReportCustomers().map(c => c.id));
+  const rows = [];
+  if (type === "month-care") {
+    careLogs
+      .filter(l => !l.isDeleted && reportCustomerIds.has(l.customerId) && monthOf(careLogActivityDate(l)) === month)
+      .forEach(l => {
+        const c = customerById(l.customerId);
+        rows.push({
+          date: isoFromAny(careLogActivityDate(l)),
+          type: "Chăm sóc",
+          owner: l.owner || customerOwnerName(c) || l.ownerEmail,
+          ownerEmail: l.ownerEmail || customerOwnerKey(c),
+          customer: l.customerName || c.name || "",
+          phone: c.phoneRaw || l.phoneRaw || l.phoneNormalized || c.phoneNormalized || "",
+          channel: c.channel || "",
+          note: [l.careChannel, l.careResult, l.showroomVisit ? "Đến showroom" : "", l.note].filter(Boolean).join(" · "),
+          bucket: "care",
+          customerId: l.customerId
+        });
+      });
+  }
+  if (type === "purchase-value") {
+    currentReportDeals()
+      .filter(d => isKpiRevenueDeal(d))
+      .forEach(d => {
+        const c = customerById(d.customerId);
+        rows.push({
+          date: isoFromAny(d.completedAt || d.dealDate || d.createdAt),
+          type: "Mua căn bản",
+          owner: orderOwnerName(d),
+          ownerEmail: orderOwnerEmail(d),
+          customer: orderCustomerName(d),
+          phone: orderCustomerPhone(d),
+          channel: c.channel || d.channel || "",
+          amount: dealAmount(d),
+          note: orderProductText(d) || d.note || "",
+          bucket: "deal",
+          customerId: d.customerId
+        });
+      });
+  }
+  const title = type === "purchase-value" ? "Giá trị mua căn bản" : "Lượt chăm tháng";
+  const total = rows.reduce((sum,r) => sum + Number(r.amount || 0), 0);
+  openDetailModal(
+    title,
+    type === "purchase-value" ? `${rows.length} lượt mua/cọc · Tổng ${money(total)}` : `${rows.length} lượt chăm trong tháng ${month}`,
+    activityDetailRows(rows.sort((a,b) => String(b.date).localeCompare(String(a.date))))
   );
 }
 
@@ -3214,7 +3296,7 @@ function renderKpiTable() {
     if (!cs.length && !isManager() && !monthRules.some(rule => kpiRuleAppliesToOwner(rule, o))) return "";
     const ids = new Set(cs.map(c => c.id));
     const monthLead = week ? cs.filter(c => weekOf(c.createdAt) === week).length : month ? cs.filter(c => monthOf(c.createdAt) === month).length : cs.length;
-    const careCount = careLogs.filter(l => !l.isDeleted && ids.has(l.customerId) && (week ? weekOf(l.createdAt) === week : month ? monthOf(l.createdAt) === month : true)).length;
+    const careCount = careLogs.filter(l => !l.isDeleted && ids.has(l.customerId) && (week ? weekOf(careLogActivityDate(l)) === week : month ? monthOf(careLogActivityDate(l)) === month : true)).length;
     const due = cs.filter(isCareDue).length;
     const overdue = cs.filter(isCareOverdue).length;
     const showroomVisits = cs.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
@@ -3298,7 +3380,7 @@ function kpiReportData() {
     const profile = ownerProfileByValue(o);
     const cs = customers.filter(c => canSeeCustomer(c) && (sameIdentity(customerOwnerKey(c), o) || sameIdentity(c.owner, o)));
     const ids = new Set(cs.map(c => c.id));
-    const careCount = careLogs.filter(l => !l.isDeleted && ids.has(l.customerId) && (week ? weekOf(l.createdAt) === week : month ? monthOf(l.createdAt) === month : true)).length;
+    const careCount = careLogs.filter(l => !l.isDeleted && ids.has(l.customerId) && (week ? weekOf(careLogActivityDate(l)) === week : month ? monthOf(careLogActivityDate(l)) === month : true)).length;
     const boughtCustomerCount = cs.filter(c => basicPurchaseCountFor(c) > 0).length;
     const purchaseTimes = cs.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0);
     const purchaseValue = cs.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
@@ -3457,7 +3539,7 @@ async function exportManagementReport() {
   const report = {
     customers: reportCustomers,
     pipeline: pipelineReportData(),
-    careThisMonth: careLogs.filter(l => !l.isDeleted && reportCustomerIds.has(l.customerId) && monthOf(l.createdAt || l.careDate) === currentMonth()).length,
+    careThisMonth: careLogs.filter(l => !l.isDeleted && reportCustomerIds.has(l.customerId) && monthOf(careLogActivityDate(l)) === currentMonth()).length,
     boughtCustomers: reportCustomers.filter(c => basicPurchaseCountFor(c) > 0).length,
     purchaseTimes: reportCustomers.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0),
     purchaseValue: reportCustomers.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0),
@@ -6863,7 +6945,8 @@ function renderReportCenter() {
   const monthCustomers = reportCustomers.filter(c => monthOf(c.createdAt) === month);
   const dueCare = reportCustomers.filter(c => isCareDue(c));
   const overdueCare = reportCustomers.filter(c => isCareOverdue(c));
-  const monthCareLogs = careLogs.filter(l => monthOf(l.createdAt || l.careDate) === month);
+  const reportIds = new Set(reportCustomers.map(c => c.id));
+  const monthCareLogs = careLogs.filter(l => !l.isDeleted && reportIds.has(l.customerId) && monthOf(careLogActivityDate(l)) === month);
   const boughtCustomers = reportCustomers.filter(c => basicPurchaseCountFor(c) > 0);
   const purchaseValue = reportCustomers.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
   const cards = [
@@ -6877,12 +6960,14 @@ function renderReportCenter() {
     ["KPI chờ duyệt", kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length, kpiProposals.some(p => isPendingKpiProposal(p) && !p.isDeleted) ? "warn" : ""]
   ];
   $("reportCenterTime").textContent = `Cập nhật ${new Date().toLocaleString("vi-VN")}`;
-  $("reportCenterGrid").innerHTML = cards.map(([label,value,cls]) => `
-    <div class="executive-card report-card ${esc(cls)}">
+  $("reportCenterGrid").innerHTML = cards.map(([label,value,cls], index) => {
+    const action = ["managed-customers","month-customers","due-care","overdue-care","month-care","bought-customers","purchase-value","pending-kpi"][index];
+    return `
+    <div class="executive-card report-card ${esc(cls)} clickable" role="button" tabindex="0" data-dashboard-action="${esc(action)}">
       <span class="muted">${esc(label)}</span>
       <b>${esc(value)}</b>
     </div>
-  `).join("");
+  `;}).join("");
   renderSaleActivityReport();
 }
 
@@ -7710,8 +7795,9 @@ document.addEventListener("click", e => {
   if (orderSummary) openOrderSummaryDetail(orderSummary);
   if (careWorkDetail) openCareWorkDetail(careWorkDetail);
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
-  if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
+  if (["managed-customers","month-customers","no-date-care","showroom-visits","bought-customers"].includes(dashboardAction)) openDashboardCustomerDetail(dashboardAction);
   if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
+  if (["month-care","purchase-value"].includes(dashboardAction)) openDashboardActivityDetail(dashboardAction);
   if (dashboardAction === "pending-kpi") jumpToPendingKpi();
   if (careId) {
     closeDetailModal();
@@ -7762,8 +7848,9 @@ document.addEventListener("keydown", e => {
   if (orderSummary) openOrderSummaryDetail(orderSummary);
   if (careWorkDetail) openCareWorkDetail(careWorkDetail);
   if (dashboardAction === "due-care" || dashboardAction === "overdue-care") openCareDashboardDetail(dashboardAction);
-  if (dashboardAction === "managed-customers" || dashboardAction === "month-customers") openDashboardCustomerDetail(dashboardAction);
+  if (["managed-customers","month-customers","no-date-care","showroom-visits","bought-customers"].includes(dashboardAction)) openDashboardCustomerDetail(dashboardAction);
   if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
+  if (["month-care","purchase-value"].includes(dashboardAction)) openDashboardActivityDetail(dashboardAction);
   if (dashboardAction === "pending-kpi") jumpToPendingKpi();
 });
 

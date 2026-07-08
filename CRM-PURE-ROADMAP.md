@@ -128,6 +128,8 @@ Test xong giai doan 4:
 
 Muc tieu: quan ly nhin vao la biet sale dang lam tot hay bo sot.
 
+Trang thai 2026-07-08: Da nang cap buoc dau. Cac the KPI tong o man CRM co the bam ra popup chi tiet theo dung quyen sale/manager; dashboard bao cao manager co the drill-down cac chi so chinh; luot cham thang/KPI/report dung ngay cham thuc te careDate thay vi chi dua vao ngay tao log; bao cao hoat dong sale co bo loc, bang tong hop, timeline scroll va xuat XLSX theo du lieu dang loc.
+
 Viec can lam:
 
 | Viec | Quyet dinh | Ket qua can co |
