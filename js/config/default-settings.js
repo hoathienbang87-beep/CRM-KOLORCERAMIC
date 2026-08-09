@@ -4,6 +4,7 @@
   sourceChannels: {},
   channels: ["Khách vãng lai", "Công trình dd", "Công ty TK/XD", "Facebook", "Zalo", "Website", "Tiktok", "Sếp giới thiệu", "Đối tác giới thiệu", "Khách hàng từ PCI", "Khách hàng từ VMARK", "Khác"],
   customerTypes: ["Khách lẻ", "Công ty TK/XD", "KTS / Đối tác", "Khách cũ", "Khác"],
+  potentialLevels: ["Bình thường", "Tiềm năng", "Nóng", "VIP / Đối tác"],
   statuses: ["Lead mới", "Đang tư vấn", "Đang báo giá", "Đang follow", "Đã cọc", "Đã mua", "Tạm dừng", "Không nhu cầu"],
   followConfigVersion: 2,
   follows: ["lead mới", "cần chăm", "lâu chưa chăm", "đang chăm", "ngừng chăm", "chưa có ngày chăm"],

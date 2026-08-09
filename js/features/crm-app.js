@@ -108,7 +108,6 @@ let pendingLoginSuccessNotice = false;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI_EVIDENCE_MAX_FILES = 6;
 const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
-const POTENTIAL_LEVELS = ["Bình thường", "Tiềm năng", "Nóng", "VIP / Đối tác"];
 const DEFAULT_COMPANY_SETTINGS = {
   companyName: "Kolorceramic THT",
   logoUrl: "",
@@ -462,12 +461,12 @@ function toggleCarePartnerFields() {
 function hydrateSelects() {
   fillSelect("source", settings.sources);
   fillSelect("customerType", settings.customerTypes);
-  fillSelect("potentialLevel", POTENTIAL_LEVELS);
+  fillSelect("potentialLevel", settings.potentialLevels || DEFAULT_SETTINGS.potentialLevels);
   hydrateChannelOptions();
   fillSelect("owner", ownerOptions());
   fillSelect("editSource", settings.sources);
   fillSelect("editCustomerType", settings.customerTypes);
-  fillSelect("editPotentialLevel", POTENTIAL_LEVELS);
+  fillSelect("editPotentialLevel", settings.potentialLevels || DEFAULT_SETTINGS.potentialLevels);
   fillSelect("editOwner", ownerOptions());
   fillSelect("editPartnerType", settings.partnerTypes);
   fillSelect("editPartnerActivity", settings.partnerActivities);
@@ -595,7 +594,7 @@ function normalizeSettings(raw = {}) {
 }
 
 async function migrateSettingsIfNeeded(raw = {}) {
-  if (!isAdmin()) return;
+  if (!canAccessAdminPanel()) return;
   const patch = {};
   Object.keys(DEFAULT_SETTINGS).forEach(key => {
     if (Array.isArray(DEFAULT_SETTINGS[key]) && (!Array.isArray(raw[key]) || !raw[key].length)) patch[key] = DEFAULT_SETTINGS[key];
@@ -647,6 +646,32 @@ async function loadSettings() {
   applySettings(rawSettings);
   await migrateSettingsIfNeeded(rawSettings);
   hydrateSelects();
+}
+
+function stableSettingsValue(value) {
+  if (Array.isArray(value)) return value.map(stableSettingsValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, stableSettingsValue(value[key])]));
+  }
+  return value;
+}
+
+function settingsValueMatches(actual, expected) {
+  return JSON.stringify(stableSettingsValue(actual)) === JSON.stringify(stableSettingsValue(expected));
+}
+
+async function saveSettingsAndVerify(data, keys = Object.keys(data)) {
+  await setDoc(doc(db, "settings", "crm"), data, {merge:true});
+  const savedSnap = await getDoc(doc(db, "settings", "crm"));
+  if (!savedSnap.exists()) throw new Error("Supabase không trả lại bản ghi settings/crm sau khi lưu.");
+  const persisted = savedSnap.data();
+  const mismatched = keys.filter(key => !settingsValueMatches(persisted[key], data[key]));
+  if (mismatched.length) {
+    throw new Error(`Dữ liệu đọc lại từ Supabase không khớp ở: ${mismatched.join(", ")}. Hãy kiểm tra RLS hoặc trigger của bảng settings.`);
+  }
+  applySettings(persisted);
+  hydrateSelects();
+  return persisted;
 }
 
 function normalizeCompanySettings(raw = {}) {
@@ -728,7 +753,12 @@ async function saveCompanySettings() {
       updatedByEmail: currentUser?.email || "",
       updatedAt: serverTimestamp()
     }, {merge:true});
-    companySettings = data;
+    const savedSnap = await getDoc(doc(db, "companySettings", "main"));
+    if (!savedSnap.exists()) throw new Error("Supabase không trả lại cấu hình công ty sau khi lưu.");
+    const persisted = normalizeCompanySettings(savedSnap.data());
+    const mismatched = Object.keys(data).filter(key => !settingsValueMatches(persisted[key], data[key]));
+    if (mismatched.length) throw new Error(`Cấu hình đọc lại không khớp ở: ${mismatched.join(", ")}.`);
+    companySettings = persisted;
     renderCompanySettingsForm();
     await logAudit("updateCompanySettings", "companySettings", "main", data)
       .catch(err => notice("Đã lưu cấu hình, nhưng chưa ghi được audit log: " + authMessage(err), true));
@@ -748,6 +778,7 @@ function renderAdminCategorySettingsForm() {
   const pairs = [
     ["adminSettingsSourceChannels", settings.channels],
     ["adminSettingsCustomerTypes", settings.customerTypes],
+    ["adminSettingsPotentialLevels", settings.potentialLevels],
     ["adminSettingsStatuses", settings.statuses],
     ["adminSettingsFollows", settings.follows],
     ["adminSettingsCareChannels", settings.careChannels],
@@ -770,6 +801,7 @@ function adminCategorySettingsData() {
     sourceChannels: {},
     channels: textToList($("adminSettingsSourceChannels").value),
     customerTypes: textToList($("adminSettingsCustomerTypes").value),
+    potentialLevels: textToList($("adminSettingsPotentialLevels").value),
     statuses: textToList($("adminSettingsStatuses").value),
     follows: textToList($("adminSettingsFollows").value),
     careChannels: textToList($("adminSettingsCareChannels").value),
@@ -781,6 +813,8 @@ function adminCategorySettingsData() {
     partnerActivities: settings.partnerActivities?.length ? settings.partnerActivities : DEFAULT_SETTINGS.partnerActivities,
     partnerLevels: settings.partnerLevels?.length ? settings.partnerLevels : DEFAULT_SETTINGS.partnerLevels,
     partnerCapacity: settings.partnerCapacity?.length ? settings.partnerCapacity : DEFAULT_SETTINGS.partnerCapacity,
+    sourceConfigVersion: DEFAULT_SETTINGS.sourceConfigVersion,
+    followConfigVersion: DEFAULT_SETTINGS.followConfigVersion,
     updatedByEmail: currentUser?.email || "",
     updatedAt: serverTimestamp()
   };
@@ -791,14 +825,19 @@ async function saveAdminCategorySettings() {
   const data = adminCategorySettingsData();
   if (!data.channels.length) return notice("Cần có ít nhất 1 kênh chi tiết.", true);
   if (!data.customerTypes.length) data.customerTypes = DEFAULT_SETTINGS.customerTypes;
+  if (!data.potentialLevels.length) data.potentialLevels = DEFAULT_SETTINGS.potentialLevels;
   if (!data.statuses.length || !data.follows.length) return notice("Trạng thái và tình trạng chăm không được để trống.", true);
   if (!data.careChannels.length || !data.careResults.length) return notice("Hình thức chăm và kết quả chăm không được để trống.", true);
   if (!confirm("Lưu thay đổi danh mục CRM? Các dropdown mới sẽ áp dụng cho toàn bộ nhân viên.")) return;
   try {
-    await setDoc(doc(db, "settings", "crm"), data, {merge:true});
+    await saveSettingsAndVerify(data, [
+      "channels", "customerTypes", "potentialLevels", "statuses", "follows",
+      "careChannels", "careResults", "dealStatuses", "systemLabels", "careDueDays"
+    ]);
     await logAudit("updateAdminCategorySettings", "settings", "crm", {
       channels: data.channels.length,
       customerTypes: data.customerTypes.length,
+      potentialLevels: data.potentialLevels.length,
       statuses: data.statuses.length,
       follows: data.follows.length,
       careChannels: data.careChannels.length,
@@ -806,8 +845,6 @@ async function saveAdminCategorySettings() {
       dealStatuses: data.dealStatuses.length,
       careDueDays: data.careDueDays
     }).catch(err => notice("Đã lưu danh mục, nhưng chưa ghi được audit log: " + authMessage(err), true));
-    settings = normalizeSettings({...settings, ...data});
-    hydrateSelects();
     renderAdminCategorySettingsForm();
     renderAll();
     notice("Đã lưu danh mục CRM.");
@@ -822,8 +859,8 @@ function resetAdminCategorySettingsForm() {
 }
 
 async function seedSettings() {
-  if (!isAdmin()) return notice("Chỉ admin được tạo SETTINGS.", true);
-  await setDoc(doc(db, "settings", "crm"), DEFAULT_SETTINGS, {merge:true});
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được tạo SETTINGS.", true);
+  await saveSettingsAndVerify(DEFAULT_SETTINGS, Object.keys(DEFAULT_SETTINGS));
   await logAudit("seedSettings", "settings", "crm", {keys: Object.keys(DEFAULT_SETTINGS)})
     .catch(err => notice("Đã tạo SETTINGS, nhưng chưa ghi được audit log: " + authMessage(err), true));
   await loadSettings();
@@ -831,18 +868,17 @@ async function seedSettings() {
 }
 
 async function saveCareSettings() {
-  if (!isAdmin()) return notice("Chỉ admin được lưu thiết lập chăm sóc.", true);
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu thiết lập chăm sóc.", true);
   const days = Math.max(0, Number($("careDueDays").value || 0));
   try {
-    await setDoc(doc(db, "settings", "crm"), {
+    const careSettings = {
       careDueDays: days,
       updatedByEmail: currentUser?.email || "",
       updatedAt: serverTimestamp()
-    }, {merge:true});
+    };
+    await saveSettingsAndVerify(careSettings, ["careDueDays"]);
     await logAudit("updateCareSettings", "settings", "crm", {careDueDays: days})
       .catch(err => notice("Đã lưu thiết lập chăm sóc, nhưng chưa ghi được audit log: " + authMessage(err), true));
-    settings.careDueDays = days;
-    hydrateSelects();
     renderAll();
     notice("Đã lưu thiết lập chăm sóc.");
   } catch (err) {
@@ -872,13 +908,14 @@ function renderDropdownSettingsForm() {
 }
 
 async function saveDropdownSettings() {
-  if (!isAdmin()) return notice("Chỉ admin được lưu cấu hình dropdown.", true);
+  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu cấu hình dropdown.", true);
   const channels = textToList($("settingsSourceChannels").value);
   const data = {
     sources: [],
     sourceChannels: {},
     channels,
     customerTypes: textToList($("settingsCustomerTypes").value),
+    potentialLevels: settings.potentialLevels?.length ? settings.potentialLevels : DEFAULT_SETTINGS.potentialLevels,
     statuses: textToList($("settingsStatuses").value),
     follows: textToList($("settingsFollows").value),
     careChannels: textToList($("settingsCareChannels").value),
@@ -889,6 +926,8 @@ async function saveDropdownSettings() {
     partnerCapacity: settings.partnerCapacity?.length ? settings.partnerCapacity : DEFAULT_SETTINGS.partnerCapacity,
     dealStatuses: textToList($("settingsDealStatuses").value),
     systemLabels: {...DEFAULT_SETTINGS.systemLabels, ...textToObject($("settingsSystemLabels").value)},
+    sourceConfigVersion: DEFAULT_SETTINGS.sourceConfigVersion,
+    followConfigVersion: DEFAULT_SETTINGS.followConfigVersion,
     updatedByEmail: currentUser?.email || "",
     updatedAt: serverTimestamp()
   };
@@ -896,7 +935,10 @@ async function saveDropdownSettings() {
   if (!data.customerTypes.length) data.customerTypes = DEFAULT_SETTINGS.customerTypes;
   if (!data.statuses.length || !data.follows.length) return notice("Trạng thái và tình trạng chăm không được để trống.", true);
   try {
-    await setDoc(doc(db, "settings", "crm"), data, {merge:true});
+    await saveSettingsAndVerify(data, [
+      "channels", "customerTypes", "potentialLevels", "statuses", "follows",
+      "careChannels", "careResults", "dealStatuses", "systemLabels"
+    ]);
     await logAudit("updateDropdownSettings", "settings", "crm", {
       channels: data.channels.length,
       statuses: data.statuses.length,
@@ -905,8 +947,6 @@ async function saveDropdownSettings() {
       careResults: data.careResults.length,
       dealStatuses: data.dealStatuses.length
     }).catch(err => notice("Đã lưu dropdown, nhưng chưa ghi được audit log: " + authMessage(err), true));
-    settings = normalizeSettings({...settings, ...data});
-    hydrateSelects();
     renderAll();
     notice("Đã lưu cấu hình dropdown.");
   } catch (err) {

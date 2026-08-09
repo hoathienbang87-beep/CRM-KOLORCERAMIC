@@ -476,7 +476,14 @@ async function writeRef(ref, data, options = {}) {
   if (options.merge) {
     const existing = await fetchRef(ref);
     const oldRaw = existing?.raw_data && typeof existing.raw_data === "object" ? existing.raw_data : {};
-    row.raw_data = { ...oldRaw, ...(row.raw_data || {}) };
+    if (ref.collection === "settings" || ref.collection === "companySettings") {
+      const oldData = existing?.data && typeof existing.data === "object" ? existing.data : {};
+      const merged = { ...oldData, ...oldRaw, ...(row.data || {}), ...(row.raw_data || {}) };
+      row.data = merged;
+      row.raw_data = merged;
+    } else {
+      row.raw_data = { ...oldRaw, ...(row.raw_data || {}) };
+    }
   }
   const onConflict = ref.collection === "phoneIndex" ? "phone" : "id";
   const { error } = await supabase.from(table).upsert(row, { onConflict });

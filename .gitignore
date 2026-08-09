@@ -71,6 +71,7 @@ node_modules/
 backups/
 exports/
 *.sql
+!supabase-*.sql
 *.dump
 *.backup
 *.xlsx

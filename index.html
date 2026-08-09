@@ -519,6 +519,7 @@
             <div class="field"><label>Trạng thái mua căn bản</label><textarea id="adminSettingsDealStatuses"></textarea></div>
             <div class="field settings-wide"><label>Kênh chi tiết</label><textarea id="adminSettingsSourceChannels" placeholder="Mỗi dòng một kênh chi tiết"></textarea></div>
             <div class="field"><label>Loại khách</label><textarea id="adminSettingsCustomerTypes"></textarea></div>
+            <div class="field"><label>Mức tiềm năng</label><textarea id="adminSettingsPotentialLevels"></textarea></div>
             <div class="field"><label>Trạng thái khách</label><textarea id="adminSettingsStatuses"></textarea></div>
             <div class="field"><label>Tình trạng chăm</label><textarea id="adminSettingsFollows"></textarea></div>
             <div class="field"><label>Hình thức chăm</label><textarea id="adminSettingsCareChannels"></textarea></div>
@@ -527,7 +528,7 @@
           </div>
           <div class="admin-empty-state" style="margin-top:12px">
             <b>Lưu ý an toàn</b>
-            <span>Không xóa các giá trị đang dùng nếu chưa chắc. Nếu cần đổi tên danh mục lớn, nên xuất snapshot trước để còn đối chiếu dữ liệu cũ.</span>
+            <span>Không xóa các giá trị đang dùng nếu chưa chắc. Đổi nhãn không tự đổi dữ liệu cũ đã lưu trên khách hàng; nếu cần đổi tên danh mục lớn, nên xuất snapshot trước để đối chiếu.</span>
           </div>
         </section>
 
@@ -781,7 +782,7 @@
   <div id="notice" class="notice hide"></div>
 
 <script src="./js/supabase-config.js"></script>
-<script type="module" src="./js/app.js?v=20260603-loginfix"></script>
+<script type="module" src="./js/app.js?v=20260809-settings-persistence"></script>
 <script async src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </body>
 </html>
