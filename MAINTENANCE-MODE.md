@@ -51,6 +51,8 @@ $env:VITE_MAINTENANCE_MODE="false"
 node scripts/generate-maintenance-config.mjs
 ```
 
+Trong rollout production fail-closed, co the tao file `.maintenance-on`. Build script se uu tien lock file nay ke ca khi bien moi truong chua duoc cau hinh. Xoa file va build/deploy lai de mo he thong.
+
 Sau do reload trinh duyet. App se hien man dang nhap CRM nhu binh thuong.
 
 ## Bat maintenance mode tren Vercel
