@@ -1,3 +1,3 @@
 export const MAINTENANCE_CONFIG = {
-  enabled: true
+  enabled: false
 };

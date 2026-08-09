@@ -137,6 +137,8 @@ try {
   const assignmentHistory = (await selectRows(u.manager,"customer_assignments",`customer_id=eq.${customerId}&select=employee_id,assigned_at,is_current&order=assigned_at.asc`)).data;
   rows = (await selectRows(u.manager,"customers",`id=eq.${customerId}&select=id,created_by_user_id`)).data;
   record("reassignment preserves original acquisition identity", rows[0]?.created_by_user_id===u.saleA.appUserId && assignmentHistory[0]?.employee_id===u.saleA.appUserId);
+  const customerAudit = (await selectRows(u.manager,"audit_logs",`entity_id=eq.${customerId}&select=id,action`)).data;
+  record("assignment workflow writes audit records", customerAudit.length >= 3);
 
   await rpc(u.admin,"crm_deactivate_employee",{
     p_employee_id:finalOwner.appUserId,p_mode:"unassigned",p_replacement_employee_id:null,p_reason:"P0B API leave"
@@ -175,9 +177,11 @@ try {
 
 const residualProfiles = await request("/rest/v1/app_users?id=like.p0b-api-user-*&select=id");
 const residualCustomers = await request("/rest/v1/customers?id=like.p0b-api-*&select=id");
+const residualAssignments = await request("/rest/v1/customer_assignments?customer_id=like.p0b-api-*&select=id");
+const residualAudit = await request("/rest/v1/audit_logs?entity_id=like.p0b-api-*&select=id");
 const residualAuth = await request("/auth/v1/admin/users?per_page=1000");
 const residualAuthCount = (residualAuth.data?.users || []).filter(user => /^p0b-.*@example\.com$/i.test(user.email || "")).length;
-if (residualProfiles.data.length || residualCustomers.data.length || residualAuthCount) {
+if (residualProfiles.data.length || residualCustomers.data.length || residualAssignments.data.length || residualAudit.data.length || residualAuthCount) {
   throw new Error("P0-B staging fixture cleanup failed.");
 }
-console.log("P0-B staging fixture cleanup: PASS (0 residual profiles/customers/auth users)");
+console.log("P0-B staging fixture cleanup: PASS (0 residual profiles/customers/assignments/audit/auth users)");
