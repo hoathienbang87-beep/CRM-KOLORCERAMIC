@@ -72,6 +72,9 @@ backups/
 exports/
 *.sql
 !supabase-*.sql
+!scripts/test-phase-p0a-integration.sql
+!scripts/test-phase-p0b-integration.sql
+/supabase/.temp/
 *.dump
 *.backup
 *.xlsx

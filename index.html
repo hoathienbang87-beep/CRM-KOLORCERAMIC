@@ -265,6 +265,25 @@
               <b id="quickOtherCount">0</b>
               <small>Các kênh còn lại</small>
             </button>
+            <button id="quickUnassignedCard" class="quick-filter-card hide" type="button" data-channel-quick="unassigned">
+              <span>Khách chờ phân bổ</span>
+              <b id="quickUnassignedCount">0</b>
+              <small>Chưa có nhân viên phụ trách</small>
+            </button>
+          </div>
+          <div id="unassignedPoolPanel" class="unassigned-pool hide">
+            <div>
+              <b>Phân bổ khách hàng</b>
+              <div class="muted">Chọn nhiều khách và giao cho một nhân viên ACTIVE. Toàn bộ thao tác sẽ rollback nếu có một dòng lỗi.</div>
+            </div>
+            <div class="unassigned-pool-controls">
+              <select id="unassignedEmployeeSelect" aria-label="Nhân viên nhận khách"></select>
+              <input id="unassignedReason" placeholder="Lý do phân bổ (khuyến nghị)">
+              <button id="selectAllUnassignedBtn" type="button">Chọn tất cả</button>
+              <button id="assignSelectedCustomersBtn" class="primary" type="button">Giao khách đã chọn</button>
+              <button id="exportUnassignedBtn" type="button">Xuất danh sách</button>
+            </div>
+            <div id="unassignedPoolList" class="unassigned-pool-list"></div>
           </div>
           <div class="table-title">Thông tin khách hàng</div>
           <div class="table-wrap customer-table-wrap">
@@ -497,7 +516,7 @@
           <div class="muted" style="margin-bottom:10px">Nếu dùng Google login, hãy thêm email ở đây trước. Nhân viên đăng nhập Google lần đầu bằng đúng email đó để Supabase Auth tự tạo phiên đăng nhập.</div>
           <div class="table-wrap">
             <table class="admin-table">
-              <thead><tr><th>Nhân viên</th><th>Role</th><th>Active</th><th>Team</th><th>Can Export</th><th>Thao tác</th></tr></thead>
+              <thead><tr><th>Nhân viên</th><th>Role</th><th>Vòng đời</th><th>Team</th><th>Can Export</th><th>Thao tác</th></tr></thead>
               <tbody id="userRows"></tbody>
             </table>
           </div>

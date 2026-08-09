@@ -16,7 +16,6 @@
   where,
   limit,
   onSnapshot,
-  runTransaction,
   writeBatch,
   deleteField,
   supabase,
@@ -64,6 +63,8 @@ let companySettings = {};
 let allCustomers = [];
 let customers = [];
 let deletedCustomers = [];
+let customerAssignments = [];
+const selectedUnassignedCustomerIds = new Set();
 let allCareLogs = [];
 let careLogs = [];
 let allDeals = [];
@@ -84,7 +85,7 @@ let kpiProposals = [];
 let auditLogs = [];
 let unsubscribers = [];
 let selectedCustomerId = "";
-let scopedSnapshots = {customers:{}, careLogs:{}, deals:{}, kpiProposals:{}};
+let scopedSnapshots = {customers:{}, careLogs:{}, deals:{}, kpiProposals:{}, customerAssignments:{}};
 let presenceTimer = null;
 let channelReportHitAreas = [];
 let activeMainView = "crm";
@@ -130,7 +131,7 @@ const canExportData = () => ["admin","manager","sale"].includes(roleKey()) || ap
 const ownerName = () => clean(appUser?.name) || clean(currentUser?.displayName) || clean(currentUser?.email);
 const ownerEmail = () => clean(appUser?.email) || clean(currentUser?.email);
 const sameIdentity = (a, b) => !!clean(a) && !!clean(b) && normalizeKey(a) === normalizeKey(b);
-const ownerMatchesCurrentUser = item => sameIdentity(item?.ownerEmail, ownerEmail()) || sameIdentity(item?.createdByEmail, ownerEmail()) || sameIdentity(item?.owner, ownerName());
+const ownerMatchesCurrentUser = item => sameIdentity(item?.ownerUserId, appUser?.uid) || sameIdentity(item?.ownerEmail, ownerEmail()) || sameIdentity(item?.owner, ownerName());
 const canEditCustomer = c => !!c?.id && (isManager() || ownerMatchesCurrentUser(c));
 const logAudit = (action, entity, entityId = "", payload = {}) => setDoc(doc(collection(db, "auditLogs")), {
   action,
@@ -140,6 +141,27 @@ const logAudit = (action, entity, entityId = "", payload = {}) => setDoc(doc(col
   payloadJson: JSON.stringify(payload || {}),
   createdAt: serverTimestamp()
 });
+
+function rpcValue(value) {
+  if (value?.__serverTimestamp) return new Date().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(rpcValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rpcValue(item)]));
+  }
+  return value;
+}
+
+async function callCrmRpc(name, args = {}) {
+  const {data, error} = await supabase.rpc(name, rpcValue(args));
+  if (error) throw error;
+  return data;
+}
+
+function duplicateCustomerIdFromError(err) {
+  const text = [err?.message, err?.details, err?.hint].filter(Boolean).join(" ");
+  return text.match(/CRM_DUPLICATE_PHONE:([A-Za-z0-9-]+)/)?.[1] || "";
+}
 const systemLabel = key => clean(settings?.systemLabels?.[key]) || clean(DEFAULT_SETTINGS.systemLabels[key]);
 const sameLabel = (value, key) => normalizeKey(value) === normalizeKey(systemLabel(key));
 const normalizeDealStatus = v => {
@@ -248,10 +270,10 @@ const adminRoutes = {
 };
 const viewDependencies = {
   crm: ["customers", "careLogs", "deals", "settings"],
-  customers: ["customers", "careLogs", "deals", "settings", "users"],
+  customers: ["customers", "customerAssignments", "careLogs", "deals", "settings", "users"],
   kpi: ["customers", "kpiRules", "kpiProposals", "settings", "users"],
   reports: ["customers", "careLogs", "deals", "kpiProposals", "auditLogs", "settings", "users"],
-  admin: ["customers", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "kpiRules", "kpiProposals"]
+  admin: ["customers", "customerAssignments", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "kpiRules", "kpiProposals"]
 };
 const scheduleRenderAll = debounce(() => {
   if (document.hidden) {
@@ -388,7 +410,7 @@ function fillSelect(id, values, placeholder="-- Chọn --", allLabel="") {
 
 function ownerOptions() {
   const activeUserProfiles = users
-    .filter(u => u.active !== false && !["admin","owner"].includes(clean(u.role).toLowerCase()))
+    .filter(u => u.active !== false && clean(u.lifecycleStatus || "active").toLowerCase() === "active" && !["admin","owner"].includes(clean(u.role).toLowerCase()))
     .map(u => ({name: clean(u.name || u.email), email: clean(u.email)}))
     .filter(u => u.name && u.email);
   if (activeUserProfiles.length) return activeUserProfiles;
@@ -403,7 +425,7 @@ function selfOwnerProfile() {
 
 function reportOwnerKeys() {
   const ownerProfiles = ownerOptions();
-  const keys = [...ownerProfiles.map(o => clean(o.email || o.name)), ...customers.map(customerOwnerKey)];
+  const keys = ownerProfiles.map(o => clean(o.email || o.name));
   const self = selfOwnerProfile();
   if (!isManager() && self) keys.push(self.email || self.name);
   activeKpiRules().forEach(rule => kpiRuleAssignedOwners(rule).forEach(email => {
@@ -994,26 +1016,23 @@ async function syncOwnerEmail() {
     const email = clean(p.email);
     if (name && email && email.includes("@")) byName.set(name, {name, email});
   });
-  const updates = [];
-  const addUpdate = (collectionName, item) => {
-    if (item.ownerEmail || !byName.has(clean(item.owner))) return;
-    const p = byName.get(clean(item.owner));
-    updates.push({ref: doc(db, collectionName, item.id), data: {owner: p.name, ownerEmail: p.email, updatedAt: serverTimestamp()}});
-  };
-  customers.forEach(c => addUpdate("customers", c));
-  careLogs.forEach(l => addUpdate("careLogs", l));
-  deals.forEach(d => addUpdate("deals", d));
-  for (let i = 0; i < updates.length; i += 450) {
-    const batch = writeBatch(db);
-    updates.slice(i, i + 450).forEach(u => batch.update(u.ref, u.data));
-    await batch.commit();
-  }
+  const updates = customers
+    .filter(c => !c.ownerEmail && byName.has(clean(c.owner)))
+    .map(c => ({customer: c, employee: byName.get(clean(c.owner))}));
+  let completed = 0;
   try {
-    await logAudit("syncOwnerEmail", "customers/careLogs/deals", "bulk", {count: updates.length});
+    for (const item of updates) {
+      await callCrmRpc("crm_transfer_customer", {
+        p_customer_id: item.customer.id,
+        p_new_owner_email: item.employee.email,
+        p_profile_changes: {}
+      });
+      completed++;
+    }
+    notice(`Đã đồng bộ người phụ trách cho ${completed} khách hàng qua RPC chuyển giao an toàn.`);
   } catch (err) {
-    notice("Đã đồng bộ nhân viên, nhưng chưa ghi được audit log: " + authMessage(err), true);
+    notice(`Đã đồng bộ ${completed}/${updates.length} khách. Dừng tại lỗi: ${authMessage(err)}`, true);
   }
-  notice(`Đã đồng bộ email nhân viên cho ${updates.length} bản ghi.`);
 }
 
 function importOwnerFromRow(row) {
@@ -1068,50 +1087,28 @@ async function importCsvRows(rows) {
     const dealStatus = normalizeDealStatus(rowValue(row, ["Đã cọc / Đã mua / Đã hủy", "Đã cọc / Đã mua / Rớt/Fail", "Chốt đơn", "Trạng thái đơn", "dealStatus"]));
     if (!customer.name || !customer.ownerEmail) { skipped++; continue; }
     try {
-      await runTransaction(db, async tx => {
-        const customerRef = doc(collection(db, "customers"));
-        const phoneRef = customer.phoneNormalized ? doc(db, "phoneIndex", customer.phoneNormalized) : null;
-        if (phoneRef) {
-          const phoneSnap = await tx.get(phoneRef);
-          if (phoneSnap.exists()) throw new Error("duplicate");
-        }
-        tx.set(customerRef, customer);
-        if (phoneRef) {
-          tx.set(phoneRef, {
-            customerId: customerRef.id,
-            owner: customer.owner,
-            ownerEmail: customer.ownerEmail,
-            createdByEmail: currentUser.email || "",
-            createdAt: serverTimestamp()
-          });
-        }
-        if (dealStatus) {
-          const completed = sameLabel(dealStatus, "boughtStatus");
-          const deal = {
-            customerId: customerRef.id, customerName: customer.name, phoneNormalized: customer.phoneNormalized,
-            phoneRaw: customer.phoneRaw, source: customer.source, channel: customer.channel,
-            owner: customer.owner, ownerEmail: customer.ownerEmail, dealStatus,
-            dealDate: parseImportDate(rowValue(row, ["Ngày đơn", "Ngày mua", "dealDate"])) || todayIso(),
-            deliveryDate: parseImportDate(rowValue(row, ["Ngày hẹn giao", "Hẹn giao", "deliveryDate"])),
-            product: customer.need,
-            amount: parseImportAmount(rowValue(row, ["Giá trị đơn", "Doanh số", "amount"])),
-            note: rowValue(row, ["Ghi chú đơn hàng", "Ghi chú đơn", "dealNote"]),
-            createdByEmail: currentUser.email || "",
-            completed,
-            completedAt: completed ? serverTimestamp() : null,
-            completedByEmail: completed ? (currentUser.email || "") : "",
-            createdAt: serverTimestamp()
-          };
-          tx.set(doc(collection(db, "deals")), deal);
-        }
-        tx.set(doc(collection(db, "auditLogs")), {
-          action: "importCustomerCsv", entity: "customers", entityId: customerRef.id,
-          email: currentUser.email || "", payloadJson: JSON.stringify(customer), createdAt: serverTimestamp()
-        });
+      const customerRef = doc(collection(db, "customers"));
+      const completed = sameLabel(dealStatus, "boughtStatus");
+      const basicPurchase = dealStatus ? {
+        id: doc(collection(db, "deals")).id,
+        dealStatus,
+        dealDate: parseImportDate(rowValue(row, ["Ngày đơn", "Ngày mua", "dealDate"])) || todayIso(),
+        deliveryDate: parseImportDate(rowValue(row, ["Ngày hẹn giao", "Hẹn giao", "deliveryDate"])),
+        product: customer.need,
+        amount: parseImportAmount(rowValue(row, ["Giá trị đơn", "Doanh số", "amount"])),
+        note: rowValue(row, ["Ghi chú đơn hàng", "Ghi chú đơn", "dealNote"]),
+        completed,
+        completedAt: completed ? serverTimestamp() : null,
+        customerStatus: completed ? systemLabel("boughtStatus") : systemLabel("depositStatus"),
+        customerFollow: completed ? systemLabel("closedFollow") : systemLabel("activeFollow")
+      } : null;
+      await callCrmRpc("crm_import_customer", {
+        p_customer: {...customer, id: customerRef.id},
+        p_basic_purchase: basicPurchase
       });
       imported++;
     } catch (err) {
-      if (err.message === "duplicate") skipped++;
+      if (duplicateCustomerIdFromError(err)) skipped++;
       else failed++;
     }
   }
@@ -2001,6 +1998,9 @@ function setCollectionState(targetName, docs) {
     allDeals = docs;
     deals = docs.filter(d => !d.isDeleted);
   }
+  else if (targetName === "customerAssignments") {
+    customerAssignments = docs.sort((a,b) => (toDate(b.assignedAt)?.getTime() || 0) - (toDate(a.assignedAt)?.getTime() || 0));
+  }
   else if (targetName === "quotes") {
     allQuotes = docs;
     quotes = docs.filter(q => !q.isDeleted);
@@ -2049,6 +2049,8 @@ function watchData() {
   customers = [];
   allCustomers = [];
   deletedCustomers = [];
+  customerAssignments = [];
+  selectedUnassignedCustomerIds.clear();
   careLogs = [];
   allCareLogs = [];
   deals = [];
@@ -2096,6 +2098,7 @@ function watchData() {
 
   if (isManager()) {
     unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "customerAssignments"), snap => applySnap("customerAssignments", snap), err => notice("Lỗi tải lịch sử phân công: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải dữ liệu mua căn bản: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI: " + authMessage(err), true)));
@@ -2119,6 +2122,7 @@ function watchData() {
   }
 
   unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách được cấp quyền: " + authMessage(err), true)));
+  unsubscribers.push(onSnapshot(collection(db, "customerAssignments"), snap => applySnap("customerAssignments", snap), err => notice("Lỗi tải lịch sử phân công: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "deals"), snap => applySnap("deals", snap, true), err => notice("Lỗi tải dữ liệu mua căn bản được cấp quyền: " + authMessage(err), true)));
   unsubscribers.push(onSnapshot(collection(db, "kpiProposals"), snap => applySnap("kpiProposals", snap, true), err => notice("Lỗi tải đề xuất KPI của bạn: " + authMessage(err), true)));
@@ -2161,10 +2165,51 @@ function channelQuickType(channelValue) {
 }
 function customerMatchesChannelQuick(c, quick = activeChannelQuickFilter) {
   if (!quick) return true;
+  if (quick === "unassigned") return !clean(c.ownerUserId) && !clean(c.ownerEmail);
   return channelQuickType(c.channel) === quick;
 }
 function channelQuickLabel(quick = activeChannelQuickFilter) {
-  return {company:"Công ty XD", social:"Mạng XH", other:"Kênh khác"}[quick] || "";
+  return {company:"Công ty XD", social:"Mạng XH", other:"Kênh khác", unassigned:"Khách chờ phân bổ"}[quick] || "";
+}
+
+const customerAssignmentHistory = customerId => customerAssignments
+  .filter(item => item.customerId === customerId)
+  .sort((a,b) => (toDate(b.assignedAt)?.getTime() || 0) - (toDate(a.assignedAt)?.getTime() || 0));
+
+const firstCustomerAssignment = customerId => customerAssignments
+  .filter(item => item.customerId === customerId)
+  .sort((a,b) => (toDate(a.assignedAt)?.getTime() || 0) - (toDate(b.assignedAt)?.getTime() || 0))[0] || null;
+
+function customerAcquisitionOwnerKeys(customer) {
+  const creator = users.find(user =>
+    sameIdentity(user.uid, customer?.createdByUserId) || sameIdentity(user.email, customer?.createdByEmail)
+  );
+  if (creator && normalizeKey(creator.role) === "sale") {
+    return [creator.uid, creator.email, creator.name].map(clean).filter(Boolean);
+  }
+  const firstAssignment = firstCustomerAssignment(customer?.id);
+  if (firstAssignment) {
+    return [
+      firstAssignment.employeeId,
+      firstAssignment.employeeEmailSnapshot,
+      firstAssignment.employeeNameSnapshot
+    ].map(clean).filter(Boolean);
+  }
+  return [customer?.createdByUserId, customer?.createdByEmail, customerOwnerKey(customer), customer?.owner]
+    .map(clean)
+    .filter(Boolean);
+}
+
+function customerWasAcquiredBy(customer, ownerKey) {
+  const profile = ownerProfileByValue(ownerKey);
+  const ownerKeys = [ownerKey, profile.uid, profile.email, profile.name].map(clean).filter(Boolean);
+  return customerAcquisitionOwnerKeys(customer).some(acquisitionKey =>
+    ownerKeys.some(key => sameIdentity(acquisitionKey, key))
+  );
+}
+
+function previousAssignmentFor(customerId) {
+  return customerAssignmentHistory(customerId).find(item => !item.isCurrent) || null;
 }
 
 const customerDeals = id => deals.filter(d => d.customerId === id).sort((a,b) => String(b.dealDate || "").localeCompare(String(a.dealDate || "")) || byDateDesc(a,b));
@@ -2368,7 +2413,7 @@ function renderKpis() {
   const due = rows.filter(isCareDue);
   const overdue = rows.filter(isCareOverdue);
   const thisMonth = currentMonth();
-  const monthLead = rows.filter(c => monthOf(c.createdAt) === thisMonth).length;
+  const monthLead = rows.filter(c => monthOf(c.createdAt) === thisMonth && (isManager() || customerWasAcquiredBy(c, appUser?.uid || ownerEmail()))).length;
   const monthCare = careLogs.filter(l => !l.isDeleted && monthOf(careLogActivityDate(l)) === thisMonth && rowIds.has(l.customerId)).length;
   const noDate = rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate)).length;
   const showroomVisits = rows.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
@@ -2812,7 +2857,7 @@ function openDashboardCustomerDetail(type) {
   const month = currentMonth();
   const config = {
     "managed-customers": ["Khách đang quản lý", rows],
-    "month-customers": ["Khách mới tháng này", rows.filter(c => monthOf(c.createdAt) === month)],
+    "month-customers": ["Khách mới tháng này", rows.filter(c => monthOf(c.createdAt) === month && (isManager() || customerWasAcquiredBy(c, appUser?.uid || ownerEmail())))],
     "no-date-care": ["Chưa có lịch chăm", rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate))],
     "showroom-visits": ["Khách đã đến showroom", rows.filter(c => showroomVisitCountFor(c) > 0)],
     "bought-customers": ["Khách đã mua căn bản", rows.filter(c => basicPurchaseCountFor(c) > 0)]
@@ -3060,20 +3105,12 @@ async function snoozeTask(customerId, days=1) {
   if (!c || !canEditCustomer(c)) return notice("Bạn không có quyền dời lịch khách này.", true);
   const nextCareDate = addDaysIso(todayIso(), days);
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "customers", c.id), {
-      nextCareDate,
-      follow: computedFollowStatus({...c, nextCareDate}),
-      updatedAt: serverTimestamp(),
-      updatedByEmail: currentUser.email || ""
+    await callCrmRpc("crm_snooze_customer", {
+      p_customer_id: c.id,
+      p_next_care_date: nextCareDate,
+      p_follow: computedFollowStatus({...c, nextCareDate}),
+      p_days: days
     });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "snoozeTask", entity: "customers", entityId: c.id,
-      email: currentUser.email || "",
-      payloadJson: JSON.stringify({before: c.nextCareDate || "", after: nextCareDate, days}),
-      createdAt: serverTimestamp()
-    });
-    await batch.commit();
     notice(`Đã dời lịch chăm sang ${fmtDate(nextCareDate)}.`);
   } catch (err) {
     notice(authMessage(err), true);
@@ -3352,9 +3389,75 @@ function renderChannelQuickFilters() {
   $("quickCompanyCount").textContent = counts.company || 0;
   $("quickSocialCount").textContent = counts.social || 0;
   $("quickOtherCount").textContent = counts.other || 0;
+  const unassigned = customers.filter(c => !clean(c.ownerUserId) && !clean(c.ownerEmail));
+  if ($("quickUnassignedCount")) $("quickUnassignedCount").textContent = unassigned.length;
+  $("quickUnassignedCard")?.classList.toggle("hide", !isManager());
   box.querySelectorAll("[data-channel-quick]").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.channelQuick === activeChannelQuickFilter);
   });
+  renderUnassignedPool(unassigned);
+}
+
+function renderUnassignedPool(rows = customers.filter(c => !clean(c.ownerUserId) && !clean(c.ownerEmail))) {
+  const panel = $("unassignedPoolPanel");
+  const list = $("unassignedPoolList");
+  if (!panel || !list) return;
+  const visible = isManager() && activeChannelQuickFilter === "unassigned";
+  panel.classList.toggle("hide", !visible);
+  if (!visible) return;
+
+  const validIds = new Set(rows.map(c => c.id));
+  [...selectedUnassignedCustomerIds].forEach(id => { if (!validIds.has(id)) selectedUnassignedCustomerIds.delete(id); });
+  fillSelect("unassignedEmployeeSelect", ownerOptions(), "-- Chọn nhân viên ACTIVE --");
+  list.innerHTML = rows.length ? rows.map(c => {
+    const previous = previousAssignmentFor(c.id);
+    const endedAt = previous?.endedAt || c.updatedAt;
+    const unassignedDays = endedAt ? Math.max(0, Math.floor((Date.now() - (toDate(endedAt)?.getTime() || Date.now())) / 86400000)) : 0;
+    return `<label class="unassigned-pool-row">
+      <input type="checkbox" data-unassigned-customer="${esc(c.id)}" ${selectedUnassignedCustomerIds.has(c.id) ? "checked" : ""}>
+      <span><b>${esc(c.name || "Khách hàng")}</b><small class="muted">${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")}</small></span>
+      <span>${esc(c.customerType || "Chưa phân loại")}<small class="muted">${esc(c.channel || "Chưa có kênh")}</small></span>
+      <span>Trước: ${esc(previous?.employeeNameSnapshot || previous?.employeeEmailSnapshot || "Không rõ")}<small class="muted">Mất phân công: ${esc(fmtDate(endedAt) || "-")}</small></span>
+      <span>${esc(c.nextCareDate ? `Hẹn ${fmtDate(c.nextCareDate)}` : "Chưa hẹn chăm")}<small class="muted">${esc(unassignedDays)} ngày chờ phân bổ</small></span>
+    </label>`;
+  }).join("") : `<div class="muted">Không có khách chờ phân bổ.</div>`;
+}
+
+async function assignSelectedUnassignedCustomers() {
+  if (!isManager()) return notice("Chỉ manager/admin được phân bổ khách.", true);
+  const employeeId = clean($("unassignedEmployeeSelect")?.value);
+  const ids = [...selectedUnassignedCustomerIds];
+  if (!employeeId) return notice("Vui lòng chọn nhân viên nhận khách.", true);
+  if (!ids.length) return notice("Vui lòng chọn ít nhất một khách hàng.", true);
+  const reason = clean($("unassignedReason")?.value) || "Phân bổ từ danh sách khách chờ";
+  if (!confirm(`Giao ${ids.length} khách đã chọn cho nhân viên này?`)) return;
+  try {
+    await callCrmRpc("crm_bulk_assign_customers", {
+      p_customer_ids: ids,
+      p_employee_id: employeeId,
+      p_reason: reason
+    });
+    selectedUnassignedCustomerIds.clear();
+    if ($("unassignedReason")) $("unassignedReason").value = "";
+    notice(`Đã phân bổ ${ids.length} khách hàng.`);
+  } catch (err) {
+    notice("Không phân bổ được khách: " + authMessage(err), true);
+  }
+}
+
+function exportUnassignedCustomers() {
+  const rows = customers.filter(c => !clean(c.ownerUserId) && !clean(c.ownerEmail));
+  if (!rows.length) return notice("Không có khách chờ phân bổ để xuất.", true);
+  exportXlsx([{
+    name:"Khach cho phan bo",
+    rows:[
+      ["Customer ID","Khách hàng","SĐT","Loại khách","Kênh","Mức tiềm năng","Owner trước","Ngày mất assignment","Lần chăm cuối","Hẹn tiếp"],
+      ...rows.map(c => {
+        const previous = previousAssignmentFor(c.id);
+        return [c.id,c.name || "",c.phoneRaw || c.phoneNormalized || "",c.customerType || "",c.channel || "",potentialLevelFor(c),previous?.employeeEmailSnapshot || previous?.employeeNameSnapshot || "",fmtDate(previous?.endedAt),fmtDate(c.lastContactAt),fmtDate(c.nextCareDate)];
+      })
+    ]
+  }], `crm-khach-cho-phan-bo-${todayIso()}`);
 }
 
 function renderCustomers() {
@@ -3430,7 +3533,8 @@ function renderKpiTable() {
     const cs = customers.filter(c => canSeeCustomer(c) && (sameIdentity(customerOwnerKey(c), o) || sameIdentity(c.owner, o)));
     if (!cs.length && !isManager() && !monthRules.some(rule => kpiRuleAppliesToOwner(rule, o))) return "";
     const ids = new Set(cs.map(c => c.id));
-    const monthLead = week ? cs.filter(c => weekOf(c.createdAt) === week).length : month ? cs.filter(c => monthOf(c.createdAt) === month).length : cs.length;
+    const acquired = customers.filter(c => canSeeCustomer(c) && customerWasAcquiredBy(c, o));
+    const monthLead = week ? acquired.filter(c => weekOf(c.createdAt) === week).length : month ? acquired.filter(c => monthOf(c.createdAt) === month).length : acquired.length;
     const careCount = careLogs.filter(l => !l.isDeleted && ids.has(l.customerId) && (week ? weekOf(careLogActivityDate(l)) === week : month ? monthOf(careLogActivityDate(l)) === month : true)).length;
     const due = cs.filter(isCareDue).length;
     const overdue = cs.filter(isCareOverdue).length;
@@ -3525,7 +3629,10 @@ function kpiReportData() {
       owner: clean(profile.name || o),
       email: clean(profile.email && profile.email !== profile.name ? profile.email : o),
       totalCustomers: cs.length,
-      monthLead: week ? cs.filter(c => weekOf(c.createdAt) === week).length : month ? cs.filter(c => monthOf(c.createdAt) === month).length : cs.length,
+      monthLead: (() => {
+        const acquired = customers.filter(c => canSeeCustomer(c) && customerWasAcquiredBy(c, o));
+        return week ? acquired.filter(c => weekOf(c.createdAt) === week).length : month ? acquired.filter(c => monthOf(c.createdAt) === month).length : acquired.length;
+      })(),
       careCount,
       dueCare: cs.filter(isCareDue).length,
       overdueCare: cs.filter(isCareOverdue).length,
@@ -4510,18 +4617,10 @@ async function submitKpiProposal() {
   try {
     const uploadedEvidence = await uploadKpiEvidenceFiles(proposalRef.id);
     data.evidenceUrl = [manualEvidence, ...uploadedEvidence].filter(Boolean).join("\n");
-    const batch = writeBatch(db);
-    if (isEditingProposal) batch.update(proposalRef, data);
-    else batch.set(proposalRef, data);
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: isEditingProposal ? "updateKpiProposal" : "submitKpiProposal",
-      entity: "kpiProposals",
-      entityId: proposalRef.id,
-      email: currentUser?.email || "",
-      payloadJson: JSON.stringify({before: existingProposal || null, after: {...data, createdAt: undefined, updatedAt: undefined}}),
-      createdAt: serverTimestamp()
+    await callCrmRpc("crm_submit_kpi_proposal", {
+      p_proposal_id: proposalRef.id,
+      p_proposal: data
     });
-    await batch.commit();
     closeKpiProposalModal();
     notice(isEditingProposal ? "Đã cập nhật đề xuất KPI." : "Đã gửi đề xuất KPI cho manager/admin.");
   } catch (err) {
@@ -4539,24 +4638,12 @@ async function reviewKpiProposal(proposalId, status) {
   const rule = kpiRules.find(r => r.id === proposal.kpiRuleId) || {};
   const reviewSnapshot = kpiRuleSnapshotForOwner(rule, proposal.ownerEmail || proposal.email || proposal.owner);
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "kpiProposals", proposalId), {
-      status: nextStatus,
-      reviewNote,
-      reviewedByEmail: currentUser?.email || "",
-      reviewedAt: serverTimestamp(),
-      reviewedSnapshotJson: JSON.stringify(reviewSnapshot),
-      updatedAt: serverTimestamp()
+    await callCrmRpc("crm_review_kpi_proposal", {
+      p_proposal_id: proposalId,
+      p_status: nextStatus,
+      p_review_note: reviewNote,
+      p_review_snapshot: reviewSnapshot
     });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: nextStatus === "approved" ? "approveKpiProposal" : "rejectKpiProposal",
-      entity: "kpiProposals",
-      entityId: proposalId,
-      email: currentUser?.email || "",
-      payloadJson: JSON.stringify({before: proposal, status: nextStatus, reviewNote}),
-      createdAt: serverTimestamp()
-    });
-    await batch.commit();
     notice(nextStatus === "approved" ? "Đã duyệt đề xuất KPI." : "Đã từ chối đề xuất KPI.");
   } catch (err) {
     notice("Không cập nhật được đề xuất KPI: " + authMessage(err), true);
@@ -4569,23 +4656,7 @@ async function deleteKpiProposal(proposalId) {
   if (!proposal) return notice("Không tìm thấy đề xuất KPI.", true);
   if (!confirm(`Ẩn KPI test của ${proposal.owner || proposal.ownerEmail || "nhân viên"}? Dòng này sẽ không còn xuất trong báo cáo KPI nhưng vẫn giữ audit log.`)) return;
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "kpiProposals", proposalId), {
-      isDeleted: true,
-      deletedByEmail: currentUser?.email || "",
-      deletedAt: serverTimestamp(),
-      updatedByEmail: currentUser?.email || "",
-      updatedAt: serverTimestamp()
-    });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "softDeleteAdminKpiProposal",
-      entity: "kpiProposals",
-      entityId: proposalId,
-      email: currentUser?.email || "",
-      payloadJson: JSON.stringify(proposal),
-      createdAt: serverTimestamp()
-    });
-    await batch.commit();
+    await callCrmRpc("crm_archive_kpi_proposal", {p_proposal_id: proposalId});
     closeDetailModal();
     notice("Đã ẩn KPI test khỏi báo cáo.");
   } catch (err) {
@@ -4599,23 +4670,7 @@ async function softDeleteKpiProposal(proposalId) {
   if (!canSoftDeleteKpiProposal(proposal)) return notice("Chỉ đề xuất KPI đang chờ duyệt của bạn mới được xóa.", true);
   if (!confirm("Xóa đề xuất KPI đang chờ duyệt này? Dữ liệu sẽ được ẩn khỏi KPI và vẫn có log kiểm tra khi cần.")) return;
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "kpiProposals", proposalId), {
-      isDeleted: true,
-      deletedByEmail: currentUser?.email || "",
-      deletedAt: serverTimestamp(),
-      updatedByEmail: currentUser?.email || "",
-      updatedAt: serverTimestamp()
-    });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "softDeleteKpiProposal",
-      entity: "kpiProposals",
-      entityId: proposalId,
-      email: currentUser?.email || "",
-      payloadJson: JSON.stringify(proposal),
-      createdAt: serverTimestamp()
-    });
-    await batch.commit();
+    await callCrmRpc("crm_archive_kpi_proposal", {p_proposal_id: proposalId});
     closeDetailModal();
     notice("Đã xóa đề xuất KPI.");
   } catch (err) {
@@ -4772,27 +4827,31 @@ function renderUserAdmin() {
   if (!canAccessAdminPanel() || !$("userRows")) return;
   $("userRows").innerHTML = users.length ? users.map(u => {
     const role = clean(u.role || "sale").toLowerCase();
-    const active = u.active !== false;
+    const lifecycle = clean(u.lifecycleStatus || (u.active === false ? "inactive" : "active")).toLowerCase();
+    const active = lifecycle === "active";
+    const currentCustomerIds = new Set(customerAssignments.filter(a => a.isCurrent && a.employeeId === u.uid).map(a => a.customerId));
+    const openFollowups = customers.filter(c => currentCustomerIds.has(c.id) && c.nextCareDate).length;
     return `<tr class="admin-user-row ${active ? "" : "locked"}">
       <td>
         <b>${esc(u.name || u.email || u.uid)}</b>
         <div class="muted">${esc(u.email || "")}</div>
         <div class="admin-badge-row">
           <span class="pill ${role === "admin" || role === "owner" ? "red" : role === "manager" ? "orange" : "green"}">${esc(role)}</span>
-          <span class="pill ${active ? "green" : "red"}">${active ? "active" : "locked"}</span>
+          <span class="pill ${active ? "green" : lifecycle === "inactive" ? "orange" : "red"}">${esc(lifecycle.toUpperCase())}</span>
         </div>
       </td>
       <td><select data-user-role="${esc(u.uid)}">
         ${["sale","manager","admin","owner"].map(r => `<option value="${r}" ${role===r ? "selected" : ""}>${r}</option>`).join("")}
       </select></td>
-      <td><select data-user-active="${esc(u.uid)}"><option value="true" ${active ? "selected" : ""}>active</option><option value="false" ${!active ? "selected" : ""}>locked</option></select></td>
+      <td><b>${esc(lifecycle.toUpperCase())}</b><div class="muted">${esc(currentCustomerIds.size)} khách · ${esc(openFollowups)} lịch hẹn mở</div></td>
       <td><input data-user-team="${esc(u.uid)}" value="${esc(u.team || "")}" placeholder="Team"></td>
       <td><select data-user-export="${esc(u.uid)}"><option value="false" ${u.canExport !== true ? "selected" : ""}>Không</option><option value="true" ${u.canExport === true ? "selected" : ""}>Có</option></select></td>
       <td>
         <div class="actions">
           <button class="small primary" data-save-user="${esc(u.uid)}">Lưu</button>
-          <button class="small" data-toggle-user="${esc(u.uid)}">${active ? "Khóa" : "Mở"}</button>
-          <button class="small danger" data-delete-user="${esc(u.uid)}">Xóa</button>
+          ${lifecycle === "active" ? `<button class="small" data-toggle-user="${esc(u.uid)}">Ngừng hoạt động</button>` : ""}
+          ${lifecycle === "inactive" ? `<button class="small" data-toggle-user="${esc(u.uid)}">Mở lại</button><button class="small danger" data-delete-user="${esc(u.uid)}">Lưu trữ</button>` : ""}
+          ${lifecycle === "archived" ? `<span class="muted">Chỉ tra cứu lịch sử</span>` : ""}
         </div>
       </td>
     </tr>`;
@@ -4893,21 +4952,17 @@ async function saveUserAdmin(uid) {
   const user = users.find(u => u.uid === uid);
   if (!user) return notice("Không tìm thấy user.", true);
   const role = clean(document.querySelector(`[data-user-role="${CSS.escape(uid)}"]`)?.value || "sale");
-  const active = document.querySelector(`[data-user-active="${CSS.escape(uid)}"]`)?.value === "true";
   const team = clean(document.querySelector(`[data-user-team="${CSS.escape(uid)}"]`)?.value);
   const canExport = document.querySelector(`[data-user-export="${CSS.escape(uid)}"]`)?.value === "true";
-  if (sameIdentity(user.email, currentUser?.email) && (!active || !["admin","owner"].includes(role))) {
-    return notice("Không thể tự khóa hoặc hạ quyền admin/owner của chính bạn.", true);
+  if (sameIdentity(user.email, currentUser?.email) && !["admin","owner"].includes(role)) {
+    return notice("Không thể tự hạ quyền admin/owner của chính bạn.", true);
   }
   try {
-    const batch = writeBatch(db);
-    batch.set(doc(db, "users", uid), {role, active, team, canExport, updatedByEmail: currentUser?.email || "", updatedAt: serverTimestamp()}, {merge:true});
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "updateUser", entity: "users", entityId: uid, email: currentUser?.email || "",
-      payloadJson: JSON.stringify({targetEmail:user.email || "", role, active, team, canExport}), createdAt: serverTimestamp()
+    await callCrmRpc("crm_update_employee_profile", {
+      p_employee_id: uid,
+      p_changes: {role, team, canExport}
     });
-    await batch.commit();
-    users = users.map(u => u.uid === uid ? {...u, role, active, team, canExport} : u);
+    users = users.map(u => u.uid === uid ? {...u, role, team, canExport} : u);
     hydrateOwnerDependentFilters();
     renderUserAdmin();
     notice("Đã cập nhật nhân viên.");
@@ -4951,18 +5006,8 @@ async function addUserAdmin() {
     updatedAt: serverTimestamp()
   };
   try {
-    const batch = writeBatch(db);
-    batch.set(doc(db, "users", uid), payload, {merge:true});
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "addUser",
-      entity: "users",
-      entityId: uid,
-      email: currentUser?.email || "",
-      payloadJson: JSON.stringify({targetEmail: payload.email, role: payload.role, team: payload.team, canExport: payload.canExport}),
-      createdAt: serverTimestamp()
-    });
-    await batch.commit();
-    users = [...users, {uid, ...payload}].sort((a,b) => clean(a.email).localeCompare(clean(b.email)));
+    const result = await callCrmRpc("crm_create_employee", {p_employee: {...payload, id: uid}});
+    users = [...users, {uid:result?.id || uid, ...payload, lifecycleStatus:"active"}].sort((a,b) => clean(a.email).localeCompare(clean(b.email)));
     clearNewUserForm();
     hydrateOwnerDependentFilters();
     renderUserAdmin();
@@ -4972,29 +5017,71 @@ async function addUserAdmin() {
   }
 }
 
+function openDeactivateEmployeeModal(uid) {
+  const user = users.find(u => u.uid === uid);
+  if (!user) return notice("Không tìm thấy nhân viên.", true);
+  if (sameIdentity(user.email, currentUser?.email)) return notice("Không thể tự ngừng hoạt động tài khoản đang đăng nhập.", true);
+  const assigned = customerAssignments.filter(a => a.isCurrent && a.employeeId === uid);
+  const customerIds = new Set(assigned.map(a => a.customerId));
+  const openFollowups = customers.filter(c => customerIds.has(c.id) && c.nextCareDate).length;
+  const replacements = ownerOptions().filter(item => !sameIdentity(item.email, user.email));
+  openDetailModal(
+    "Ngừng hoạt động nhân viên",
+    `${user.name || user.email} · ${assigned.length} khách · ${openFollowups} lịch hẹn mở`,
+    `<div class="section">
+      <p>Khách hàng và lịch hẹn sẽ không bị xóa. Chọn cách xử lý toàn bộ khách đang phụ trách:</p>
+      <div class="field"><label>Cách xử lý</label><select id="deactivateEmployeeMode">
+        <option value="unassigned">Đưa về Khách chờ phân bổ (khuyến nghị)</option>
+        <option value="transfer">Chuyển toàn bộ cho nhân viên khác</option>
+      </select></div>
+      <div id="deactivateReplacementField" class="field hide"><label>Nhân viên nhận bàn giao</label><select id="deactivateReplacementEmployee">
+        <option value="">-- Chọn nhân viên ACTIVE --</option>
+        ${replacements.map(item => `<option value="${esc(users.find(u => sameIdentity(u.email,item.email))?.uid || "")}">${esc(item.name)} · ${esc(item.email)}</option>`).join("")}
+      </select></div>
+      <div class="field"><label>Lý do</label><textarea id="deactivateEmployeeReason" placeholder="Ví dụ: Nhân viên nghỉ việc, chuyển bộ phận..."></textarea></div>
+      <div class="admin-empty-state"><b>${esc(openFollowups)} lịch hẹn đang mở</b><span>Lịch hẹn vẫn nằm trên hồ sơ khách. Nếu đưa về pool, manager/admin sẽ tiếp tục thấy cảnh báo; khi phân công người mới, trách nhiệm đi theo assignment mới.</span></div>
+      <div class="actions" style="margin-top:12px"><button class="danger" type="button" data-confirm-deactivate-employee="${esc(uid)}">Xác nhận ngừng hoạt động</button></div>
+    </div>`
+  );
+  on("deactivateEmployeeMode", "change", () => {
+    $("deactivateReplacementField")?.classList.toggle("hide", $("deactivateEmployeeMode")?.value !== "transfer");
+  });
+}
+
+async function confirmDeactivateEmployee(uid) {
+  const mode = clean($("deactivateEmployeeMode")?.value) || "unassigned";
+  const replacementId = clean($("deactivateReplacementEmployee")?.value);
+  const reason = clean($("deactivateEmployeeReason")?.value);
+  if (!reason) return notice("Vui lòng nhập lý do ngừng hoạt động.", true);
+  if (mode === "transfer" && !replacementId) return notice("Vui lòng chọn nhân viên nhận bàn giao.", true);
+  try {
+    const result = await callCrmRpc("crm_deactivate_employee", {
+      p_employee_id: uid,
+      p_mode: mode,
+      p_replacement_employee_id: replacementId || null,
+      p_reason: reason
+    });
+    closeDetailModal();
+    notice(`Đã ngừng nhân viên và xử lý ${result?.customerCount || 0} khách hàng.`);
+  } catch (err) {
+    notice("Không ngừng được nhân viên: " + authMessage(err), true);
+  }
+}
+
 async function toggleUserAdmin(uid) {
   if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được khóa/mở nhân viên.", true);
   const user = users.find(u => u.uid === uid);
   if (!user) return notice("Không tìm thấy user.", true);
-  const nextActive = user.active === false;
-  if (!nextActive && sameIdentity(user.email, currentUser?.email)) return notice("Không thể tự khóa tài khoản của chính bạn.", true);
-  if (!confirm(`${nextActive ? "Mở lại" : "Khóa"} nhân viên ${user.email || user.name || uid}?`)) return;
+  const lifecycle = clean(user.lifecycleStatus || (user.active === false ? "inactive" : "active")).toLowerCase();
+  if (lifecycle === "active") return openDeactivateEmployeeModal(uid);
+  if (lifecycle === "archived") return notice("Hồ sơ ARCHIVED chỉ phục vụ tra cứu lịch sử.", true);
+  if (!confirm(`Mở lại nhân viên ${user.email || user.name || uid}? Khách cũ sẽ không tự quay lại.`)) return;
   try {
-    const batch = writeBatch(db);
-    batch.set(doc(db, "users", uid), {active: nextActive, updatedByEmail: currentUser?.email || "", updatedAt: serverTimestamp()}, {merge:true});
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: nextActive ? "unlockUser" : "lockUser",
-      entity: "users",
-      entityId: uid,
-      email: currentUser?.email || "",
-      payloadJson: JSON.stringify({targetEmail: user.email || "", active: nextActive}),
-      createdAt: serverTimestamp()
-    });
-    await batch.commit();
-    users = users.map(u => u.uid === uid ? {...u, active: nextActive} : u);
+    await callCrmRpc("crm_reactivate_employee", {p_employee_id:uid, p_reason:"Mở lại từ Admin Panel"});
+    users = users.map(u => u.uid === uid ? {...u, active:true, lifecycleStatus:"active"} : u);
     hydrateOwnerDependentFilters();
     renderUserAdmin();
-    notice(nextActive ? "Đã mở lại nhân viên." : "Đã khóa nhân viên.");
+    notice("Đã mở lại nhân viên. Khách hàng cần được phân công riêng.");
   } catch (err) {
     notice("Không cập nhật trạng thái nhân viên: " + authMessage(err), true);
   }
@@ -5005,23 +5092,13 @@ async function deleteUserAdmin(uid) {
   const user = users.find(u => u.uid === uid);
   if (!user) return notice("Không tìm thấy user.", true);
   if (sameIdentity(user.email, currentUser?.email)) return notice("Không thể xóa tài khoản của chính bạn.", true);
-  if (!confirm(`Xóa quyền truy cập của ${user.email || user.name || uid}? Hành động này không xóa dữ liệu khách/đơn đã tạo.`)) return;
+  if (!confirm(`Lưu trữ hồ sơ ${user.email || user.name || uid}? Lịch sử khách, chăm sóc và KPI vẫn được giữ nguyên.`)) return;
   try {
-    const batch = writeBatch(db);
-    batch.delete(doc(db, "users", uid));
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "deleteUser",
-      entity: "users",
-      entityId: uid,
-      email: currentUser?.email || "",
-      payloadJson: JSON.stringify({targetEmail: user.email || "", role: user.role || ""}),
-      createdAt: serverTimestamp()
-    });
-    await batch.commit();
-    users = users.filter(u => u.uid !== uid);
+    await callCrmRpc("crm_archive_employee", {p_employee_id:uid, p_reason:"Lưu trữ từ Admin Panel"});
+    users = users.map(u => u.uid === uid ? {...u, active:false, lifecycleStatus:"archived"} : u);
     hydrateOwnerDependentFilters();
     renderUserAdmin();
-    notice("Đã xóa quyền truy cập nhân viên.");
+    notice("Đã lưu trữ nhân viên; toàn bộ lịch sử vẫn được giữ.");
   } catch (err) {
     notice("Không xóa được nhân viên: " + authMessage(err), true);
   }
@@ -5317,41 +5394,17 @@ async function saveCustomer() {
   if (!data.name) return notice("Vui lòng nhập tên khách.", true);
   if (!data.channel) return notice("Vui lòng chọn kênh chi tiết.", true);
   if (isPartnerChannel(data.channel) && !data.companyName) return notice("Vui lòng nhập tên công ty.", true);
-  if (!data.ownerEmail && !data.owner) return notice("Vui lòng chọn nhân viên phụ trách.", true);
+  if (!isManager() && !data.ownerEmail && !data.owner) return notice("Sale phải là người phụ trách khách vừa tạo.", true);
 
   try {
     const customerRef = doc(collection(db, "customers"));
-    const phoneRef = data.phoneNormalized ? doc(db, "phoneIndex", data.phoneNormalized) : null;
-    const auditRef = doc(collection(db, "auditLogs"));
-    await runTransaction(db, async tx => {
-      if (phoneRef) {
-        const phoneSnap = await tx.get(phoneRef);
-        if (phoneSnap.exists()) {
-          const err = new Error("SĐT đã tồn tại. Hãy mở khách cũ để thêm lần mua hàng/KPI.");
-          err.duplicateCustomerId = phoneSnap.data().customerId;
-          throw err;
-        }
-      }
-      tx.set(customerRef, data);
-      if (phoneRef) {
-        tx.set(phoneRef, {
-          customerId: customerRef.id,
-          owner: data.owner,
-          ownerEmail: data.ownerEmail,
-          createdByEmail: currentUser.email || "",
-          createdAt: serverTimestamp()
-        });
-      }
-      tx.set(auditRef, {
-        action: "addCustomer", entity: "customers", entityId: customerRef.id,
-        email: currentUser.email || "", payloadJson: JSON.stringify(data), createdAt: serverTimestamp()
-      });
-    });
+    await callCrmRpc("crm_create_customer", {p_customer: {...data, id: customerRef.id}});
     clearForm();
     notice("Đã lưu khách mới.");
   } catch (err) {
-    if (err.duplicateCustomerId) {
-      const existing = customers.find(c => c.id === err.duplicateCustomerId);
+    const duplicateCustomerId = duplicateCustomerIdFromError(err);
+    if (duplicateCustomerId) {
+      const existing = customers.find(c => c.id === duplicateCustomerId);
       notice(err.message, true);
       if (existing) openDrawer(existing.id, "deal");
       return;
@@ -5396,12 +5449,8 @@ async function saveCareLog() {
     createdAt: serverTimestamp()
   };
   try {
-    const batch = writeBatch(db);
     const logRef = doc(collection(db, "careLogs"));
-    const customerRef = doc(db, "customers", c.id);
-    const auditRef = doc(collection(db, "auditLogs"));
-    batch.set(logRef, log);
-    batch.update(customerRef, {
+    const customerPatch = {
       status: log.status || c.status || systemLabel("activeStatus"),
       follow: nextFollow,
       companyName: log.companyName || c.companyName || "",
@@ -5417,12 +5466,12 @@ async function saveCareLog() {
       lastContactAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
+    };
+    await callCrmRpc("crm_add_care_log", {
+      p_customer_id: c.id,
+      p_log: {...log, id: logRef.id},
+      p_customer_patch: customerPatch
     });
-    batch.set(auditRef, {
-      action: "addCareLog", entity: "careLogs", entityId: c.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify(log), createdAt: serverTimestamp()
-    });
-    await batch.commit();
     notice("Đã lưu chăm sóc.");
   } catch (err) {
     notice(authMessage(err), true);
@@ -5440,12 +5489,8 @@ async function saveDeal() {
   deal.createdAt = serverTimestamp();
   if (!items.length && !amount) return notice("Vui lòng nhập nội dung hoặc giá trị mua căn bản.", true);
   try {
-    const batch = writeBatch(db);
     const dealRef = doc(collection(db, "deals"));
-    const customerRef = doc(db, "customers", c.id);
-    const auditRef = doc(collection(db, "auditLogs"));
-    batch.set(dealRef, deal);
-    batch.update(customerRef, {
+    const customerPatch = {
       dealStatus: deal.dealStatus,
       status: completed ? systemLabel("boughtStatus") : canceled ? systemLabel("activeStatus") : systemLabel("depositStatus"),
       follow: completed ? systemLabel("closedFollow") : canceled ? systemLabel("dueFollow") : systemLabel("activeFollow"),
@@ -5454,12 +5499,14 @@ async function saveDeal() {
       note: deal.note || c.note || "",
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
+    };
+    await callCrmRpc("crm_save_basic_purchase", {
+      p_action: "create",
+      p_customer_id: c.id,
+      p_deal_id: dealRef.id,
+      p_deal: deal,
+      p_customer_patch: customerPatch
     });
-    batch.set(auditRef, {
-      action: "addDeal", entity: "deals", entityId: c.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify(deal), createdAt: serverTimestamp()
-    });
-    await batch.commit();
     resetDealForm(c);
     notice("Đã lưu mua căn bản.");
   } catch (err) {
@@ -5503,16 +5550,13 @@ async function updateDeal(dealId) {
     updatedByEmail: currentUser.email || ""
   };
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "deals", oldDeal.id), updatedDeal);
-    batch.update(doc(db, "customers", oldDeal.customerId), customerDealStatePatch(oldDeal.customerId, oldDeal.id, {...oldDeal, ...updatedDeal, id: oldDeal.id}));
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "updateDeal", entity: "deals", entityId: oldDeal.id,
-      email: currentUser.email || "",
-      payloadJson: JSON.stringify({before: oldDeal, after: updatedDeal}),
-      createdAt: serverTimestamp()
+    await callCrmRpc("crm_save_basic_purchase", {
+      p_action: "update",
+      p_customer_id: oldDeal.customerId,
+      p_deal_id: oldDeal.id,
+      p_deal: updatedDeal,
+      p_customer_patch: customerDealStatePatch(oldDeal.customerId, oldDeal.id, {...oldDeal, ...updatedDeal, id: oldDeal.id})
     });
-    await batch.commit();
     resetDealForm(c);
     renderHistories(c.id);
     showDealList(isCompletedDeal(updatedDeal) ? "completed" : "pending");
@@ -5528,28 +5572,25 @@ async function completeDeal(dealId) {
   if (!canEditDeal(deal)) return notice("Bạn không có quyền hoàn thành ghi nhận mua căn bản này.", true);
   if (isFailStatus(deal.dealStatus) || isCanceledDeal(deal.dealStatus)) return notice("Ghi nhận đã hủy/rớt không thể hoàn thành.", true);
   try {
-    const batch = writeBatch(db);
-    const customerRef = doc(db, "customers", deal.customerId);
-    batch.update(doc(db, "deals", deal.id), {
+    const dealPatch = {
       dealStatus: systemLabel("boughtStatus"),
       completed: true,
       completedAt: serverTimestamp(),
       completedByEmail: currentUser.email || "",
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
-    });
-    batch.update(customerRef, {
+    };
+    const customerPatch = {
       dealStatus: systemLabel("boughtStatus"),
       status: systemLabel("boughtStatus"),
       follow: systemLabel("closedFollow"),
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
+    };
+    await callCrmRpc("crm_save_basic_purchase", {
+      p_action: "complete", p_customer_id: deal.customerId, p_deal_id: deal.id,
+      p_deal: dealPatch, p_customer_patch: customerPatch
     });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "completeDeal", entity: "deals", entityId: deal.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify({customerId: deal.customerId}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
     notice("Đã hoàn thành ghi nhận mua căn bản. Lần mua này đã được tính vào hồ sơ khách.");
   } catch (err) {
     notice(authMessage(err), true);
@@ -5563,31 +5604,29 @@ async function cancelDeal(dealId) {
   const ok = confirm("Hủy ghi nhận mua căn bản này vì khách đổi ý?");
   if (!ok) return;
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "deals", deal.id), {
+    const dealPatch = {
       dealStatus: systemLabel("canceledStatus"),
       canceled: true,
       canceledAt: serverTimestamp(),
       canceledByEmail: currentUser.email || "",
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
-    });
+    };
     const otherActiveDeals = customerDeals(deal.customerId).filter(d => d.id !== deal.id && !isCanceledDeal(d.dealStatus) && !isFailStatus(d.dealStatus));
     const hasBought = otherActiveDeals.some(d => sameLabel(normalizeDealStatus(d.dealStatus), "boughtStatus") || d.completed === true);
     const hasDeposit = otherActiveDeals.some(d => sameLabel(normalizeDealStatus(d.dealStatus), "depositStatus"));
-    batch.update(doc(db, "customers", deal.customerId), {
+    const customerPatch = {
       dealStatus: hasBought ? systemLabel("boughtStatus") : hasDeposit ? systemLabel("depositStatus") : systemLabel("canceledStatus"),
       status: hasBought ? systemLabel("boughtStatus") : hasDeposit ? systemLabel("depositStatus") : systemLabel("activeStatus"),
       follow: hasBought ? systemLabel("closedFollow") : systemLabel("dueFollow"),
       nextCareDate: hasBought ? "" : todayIso(),
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
+    };
+    await callCrmRpc("crm_save_basic_purchase", {
+      p_action: "cancel", p_customer_id: deal.customerId, p_deal_id: deal.id,
+      p_deal: dealPatch, p_customer_patch: customerPatch
     });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "cancelDeal", entity: "deals", entityId: deal.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify({customerId: deal.customerId}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
     notice("Đã hủy ghi nhận mua căn bản.");
   } catch (err) {
     notice(authMessage(err), true);
@@ -5761,20 +5800,17 @@ async function softDeleteDeal(dealId) {
   const ok = confirm(`Xóa mềm đơn hàng của "${orderCustomerName(deal) || deal.customerName || deal.id}"? Dữ liệu sẽ được giữ trong hệ thống.`);
   if (!ok) return;
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "deals", deal.id), {
+    const dealPatch = {
       isDeleted: true,
       deletedAt: serverTimestamp(),
       deletedByEmail: currentUser.email || "",
       updatedAt: serverTimestamp(),
       updatedByEmail: currentUser.email || ""
+    };
+    await callCrmRpc("crm_save_basic_purchase", {
+      p_action: "archive", p_customer_id: deal.customerId, p_deal_id: deal.id,
+      p_deal: dealPatch, p_customer_patch: customerDealStatePatch(deal.customerId, deal.id)
     });
-    batch.update(doc(db, "customers", deal.customerId), customerDealStatePatch(deal.customerId, deal.id));
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "softDeleteDeal", entity: "deals", entityId: deal.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify({customerId: deal.customerId}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
     notice("Đã xóa mềm đơn hàng.");
   } catch (err) {
     notice(authMessage(err), true);
@@ -5844,37 +5880,8 @@ async function deleteCustomer() {
   if (!c) return;
   const ok = confirm(`Ẩn khách "${c.name}"? Dữ liệu sẽ được lưu lại trong hệ thống/audit log và SĐT sẽ được giải phóng để nhập lại nếu cần.`);
   if (!ok) return;
-  const relatedLogs = careLogs.filter(l => l.customerId === c.id);
-  const relatedDeals = deals.filter(d => d.customerId === c.id);
-  const refs = [
-    ...relatedLogs.map(l => doc(db, "careLogs", l.id)),
-    ...relatedDeals.map(d => doc(db, "deals", d.id))
-  ];
-  if (refs.length > 440) {
-    return notice("Khách này có quá nhiều lịch sử. Hãy xử lý bằng admin/backoffice để tránh vượt giới hạn batch.", true);
-  }
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "customers", c.id), {
-      isDeleted: true,
-      deletedAt: serverTimestamp(),
-      deletedByEmail: currentUser.email || "",
-      updatedAt: serverTimestamp(),
-      updatedByEmail: currentUser.email || ""
-    });
-    refs.forEach(r => batch.update(r, {
-      isDeleted: true,
-      deletedAt: serverTimestamp(),
-      deletedByEmail: currentUser.email || "",
-      updatedAt: serverTimestamp(),
-      updatedByEmail: currentUser.email || ""
-    }));
-    if (c.phoneNormalized) batch.delete(doc(db, "phoneIndex", c.phoneNormalized));
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "softDeleteCustomer", entity: "customers", entityId: c.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify({customer:c, careLogCount:relatedLogs.length, dealCount:relatedDeals.length}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
+    await callCrmRpc("crm_set_customer_archived", {p_customer_id: c.id, p_archived: true});
     closeDrawer();
     notice("Đã ẩn khách an toàn. Dữ liệu vẫn còn trong audit log để truy lại khi cần.");
   } catch (err) {
@@ -5887,37 +5894,7 @@ async function restoreCustomer(customerId) {
   const c = deletedCustomers.find(x => x.id === customerId);
   if (!c) return notice("Không tìm thấy khách trong thùng rác.", true);
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "customers", c.id), {
-      isDeleted: false,
-      restoredAt: serverTimestamp(),
-      restoredByEmail: currentUser.email || "",
-      updatedAt: serverTimestamp(),
-      updatedByEmail: currentUser.email || ""
-    });
-    allCareLogs.filter(l => l.customerId === c.id && l.isDeleted).forEach(l => {
-      batch.update(doc(db, "careLogs", l.id), {isDeleted:false, restoredAt:serverTimestamp(), restoredByEmail:currentUser.email || ""});
-    });
-    allDeals.filter(d => d.customerId === c.id && d.isDeleted).forEach(d => {
-      batch.update(doc(db, "deals", d.id), {isDeleted:false, restoredAt:serverTimestamp(), restoredByEmail:currentUser.email || ""});
-    });
-    kpiProposals.filter(p => p.customerId === c.id && p.isDeleted).forEach(p => {
-      batch.update(doc(db, "kpiProposals", p.id), {isDeleted:false, restoredAt:serverTimestamp(), restoredByEmail:currentUser.email || ""});
-    });
-    if (c.phoneNormalized) {
-      batch.set(doc(db, "phoneIndex", c.phoneNormalized), {
-        customerId: c.id,
-        owner: c.owner || "",
-        ownerEmail: c.ownerEmail || "",
-        restoredByEmail: currentUser.email || "",
-        updatedAt: serverTimestamp()
-      }, {merge:true});
-    }
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "restoreCustomer", entity: "customers", entityId: c.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify(c), createdAt: serverTimestamp()
-    });
-    await batch.commit();
+    await callCrmRpc("crm_set_customer_archived", {p_customer_id: c.id, p_archived: false});
     notice("Đã khôi phục khách.");
   } catch (err) {
     notice("Không khôi phục được khách: " + authMessage(err), true);
@@ -5928,30 +5905,7 @@ async function permanentlyDeleteCustomer(customerId) {
   if (!isAdmin()) return notice("Chỉ admin được xóa vĩnh viễn.", true);
   const c = deletedCustomers.find(x => x.id === customerId);
   if (!c) return notice("Không tìm thấy khách trong thùng rác.", true);
-  const ok = confirm(`XÓA VĨNH VIỄN khách "${c.name || c.id}" và toàn bộ careLogs/deals liên quan? KPI liên quan sẽ được ẩn mềm để giữ log đối chiếu.`);
-  if (!ok) return;
-  try {
-    const batch = writeBatch(db);
-    batch.delete(doc(db, "customers", c.id));
-    allCareLogs.filter(l => l.customerId === c.id).forEach(l => batch.delete(doc(db, "careLogs", l.id)));
-    allDeals.filter(d => d.customerId === c.id).forEach(d => batch.delete(doc(db, "deals", d.id)));
-    kpiProposals.filter(p => p.customerId === c.id).forEach(p => batch.update(doc(db, "kpiProposals", p.id), {
-      isDeleted: true,
-      deletedByEmail: currentUser.email || "",
-      deletedAt: serverTimestamp(),
-      updatedByEmail: currentUser.email || "",
-      updatedAt: serverTimestamp()
-    }));
-    if (c.phoneNormalized) batch.delete(doc(db, "phoneIndex", c.phoneNormalized));
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "permanentDeleteCustomer", entity: "customers", entityId: c.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify({customer:c}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
-    notice("Đã xóa vĩnh viễn khách và dữ liệu liên quan.");
-  } catch (err) {
-    notice("Không xóa vĩnh viễn được: " + authMessage(err), true);
-  }
+  notice(`P0-A đã tạm khóa xóa vĩnh viễn khách "${c.name || c.id}" để tránh dữ liệu bị xóa một phần. Hãy dùng Ẩn khách/Thùng rác.`, true);
 }
 
 async function cleanupPhoneIndex() {
@@ -5998,20 +5952,7 @@ async function cleanupOrphans() {
   const orphanLogs = allCareLogs.filter(l => l.customerId && !allIds.has(l.customerId));
   const orphanDeals = allDeals.filter(d => d.customerId && !allIds.has(d.customerId));
   if (!orphanLogs.length && !orphanDeals.length) return notice("Không có careLogs/deals orphan.");
-  if (!confirm(`Xóa vĩnh viễn ${orphanLogs.length} careLogs và ${orphanDeals.length} deals mồ côi?`)) return;
-  try {
-    const batch = writeBatch(db);
-    orphanLogs.forEach(l => batch.delete(doc(db, "careLogs", l.id)));
-    orphanDeals.forEach(d => batch.delete(doc(db, "deals", d.id)));
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "cleanupOrphans", entity: "careLogs/deals", entityId: "bulk",
-      email: currentUser.email || "", payloadJson: JSON.stringify({careLogs:orphanLogs.length,deals:orphanDeals.length}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
-    notice(`Đã cleanup orphan: ${orphanLogs.length} careLogs, ${orphanDeals.length} deals.`);
-  } catch (err) {
-    notice("Không cleanup orphan được: " + authMessage(err), true);
-  }
+  notice(`P0-A đã tạm khóa cleanup xóa cứng (${orphanLogs.length} care logs, ${orphanDeals.length} dữ liệu mua căn bản) để tránh xóa một phần.`, true);
 }
 
 async function cleanupData() {
@@ -6036,6 +5977,19 @@ function activityMetaPills(values = []) {
 }
 
 function customerActivityItems(id) {
+  const assignmentRows = customerAssignmentHistory(id).map(item => ({
+    kind: "assignment",
+    label: item.isCurrent ? "Đang phụ trách" : "Lịch sử phân công",
+    at: item.isCurrent ? item.assignedAt : (item.endedAt || item.assignedAt),
+    title: item.employeeNameSnapshot || item.employeeEmailSnapshot || "Owner lịch sử",
+    text: item.isCurrent ? "Assignment hiện tại" : (item.endReason || "Đã kết thúc phân công"),
+    meta: item.assignmentReason || "",
+    pills: [
+      item.assignedAt ? `Từ: ${fmtDate(item.assignedAt)}` : "",
+      item.endedAt ? `Đến: ${fmtDate(item.endedAt)}` : "",
+      item.assignedByEmail ? `Giao bởi: ${item.assignedByEmail}` : ""
+    ]
+  }));
   const careRows = customerLogs(id).map(l => ({
     kind: "care",
     label: "Chăm sóc",
@@ -6074,7 +6028,7 @@ function customerActivityItems(id) {
       meta: p.content || "",
       pills: [p.status ? `Trạng thái: ${p.status}` : ""]
     }));
-  return [...careRows, ...dealRows, ...proposalRows]
+  return [...assignmentRows, ...careRows, ...dealRows, ...proposalRows]
     .sort((a,b) => (toDate(b.at)?.getTime() || 0) - (toDate(a.at)?.getTime() || 0));
 }
 
@@ -6215,40 +6169,19 @@ async function saveCustomerInfo() {
   if (isPartnerChannel(data.channel) && !data.companyName) return notice("Vui lòng nhập tên công ty.", true);
   if (!data.ownerEmail && !data.owner) return notice("Vui lòng chọn nhân viên phụ trách.", true);
   try {
-    const oldPhone = phoneNorm(c.phoneNormalized || c.phoneRaw || "");
-    const customerRef = doc(db, "customers", c.id);
-    const auditRef = doc(collection(db, "auditLogs"));
-    await runTransaction(db, async tx => {
-      if (phone && phone !== oldPhone) {
-        const newPhoneRef = doc(db, "phoneIndex", phone);
-        const newPhoneSnap = await tx.get(newPhoneRef);
-        if (newPhoneSnap.exists() && newPhoneSnap.data().customerId !== c.id) {
-          throw new Error("SĐT mới đã thuộc khách hàng khác.");
-        }
-        tx.set(newPhoneRef, {
-          customerId: c.id,
-          owner: data.owner,
-          ownerEmail: data.ownerEmail,
-          createdByEmail: c.createdByEmail || currentUser.email || "",
-          updatedByEmail: currentUser.email || "",
-          updatedAt: serverTimestamp()
-        }, {merge:true});
-      }
-      if (oldPhone && oldPhone !== phone) tx.delete(doc(db, "phoneIndex", oldPhone));
-      if (phone && phone === oldPhone) {
-        tx.set(doc(db, "phoneIndex", phone), {
-          owner: data.owner,
-          ownerEmail: data.ownerEmail,
-          updatedByEmail: currentUser.email || "",
-          updatedAt: serverTimestamp()
-        }, {merge:true});
-      }
-      tx.update(customerRef, data);
-      tx.set(auditRef, {
-        action: "updateCustomerInfo", entity: "customers", entityId: c.id,
-        email: currentUser.email || "", payloadJson: JSON.stringify(data), createdAt: serverTimestamp()
+    const ownerChanged = isManager() && !sameIdentity(data.ownerEmail, c.ownerEmail || c.owner);
+    const profileChanges = {...data};
+    delete profileChanges.owner;
+    delete profileChanges.ownerEmail;
+    if (ownerChanged) {
+      await callCrmRpc("crm_transfer_customer", {
+        p_customer_id: c.id,
+        p_new_owner_email: data.ownerEmail,
+        p_profile_changes: profileChanges
       });
-    });
+    } else {
+      await callCrmRpc("crm_update_customer_profile", {p_customer_id: c.id, p_changes: profileChanges});
+    }
     toggleCustomerInfoEdit(false);
     notice("Đã cập nhật thông tin khách.");
   } catch (err) {
@@ -6433,25 +6366,21 @@ async function editCareLog(logId) {
     const showroomDelta = typeof updates.showroomVisit === "boolean" && updates.showroomVisit !== !!log.showroomVisit ? (updates.showroomVisit ? 1 : -1) : 0;
     const nextLog = {...log, ...updates, updatedAt: new Date()};
     const nextLogs = careLogs.map(l => l.id === log.id ? nextLog : l);
-    const customerState = latestCareStateForCustomer(log.customerId, nextLogs);
-    const batch = writeBatch(db);
-    batch.update(doc(db, "careLogs", log.id), {
+    const customerPatch = {
+      ...latestCareStateForCustomer(log.customerId, nextLogs),
+      showroomVisitCount: Math.max(0, showroomVisitCountFor(c) + showroomDelta),
+      updatedByEmail: currentUser.email || "",
+      updatedAt: serverTimestamp()
+    };
+    const logPatch = {
       ...updates,
       follow: computedFollowStatus({...customers.find(c => c.id === log.customerId), status: updates.status || log.status, nextCareDate: updates.nextCareDate ?? log.nextCareDate}),
       updatedByEmail: currentUser.email || "",
       updatedAt: serverTimestamp()
+    };
+    await callCrmRpc("crm_update_care_log", {
+      p_log_id: log.id, p_changes: logPatch, p_customer_patch: customerPatch
     });
-    batch.update(doc(db, "customers", log.customerId), {
-      ...customerState,
-      showroomVisitCount: Math.max(0, showroomVisitCountFor(c) + showroomDelta),
-      updatedByEmail: currentUser.email || "",
-      updatedAt: serverTimestamp()
-    });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "editCareLog", entity: "careLogs", entityId: log.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify({before: log, after: updates}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
     notice("Đã sửa lịch sử chăm sóc.");
   } catch (err) {
     notice("Không sửa được lịch sử chăm sóc: " + authMessage(err), true);
@@ -6466,26 +6395,13 @@ async function deleteCareLog(logId) {
   try {
     const c = customers.find(item => item.id === log.customerId) || {};
     const nextLogs = careLogs.map(l => l.id === log.id ? {...l, isDeleted: true} : l);
-    const customerState = latestCareStateForCustomer(log.customerId, nextLogs);
-    const batch = writeBatch(db);
-    batch.update(doc(db, "careLogs", log.id), {
-      isDeleted: true,
-      deletedAt: serverTimestamp(),
-      deletedByEmail: currentUser.email || "",
-      updatedAt: serverTimestamp(),
-      updatedByEmail: currentUser.email || ""
-    });
-    batch.update(doc(db, "customers", log.customerId), {
-      ...customerState,
+    const customerPatch = {
+      ...latestCareStateForCustomer(log.customerId, nextLogs),
       showroomVisitCount: log.showroomVisit ? Math.max(0, showroomVisitCountFor(c) - 1) : showroomVisitCountFor(c),
       updatedByEmail: currentUser.email || "",
       updatedAt: serverTimestamp()
-    });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "deleteCareLog", entity: "careLogs", entityId: log.id,
-      email: currentUser.email || "", payloadJson: JSON.stringify(log), createdAt: serverTimestamp()
-    });
-    await batch.commit();
+    };
+    await callCrmRpc("crm_archive_care_log", {p_log_id: log.id, p_customer_patch: customerPatch});
     notice("Đã xóa lịch sử chăm sóc.");
   } catch (err) {
     notice("Không xóa được lịch sử chăm sóc: " + authMessage(err), true);
@@ -7956,6 +7872,7 @@ async function reloadApp() {
 
 function resetFilters() {
   activeChannelQuickFilter = "";
+  selectedUnassignedCustomerIds.clear();
   ["searchBox","filterOwner","filterStatus","filterDealStatus","filterFollow","filterSource","filterChannel","filterCustomerType"].forEach(id => {
     if (!(id === "filterOwner" && !isManager())) $(id).value = "";
   });
@@ -7997,6 +7914,7 @@ document.addEventListener("click", e => {
   const saveUserId = e.target.closest("[data-save-user]")?.dataset.saveUser;
   const toggleUserId = e.target.closest("[data-toggle-user]")?.dataset.toggleUser;
   const deleteUserId = e.target.closest("[data-delete-user]")?.dataset.deleteUser;
+  const confirmDeactivateEmployeeId = e.target.closest("[data-confirm-deactivate-employee]")?.dataset.confirmDeactivateEmployee;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
@@ -8050,10 +7968,18 @@ document.addEventListener("click", e => {
   if (saveUserId) runAction(`saveUser:${saveUserId}`, "saveUser", "Đang lưu...", () => saveUserAdmin(saveUserId));
   if (toggleUserId) runAction(`toggleUser:${toggleUserId}`, "toggleUser", "Đang cập nhật...", () => toggleUserAdmin(toggleUserId));
   if (deleteUserId) runAction(`deleteUser:${deleteUserId}`, "deleteUser", "Đang xóa...", () => deleteUserAdmin(deleteUserId));
+  if (confirmDeactivateEmployeeId) confirmDeactivateEmployee(confirmDeactivateEmployeeId);
   if (e.target.closest("[data-remove-deal-item]")) {
     e.target.closest("[data-deal-item]")?.remove();
     if (!document.querySelector("[data-deal-item]")) addDealItem();
   }
+});
+
+document.addEventListener("change", e => {
+  const checkbox = e.target.closest?.("[data-unassigned-customer]");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedUnassignedCustomerIds.add(checkbox.dataset.unassignedCustomer);
+  else selectedUnassignedCustomerIds.delete(checkbox.dataset.unassignedCustomer);
 });
 
 document.addEventListener("keydown", e => {
@@ -8088,6 +8014,14 @@ $("googleBtn")?.addEventListener("click", () => runAction("googleBtn", "googleLo
 on("resetTaskFilterBtn", "click", resetTaskFilters);
 on("resetReportActivityFilterBtn", "click", resetSaleActivityFilters);
 on("resetErpReportFilterBtn", "click", resetErpReportFilters);
+on("assignSelectedCustomersBtn", "click", () => runAction("assignSelectedCustomersBtn", "bulkAssignCustomers", "Đang phân bổ...", assignSelectedUnassignedCustomers));
+on("selectAllUnassignedBtn", "click", () => {
+  const rows = customers.filter(c => !clean(c.ownerUserId) && !clean(c.ownerEmail));
+  const shouldSelect = rows.some(c => !selectedUnassignedCustomerIds.has(c.id));
+  rows.forEach(c => shouldSelect ? selectedUnassignedCustomerIds.add(c.id) : selectedUnassignedCustomerIds.delete(c.id));
+  renderUnassignedPool(rows);
+});
+on("exportUnassignedBtn", "click", exportUnassignedCustomers);
 on("addUserBtn", "click", () => runAction("addUserBtn", "addUser", "Đang thêm...", addUserAdmin));
 ["newUserEmail","newUserName"].forEach(id => on(id, "keydown", e => {
   if (e.key === "Enter") runAction("addUserBtn", "addUser", "Đang thêm...", addUserAdmin);

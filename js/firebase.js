@@ -23,6 +23,7 @@ const tableMap = {
   websitePages: "website_pages",
   websiteSections: "website_sections",
   customers: "customers",
+  customerAssignments: "customer_assignments",
   careLogs: "care_logs",
   deals: "deals",
   quotes: "quotes",
@@ -146,6 +147,11 @@ function rowFor(ref, input) {
         name: first(data.name, null),
         role: first(data.role, "sale"),
         active: first(data.active, data.status === "active", false),
+        lifecycle_status: first(data.lifecycleStatus, data.lifecycle_status, data.active === true ? "active" : "inactive"),
+        inactive_at: first(data.inactiveAt, data.inactive_at, null),
+        archived_at: first(data.archivedAt, data.archived_at, null),
+        lifecycle_changed_at: first(data.lifecycleChangedAt, data.lifecycle_changed_at, null),
+        lifecycle_changed_by_email: first(data.lifecycleChangedByEmail, data.lifecycle_changed_by_email, null),
         can_export: first(data.canExport, data.can_export, false),
         team: first(data.team, data.department, null),
         phone: first(data.phone, data.phoneRaw, null),
@@ -164,7 +170,9 @@ function rowFor(ref, input) {
         channel: first(data.channel, null),
         owner: first(data.owner, null),
         owner_email: first(data.ownerEmail, data.owner_email, null),
+        owner_user_id: first(data.ownerUserId, data.owner_user_id, null),
         created_by_email: first(data.createdByEmail, data.created_by_email, null),
+        created_by_user_id: first(data.createdByUserId, data.created_by_user_id, null),
         status: first(data.status, null),
         follow: first(data.follow, null),
         next_care_date: first(data.nextCareDate, data.next_care_date, null),
@@ -221,6 +229,24 @@ function rowFor(ref, input) {
         is_deleted: first(data.isDeleted, data.is_deleted, false),
         created_at: first(data.createdAt, data.dealDate, data.created_at, null),
         updated_at: first(data.updatedAt, data.updated_at, null)
+      };
+    case "customerAssignments":
+      return {
+        ...rowBase(ref, data),
+        customer_id: first(data.customerId, data.customer_id, null),
+        employee_id: first(data.employeeId, data.employee_id, null),
+        employee_email_snapshot: first(data.employeeEmailSnapshot, data.employee_email_snapshot, null),
+        employee_name_snapshot: first(data.employeeNameSnapshot, data.employee_name_snapshot, null),
+        assigned_at: first(data.assignedAt, data.assigned_at, null),
+        ended_at: first(data.endedAt, data.ended_at, null),
+        assigned_by_user_id: first(data.assignedByUserId, data.assigned_by_user_id, null),
+        assigned_by_email: first(data.assignedByEmail, data.assigned_by_email, null),
+        ended_by_user_id: first(data.endedByUserId, data.ended_by_user_id, null),
+        ended_by_email: first(data.endedByEmail, data.ended_by_email, null),
+        assignment_reason: first(data.assignmentReason, data.assignment_reason, null),
+        end_reason: first(data.endReason, data.end_reason, null),
+        is_current: first(data.isCurrent, data.is_current, false),
+        created_at: first(data.createdAt, data.created_at, null)
       };
     case "quotes":
       return {
