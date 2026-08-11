@@ -455,3 +455,24 @@
     @media(max-width:1180px){.chart-grid{grid-template-columns:1fr}}
     @media(max-width:1180px){.report-metric-grid{grid-template-columns:repeat(3,minmax(120px,1fr))}}
     @media(max-width:760px){.grid2,.grid3,.grid4,.need-grid,.toolbar,.quick-filter-grid,.task-row,.kpis,.executive-grid,.pipeline-grid,.care-work-summary,.profile-stats,.deal-item-row,.quote-item-row,.care-actions,.info-grid,.kpi-rule-grid,.kpi-assign-row,.kpi-state-grid,.kpi-approval-grid,.report-metric-grid,.settings-grid,.admin-user-create,.unassigned-pool-controls,.unassigned-pool-row{grid-template-columns:1fr}.task-actions{justify-content:flex-start}.topbar{height:auto;align-items:flex-start;gap:8px;flex-direction:column;padding:12px 16px}.layout{padding:10px}.layout>aside.panel{position:static;max-height:none}.userbar{justify-content:flex-start}.view-tabs{top:0}.toolbar{padding:10px}.kpi-progress-btn{width:100%}.chart-wrap{height:240px}.chart-wrap.channel-chart-wrap{height:420px}.channel-report-controls,.channel-date-range{width:100%;align-items:stretch}.channel-report-controls select,.channel-date-range input{width:100%}.channel-date-range{display:grid;grid-template-columns:1fr auto 1fr}.drawer{width:100%;height:100%;max-height:none;border-radius:0}.settings-wide{grid-column:auto}.admin-app{grid-template-columns:1fr}.admin-sidebar{position:static;height:auto}.admin-header{position:static;align-items:flex-start;flex-direction:column}.admin-content{padding:12px}.admin-section-title{display:grid}.admin-header-actions{justify-content:flex-start}}
+/* KPI-1 monthly foundation. Kept visually separate from the legacy KPI panel. */
+.kpi1-foundation-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:12px;margin:12px 0 16px}
+.kpi1-foundation-block{border:1px solid #d6e2ee;border-left:4px solid #168477;background:#f7fbfb;padding:12px;border-radius:6px}
+.kpi1-check-field{display:flex;align-items:center;gap:8px;min-height:42px;font-weight:600}
+.kpi1-check-field input{width:auto;margin:0}
+.kpi1-table-limit{max-height:280px;overflow:auto;margin-bottom:16px}
+.kpi1-period-detail{margin-top:16px;padding-top:14px;border-top:2px solid #dce7ef}
+.kpi1-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:10px 0 12px}
+.kpi1-summary-card{border:1px solid #d8e4ee;border-left:4px solid #168477;background:#f7fafc;padding:10px;border-radius:6px}
+.kpi1-summary-card b{display:block;font-size:20px;margin-top:3px}
+.kpi1-matrix-wrap{max-height:520px;overflow:auto}
+.kpi1-matrix{min-width:880px}
+.kpi1-matrix th{position:sticky;top:0;z-index:2}
+.kpi1-matrix-cell{min-width:145px}
+.kpi1-matrix-cell label{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-weight:600}
+.kpi1-matrix-cell input[type="checkbox"]{width:auto;margin:0}
+.kpi1-matrix-cell input[type="number"]{min-width:90px;margin:0;padding:7px}
+.kpi1-status-draft{color:#9a5a00;background:#fff4d8}
+.kpi1-status-active{color:#076a4f;background:#dff8ef}
+.kpi1-status-closed{color:#475569;background:#e8eef5}
+@media(max-width:900px){.kpi1-foundation-grid{grid-template-columns:1fr}.kpi1-summary-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}}

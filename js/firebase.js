@@ -34,6 +34,9 @@ const tableMap = {
   products: "products",
   kpiRules: "kpi_rules",
   kpiProposals: "kpi_proposals",
+  kpiPeriods: "kpi_periods",
+  kpiDefinitions: "kpi_definitions",
+  kpiAssignments: "kpi_assignments",
   phoneIndex: "phone_index",
   auditLogs: "audit_logs",
   userSessions: "user_sessions"

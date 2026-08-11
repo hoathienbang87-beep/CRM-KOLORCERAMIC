@@ -348,8 +348,86 @@
           </div>
         </div>
 
+        <div id="kpiFoundationPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <div>
+              <h3>Kỳ KPI mới</h3>
+              <div class="muted">Cấu hình theo tháng, target riêng từng sale và khóa cấu hình khi kích hoạt.</div>
+            </div>
+            <button id="kpi1ReloadBtn" class="small" type="button">Tải lại</button>
+          </div>
+
+          <div class="kpi1-foundation-grid">
+            <section class="kpi1-foundation-block">
+              <div class="table-title">Tạo kỳ KPI</div>
+              <div class="grid2">
+                <div class="field"><label>Tháng</label><input id="kpi1PeriodMonth" type="month"></div>
+                <div class="field"><label>Tên kỳ</label><input id="kpi1PeriodName" placeholder="KPI tháng 08/2026"></div>
+              </div>
+              <button id="kpi1CreatePeriodBtn" class="primary" type="button">Tạo kỳ DRAFT</button>
+            </section>
+
+            <section class="kpi1-foundation-block">
+              <div class="table-title">KPI definition</div>
+              <input id="kpi1DefinitionId" type="hidden">
+              <div class="grid2">
+                <div class="field"><label>Mã KPI</label><input id="kpi1DefinitionCode" placeholder="KHACH_MOI"></div>
+                <div class="field"><label>Tên KPI</label><input id="kpi1DefinitionName" placeholder="Khách mới"></div>
+                <div class="field"><label>Loại</label><select id="kpi1DefinitionType"><option>MANUAL</option><option>AUTO</option><option>HYBRID</option></select></div>
+                <div class="field"><label>Đơn vị</label><input id="kpi1DefinitionUnit" placeholder="lượt"></div>
+                <div class="field"><label>Metric key tương lai</label><input id="kpi1DefinitionMetric" placeholder="Để trống nếu MANUAL"></div>
+                <label class="kpi1-check-field"><input id="kpi1DefinitionEvidence" type="checkbox"> Bắt buộc minh chứng</label>
+              </div>
+              <div class="field"><label>Diễn giải</label><textarea id="kpi1DefinitionDescription" placeholder="Điều kiện nghiệp vụ của KPI..."></textarea></div>
+              <div class="actions">
+                <button id="kpi1SaveDefinitionBtn" class="primary" type="button">Tạo definition</button>
+                <button id="kpi1CancelDefinitionBtn" class="hide" type="button">Hủy sửa</button>
+              </div>
+            </section>
+          </div>
+
+          <div class="table-title">Danh sách kỳ KPI</div>
+          <div class="table-wrap kpi1-table-limit">
+            <table class="admin-table">
+              <thead><tr><th>Tháng</th><th>Trạng thái</th><th>KPI</th><th>Nhân viên</th><th>Assignments</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
+              <tbody id="kpi1PeriodRows"><tr><td colspan="7" class="muted">Chưa có kỳ KPI mới.</td></tr></tbody>
+            </table>
+          </div>
+
+          <div class="table-title">Danh mục KPI</div>
+          <div class="table-wrap kpi1-table-limit">
+            <table class="admin-table">
+              <thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>Đơn vị</th><th>Minh chứng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+              <tbody id="kpi1DefinitionRows"><tr><td colspan="7" class="muted">Chưa có KPI definition.</td></tr></tbody>
+            </table>
+          </div>
+
+          <section id="kpi1PeriodDetail" class="kpi1-period-detail hide">
+            <div class="pro-section-title">
+              <div>
+                <h3 id="kpi1SelectedPeriodTitle">Chi tiết kỳ KPI</h3>
+                <div id="kpi1SelectedPeriodMeta" class="muted"></div>
+              </div>
+              <div class="actions">
+                <button id="kpi1ActivatePeriodBtn" class="primary" type="button">Kích hoạt kỳ</button>
+                <button id="kpi1ClosePeriodDetailBtn" type="button">Đóng chi tiết</button>
+              </div>
+            </div>
+            <div id="kpi1ActivationSummary" class="kpi1-summary-grid"></div>
+            <div id="kpi1LockedNotice" class="maintenance-note hide">Kỳ KPI đã hoạt động. Cấu hình chính đã được khóa.</div>
+            <div class="table-title">Ma trận assignment</div>
+            <div class="muted" style="margin-bottom:8px">Tick sale được áp dụng, nhập target lớn hơn 0 rồi lưu từng hàng KPI.</div>
+            <div class="table-wrap kpi1-matrix-wrap">
+              <table class="admin-table kpi1-matrix">
+                <thead id="kpi1MatrixHead"></thead>
+                <tbody id="kpi1MatrixRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
         <div id="kpiRulePanel" class="panel hide" style="margin-top:14px">
-          <h3>Thiết lập KPI</h3>
+          <h3>KPI hiện tại (legacy)</h3>
           <div class="kpi-rule-grid">
             <div class="field"><label>Tháng báo cáo</label><input id="kpiRuleMonth" type="month"></div>
             <div class="field"><label>Tên KPI</label><input id="kpiRuleName" placeholder="Gửi kệ trưng bày"></div>

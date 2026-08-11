@@ -82,6 +82,10 @@ let users = [];
 let onlineSessions = [];
 let kpiRules = [];
 let kpiProposals = [];
+let kpiPeriods = [];
+let kpiDefinitions = [];
+let kpiAssignments = [];
+let selectedKpiFoundationPeriodId = "";
 let auditLogs = [];
 let unsubscribers = [];
 let selectedCustomerId = "";
@@ -271,7 +275,7 @@ const adminRoutes = {
 const viewDependencies = {
   crm: ["customers", "careLogs", "deals", "settings"],
   customers: ["customers", "customerAssignments", "careLogs", "deals", "settings", "users"],
-  kpi: ["customers", "kpiRules", "kpiProposals", "settings", "users"],
+  kpi: ["customers", "kpiRules", "kpiProposals", "kpiPeriods", "kpiDefinitions", "kpiAssignments", "settings", "users"],
   reports: ["customers", "careLogs", "deals", "kpiProposals", "auditLogs", "settings", "users"],
   admin: ["customers", "customerAssignments", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "kpiRules", "kpiProposals"]
 };
@@ -2025,6 +2029,15 @@ function setCollectionState(targetName, docs) {
     inventoryQtyCache = new Map();
   }
   else if (targetName === "kpiProposals") kpiProposals = docs;
+  else if (targetName === "kpiPeriods") {
+    kpiPeriods = docs.sort((a,b) => clean(b.periodMonth).localeCompare(clean(a.periodMonth)));
+  }
+  else if (targetName === "kpiDefinitions") {
+    kpiDefinitions = docs.sort((a,b) => clean(a.code).localeCompare(clean(b.code), "vi"));
+  }
+  else if (targetName === "kpiAssignments") {
+    kpiAssignments = docs.sort((a,b) => clean(a.employeeId).localeCompare(clean(b.employeeId), "vi"));
+  }
 }
 
 function setScopedDocs(targetName, scopeKey, docs) {
@@ -2067,6 +2080,9 @@ function watchData() {
   users = [];
   kpiRules = [];
   kpiProposals = [];
+  kpiPeriods = [];
+  kpiDefinitions = [];
+  kpiAssignments = [];
   auditLogs = [];
 
   const applySnap = (targetName, snap, filterDeleted=false, scopeKey="") => {
@@ -2097,6 +2113,9 @@ function watchData() {
   }, err => notice("Lỗi tải KPI: " + authMessage(err), true)));
 
   if (isManager()) {
+    unsubscribers.push(onSnapshot(collection(db, "kpiPeriods"), snap => applySnap("kpiPeriods", snap), err => notice("Lỗi tải kỳ KPI mới: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "kpiDefinitions"), snap => applySnap("kpiDefinitions", snap), err => notice("Lỗi tải KPI definition: " + authMessage(err), true)));
+    unsubscribers.push(onSnapshot(collection(db, "kpiAssignments"), snap => applySnap("kpiAssignments", snap), err => notice("Lỗi tải assignment KPI mới: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "customers"), snap => applySnap("customers", snap, true), err => notice("Lỗi tải khách: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "customerAssignments"), snap => applySnap("customerAssignments", snap), err => notice("Lỗi tải lịch sử phân công: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "careLogs"), snap => applySnap("careLogs", snap, true), err => notice("Lỗi tải lịch sử chăm: " + authMessage(err), true)));
@@ -2338,7 +2357,7 @@ function updateCareStatusVisual() {
 const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel"];
 const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
 const customerViewIds = ["customerSearchPanel"];
-const kpiViewIds = ["kpiSummaryPanel","kpiRulePanel","kpiApprovalPanel"];
+const kpiViewIds = ["kpiSummaryPanel","kpiFoundationPanel","kpiRulePanel","kpiApprovalPanel"];
 const reportsViewIds = ["reportsPanel"];
 
 function renderCrmView() {
@@ -2378,6 +2397,7 @@ function setMainView(view) {
   customerViewIds.forEach(id => $(id)?.classList.toggle("hide", !isCustomerView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isReportsView || isAdminView);
   $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView);
+  $("kpiFoundationPanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpiRulePanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpiApprovalPanel")?.classList.toggle("hide", !isKpiView || !isManager());
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
@@ -2395,6 +2415,7 @@ function setMainView(view) {
     renderMyKpiProposalPanel();
     renderKpiRuleList();
     renderKpiApprovalPanel();
+    renderKpiFoundation();
   }
   if (isReportsView) renderReportCenter();
   if (isAdminView) {
@@ -3851,6 +3872,329 @@ function renderOnlineUsers() {
       <div class="muted">Hoạt động: ${esc(fmtDate(s.lastSeenAt))}</div>
     </div>
   `).join("") : "Chưa có ai đang truy cập.";
+}
+
+function kpi1EmployeeId(user) {
+  return clean(user?.uid || user?.id);
+}
+
+function kpi1EmployeeById(employeeId) {
+  return users.find(user => kpi1EmployeeId(user) === clean(employeeId)) || null;
+}
+
+function kpi1EligibleSales() {
+  return users
+    .filter(user => clean(user.role).toLowerCase() === "sale")
+    .filter(user => user.active !== false && clean(user.lifecycleStatus || "active").toLowerCase() === "active")
+    .sort((a,b) => clean(a.name || a.email).localeCompare(clean(b.name || b.email), "vi"));
+}
+
+function kpi1PeriodLabel(period) {
+  const value = clean(period?.periodMonth).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(value)) return value || "Chưa rõ tháng";
+  const [year, month] = value.split("-");
+  return `${month}/${year}`;
+}
+
+function kpi1PeriodAssignments(periodId, includeCancelled = false) {
+  return kpiAssignments.filter(item => clean(item.periodId) === clean(periodId))
+    .filter(item => includeCancelled || clean(item.assignmentStatus || "ASSIGNED") === "ASSIGNED");
+}
+
+function kpi1StatusHtml(status) {
+  const value = clean(status || "DRAFT").toUpperCase();
+  const cls = value === "ACTIVE" ? "kpi1-status-active" : value === "CLOSED" ? "kpi1-status-closed" : "kpi1-status-draft";
+  return `<span class="pill ${cls}">${esc(value)}</span>`;
+}
+
+function kpi1SelectedPeriod() {
+  return kpiPeriods.find(period => period.id === selectedKpiFoundationPeriodId) || null;
+}
+
+function kpi1PeriodValidation(period) {
+  const assignments = kpi1PeriodAssignments(period?.id);
+  const definitionIds = new Set(assignments.map(item => item.definitionId));
+  const employeeIds = new Set(assignments.map(item => item.employeeId));
+  const invalidAssignments = assignments.filter(item => {
+    const employee = kpi1EmployeeById(item.employeeId);
+    const definition = kpiDefinitions.find(row => row.id === item.definitionId);
+    return Number(item.target || 0) <= 0
+      || !employee
+      || clean(employee.role).toLowerCase() !== "sale"
+      || employee.active === false
+      || clean(employee.lifecycleStatus || "active").toLowerCase() !== "active"
+      || !definition
+      || definition.active === false;
+  });
+  return {
+    assignments,
+    kpiCount: definitionIds.size,
+    employeeCount: employeeIds.size,
+    invalidCount: invalidAssignments.length,
+    canActivate: clean(period?.status).toUpperCase() === "DRAFT" && assignments.length > 0 && invalidAssignments.length === 0
+  };
+}
+
+async function reloadKpiFoundationData() {
+  if (!isManager()) return;
+  const [periodSnap, definitionSnap, assignmentSnap] = await Promise.all([
+    getDocs(collection(db, "kpiPeriods")),
+    getDocs(collection(db, "kpiDefinitions")),
+    getDocs(collection(db, "kpiAssignments"))
+  ]);
+  setCollectionState("kpiPeriods", periodSnap.docs.map(row => ({id:row.id, ...row.data()})));
+  setCollectionState("kpiDefinitions", definitionSnap.docs.map(row => ({id:row.id, ...row.data()})));
+  setCollectionState("kpiAssignments", assignmentSnap.docs.map(row => ({id:row.id, ...row.data()})));
+  renderKpiFoundation();
+}
+
+function resetKpi1DefinitionForm() {
+  if (!$("kpi1DefinitionId")) return;
+  $("kpi1DefinitionId").value = "";
+  $("kpi1DefinitionCode").value = "";
+  $("kpi1DefinitionCode").disabled = false;
+  $("kpi1DefinitionName").value = "";
+  $("kpi1DefinitionType").value = "MANUAL";
+  $("kpi1DefinitionUnit").value = "";
+  $("kpi1DefinitionMetric").value = "";
+  $("kpi1DefinitionEvidence").checked = false;
+  $("kpi1DefinitionDescription").value = "";
+  $("kpi1SaveDefinitionBtn").textContent = "Tạo definition";
+  $("kpi1CancelDefinitionBtn").classList.add("hide");
+}
+
+async function createKpi1Period() {
+  if (!isManager()) return notice("Chỉ manager/admin/owner được tạo kỳ KPI.", true);
+  const month = clean($("kpi1PeriodMonth")?.value);
+  const name = clean($("kpi1PeriodName")?.value) || (month ? `KPI tháng ${month.slice(5,7)}/${month.slice(0,4)}` : "");
+  if (!month) return notice("Vui lòng chọn tháng KPI.", true);
+  const created = await callCrmRpc("crm_kpi_create_period", {
+    p_period_month: `${month}-01`,
+    p_name: name,
+    p_timezone: "Asia/Ho_Chi_Minh"
+  });
+  selectedKpiFoundationPeriodId = created?.id || "";
+  $("kpi1PeriodName").value = "";
+  await reloadKpiFoundationData();
+  notice("Đã tạo kỳ KPI ở trạng thái DRAFT.");
+}
+
+async function saveKpi1Definition() {
+  if (!isManager()) return notice("Chỉ manager/admin/owner được quản lý KPI definition.", true);
+  const id = clean($("kpi1DefinitionId")?.value);
+  const current = id ? kpiDefinitions.find(item => item.id === id) : null;
+  const data = {
+    code: clean($("kpi1DefinitionCode")?.value).toUpperCase(),
+    name: clean($("kpi1DefinitionName")?.value),
+    description: clean($("kpi1DefinitionDescription")?.value),
+    kpiType: clean($("kpi1DefinitionType")?.value),
+    sourceMetricKey: clean($("kpi1DefinitionMetric")?.value),
+    unit: clean($("kpi1DefinitionUnit")?.value),
+    submissionMode: "EVENT_CLAIM",
+    evidenceRequired: !!$("kpi1DefinitionEvidence")?.checked
+  };
+  if (!data.code || !data.name || !data.unit) return notice("Mã, tên và đơn vị KPI là bắt buộc.", true);
+  if (current) {
+    await callCrmRpc("crm_kpi_update_definition", {
+      p_definition_id: current.id,
+      p_expected_version: Number(current.version),
+      p_changes: data
+    });
+  } else {
+    await callCrmRpc("crm_kpi_create_definition", {
+      p_code: data.code,
+      p_name: data.name,
+      p_description: data.description,
+      p_kpi_type: data.kpiType,
+      p_source_metric_key: data.sourceMetricKey || null,
+      p_unit: data.unit,
+      p_submission_mode: "EVENT_CLAIM",
+      p_evidence_required: data.evidenceRequired
+    });
+  }
+  resetKpi1DefinitionForm();
+  await reloadKpiFoundationData();
+  notice(current ? "Đã cập nhật KPI definition. Snapshot kỳ cũ không thay đổi." : "Đã tạo KPI definition.");
+}
+
+function editKpi1Definition(definitionId) {
+  const item = kpiDefinitions.find(row => row.id === definitionId);
+  if (!item) return notice("Không tìm thấy KPI definition.", true);
+  $("kpi1DefinitionId").value = item.id;
+  $("kpi1DefinitionCode").value = item.code || "";
+  $("kpi1DefinitionCode").disabled = true;
+  $("kpi1DefinitionName").value = item.name || "";
+  $("kpi1DefinitionType").value = item.kpiType || "MANUAL";
+  $("kpi1DefinitionUnit").value = item.unit || "";
+  $("kpi1DefinitionMetric").value = item.sourceMetricKey || "";
+  $("kpi1DefinitionEvidence").checked = !!item.evidenceRequired;
+  $("kpi1DefinitionDescription").value = item.description || "";
+  $("kpi1SaveDefinitionBtn").textContent = "Lưu definition";
+  $("kpi1CancelDefinitionBtn").classList.remove("hide");
+  $("kpi1DefinitionName").focus();
+}
+
+async function toggleKpi1Definition(definitionId) {
+  const item = kpiDefinitions.find(row => row.id === definitionId);
+  if (!item) return notice("Không tìm thấy KPI definition.", true);
+  const next = item.active === false;
+  if (!confirm(`${next ? "Bật" : "Tắt"} KPI ${item.name || item.code}? Snapshot ở các kỳ đã tạo sẽ không đổi.`)) return;
+  await callCrmRpc("crm_kpi_set_definition_active", {
+    p_definition_id: item.id,
+    p_expected_version: Number(item.version),
+    p_active: next
+  });
+  await reloadKpiFoundationData();
+  notice(next ? "Đã bật KPI definition." : "Đã tắt KPI definition.");
+}
+
+async function renameKpi1Period(periodId) {
+  const period = kpiPeriods.find(item => item.id === periodId);
+  if (!period || clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ kỳ DRAFT mới được đổi tên.", true);
+  const nextName = clean(prompt("Tên kỳ KPI:", period.name || "") || "");
+  if (!nextName || nextName === clean(period.name)) return;
+  await callCrmRpc("crm_kpi_update_period", {
+    p_period_id: period.id,
+    p_expected_version: Number(period.version),
+    p_changes: {name: nextName}
+  });
+  await reloadKpiFoundationData();
+  notice("Đã cập nhật tên kỳ KPI.");
+}
+
+function selectKpi1Period(periodId) {
+  selectedKpiFoundationPeriodId = periodId;
+  renderKpiFoundation();
+  $("kpi1PeriodDetail")?.scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function closeKpi1PeriodDetail() {
+  selectedKpiFoundationPeriodId = "";
+  renderKpiFoundation();
+}
+
+async function saveKpi1MatrixRow(definitionId) {
+  const period = kpi1SelectedPeriod();
+  if (!period || clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ kỳ DRAFT mới được sửa ma trận.", true);
+  const cells = [...document.querySelectorAll(`[data-kpi1-cell="${CSS.escape(definitionId)}"]`)];
+  const rows = [];
+  for (const cell of cells) {
+    const checkbox = cell.querySelector("[data-kpi1-assigned]");
+    const input = cell.querySelector("[data-kpi1-target]");
+    if (!checkbox?.checked) continue;
+    const target = Number(input?.value || 0);
+    if (!(target > 0)) return notice("Target của mọi sale được tick phải lớn hơn 0.", true);
+    rows.push({employeeId: checkbox.dataset.employeeId, target});
+  }
+  await callCrmRpc("crm_kpi_sync_definition_assignments", {
+    p_period_id: period.id,
+    p_definition_id: definitionId,
+    p_rows: rows,
+    p_expected_period_version: Number(period.version),
+    p_reason: "Cập nhật ma trận KPI từ Manager UI"
+  });
+  await reloadKpiFoundationData();
+  notice("Đã lưu ma trận assignment cho KPI.");
+}
+
+async function activateKpi1Period() {
+  const period = kpi1SelectedPeriod();
+  if (!period) return notice("Chưa chọn kỳ KPI.", true);
+  const validation = kpi1PeriodValidation(period);
+  if (!validation.canActivate) return notice("Kỳ KPI chưa hợp lệ: cần assignment, target > 0, definition active và sale ACTIVE.", true);
+  const message = `Kích hoạt ${period.name || kpi1PeriodLabel(period)}?\n\n${validation.kpiCount} KPI · ${validation.employeeCount} nhân viên · ${validation.assignments.length} assignment.\nSau khi ACTIVE, target và assignment sẽ bị khóa.`;
+  if (!confirm(message)) return;
+  await callCrmRpc("crm_kpi_activate_period", {
+    p_period_id: period.id,
+    p_expected_version: Number(period.version)
+  });
+  await reloadKpiFoundationData();
+  notice("Đã kích hoạt kỳ KPI. Cấu hình chính đã được khóa.");
+}
+
+function renderKpi1Matrix(period) {
+  const head = $("kpi1MatrixHead");
+  const body = $("kpi1MatrixRows");
+  if (!head || !body) return;
+  const periodAssignments = kpi1PeriodAssignments(period.id, true);
+  const assignedEmployeeIds = uniq(periodAssignments.map(item => item.employeeId));
+  const activeSales = kpi1EligibleSales();
+  const historicalUsers = assignedEmployeeIds
+    .map(kpi1EmployeeById)
+    .filter(Boolean)
+    .filter(user => !activeSales.some(item => kpi1EmployeeId(item) === kpi1EmployeeId(user)));
+  const employees = [...activeSales, ...historicalUsers];
+  const assignedDefinitionIds = new Set(periodAssignments.map(item => item.definitionId));
+  const definitions = kpiDefinitions.filter(item => item.active !== false || assignedDefinitionIds.has(item.id));
+  const locked = clean(period.status).toUpperCase() !== "DRAFT";
+
+  head.innerHTML = `<tr><th>KPI</th>${employees.map(user => `<th>${esc(user.name || user.email)}<div class="muted">${esc(user.email || "")}</div></th>`).join("")}<th>Thao tác</th></tr>`;
+  body.innerHTML = definitions.length ? definitions.map(definition => {
+    const cells = employees.map(user => {
+      const employeeId = kpi1EmployeeId(user);
+      const assignment = periodAssignments.find(item => item.definitionId === definition.id && item.employeeId === employeeId);
+      const assigned = assignment && clean(assignment.assignmentStatus || "ASSIGNED") === "ASSIGNED";
+      const employeeActive = user.active !== false && clean(user.lifecycleStatus || "active").toLowerCase() === "active";
+      return `<td class="kpi1-matrix-cell" data-kpi1-cell="${esc(definition.id)}">
+        <label><input type="checkbox" data-kpi1-assigned data-employee-id="${esc(employeeId)}" ${assigned ? "checked" : ""} ${locked || !employeeActive ? "disabled" : ""}> Áp dụng</label>
+        <input type="number" min="0.01" step="0.01" data-kpi1-target value="${assigned ? esc(assignment.target) : ""}" placeholder="Target" ${locked || !employeeActive ? "disabled" : ""}>
+        ${!employeeActive ? `<div class="muted">Không còn ACTIVE</div>` : ""}
+      </td>`;
+    }).join("");
+    return `<tr>
+      <td><b>${esc(definition.name || definition.code)}</b><div class="muted">${esc(definition.code)} · ${esc(definition.kpiType)} · ${esc(definition.unit)}</div>${definition.active === false ? `<span class="pill red">Đã tắt</span>` : ""}</td>
+      ${cells}
+      <td>${locked ? `<span class="muted">Đã khóa</span>` : `<button class="small primary" type="button" data-kpi1-save-matrix="${esc(definition.id)}">Lưu hàng</button>`}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="${employees.length + 2}" class="muted">Chưa có KPI definition để cấu hình.</td></tr>`;
+}
+
+function renderKpiFoundation() {
+  const panel = $("kpiFoundationPanel");
+  if (!panel || !isManager()) return;
+
+  const periodRows = $("kpi1PeriodRows");
+  periodRows.innerHTML = kpiPeriods.length ? kpiPeriods.map(period => {
+    const validation = kpi1PeriodValidation(period);
+    return `<tr>
+      <td><b>${esc(kpi1PeriodLabel(period))}</b><div class="muted">${esc(period.name || "")}</div></td>
+      <td>${kpi1StatusHtml(period.status)}</td>
+      <td>${esc(validation.kpiCount)}</td>
+      <td>${esc(validation.employeeCount)}</td>
+      <td>${esc(validation.assignments.length)}</td>
+      <td>${esc(fmtDate(period.createdAt))}</td>
+      <td><div class="actions"><button class="small primary" type="button" data-kpi1-select-period="${esc(period.id)}">Xem cấu hình</button>${clean(period.status).toUpperCase() === "DRAFT" ? `<button class="small" type="button" data-kpi1-rename-period="${esc(period.id)}">Đổi tên</button>` : ""}</div></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="7" class="muted">Chưa có kỳ KPI mới.</td></tr>`;
+
+  const definitionRows = $("kpi1DefinitionRows");
+  definitionRows.innerHTML = kpiDefinitions.length ? kpiDefinitions.map(item => `<tr>
+    <td><b>${esc(item.code)}</b></td>
+    <td>${esc(item.name)}<div class="muted">${esc(item.description || "")}</div></td>
+    <td>${esc(item.kpiType)}</td>
+    <td>${esc(item.unit)}</td>
+    <td>${item.evidenceRequired ? "Bắt buộc" : "Không"}</td>
+    <td>${item.active === false ? `<span class="pill red">Đã tắt</span>` : `<span class="pill green">Đang dùng</span>`}</td>
+    <td><div class="actions"><button class="small" type="button" data-kpi1-edit-definition="${esc(item.id)}">Sửa</button><button class="small ${item.active === false ? "primary" : "danger"}" type="button" data-kpi1-toggle-definition="${esc(item.id)}">${item.active === false ? "Bật" : "Tắt"}</button></div></td>
+  </tr>`).join("") : `<tr><td colspan="7" class="muted">Chưa có KPI definition.</td></tr>`;
+
+  const period = kpi1SelectedPeriod();
+  $("kpi1PeriodDetail").classList.toggle("hide", !period);
+  if (!period) return;
+  const validation = kpi1PeriodValidation(period);
+  const locked = clean(period.status).toUpperCase() !== "DRAFT";
+  $("kpi1SelectedPeriodTitle").textContent = `${period.name || "Kỳ KPI"} · ${kpi1PeriodLabel(period)}`;
+  $("kpi1SelectedPeriodMeta").innerHTML = `${kpi1StatusHtml(period.status)} <span>Version ${esc(period.version)}</span>`;
+  $("kpi1ActivationSummary").innerHTML = [
+    ["KPI", validation.kpiCount],
+    ["Nhân viên", validation.employeeCount],
+    ["Assignments", validation.assignments.length],
+    ["Không hợp lệ", validation.invalidCount]
+  ].map(([label,value]) => `<div class="kpi1-summary-card"><span class="muted">${esc(label)}</span><b>${esc(value)}</b></div>`).join("");
+  $("kpi1LockedNotice").classList.toggle("hide", !locked);
+  $("kpi1ActivatePeriodBtn").classList.toggle("hide", locked);
+  $("kpi1ActivatePeriodBtn").disabled = !validation.canActivate;
+  renderKpi1Matrix(period);
 }
 
 function activeKpiRules() {
@@ -7900,6 +8244,11 @@ document.addEventListener("click", e => {
   const kpiRuleExplainId = e.target.closest("[data-kpi-rule-explain]")?.dataset.kpiRuleExplain;
   const kpiRuleProposalId = e.target.closest("[data-kpi-rule-proposals]")?.dataset.kpiRuleProposals;
   const kpiOwnerDetailBtn = e.target.closest("[data-kpi-owner-detail]");
+  const kpi1SelectPeriodId = e.target.closest("[data-kpi1-select-period]")?.dataset.kpi1SelectPeriod;
+  const kpi1RenamePeriodId = e.target.closest("[data-kpi1-rename-period]")?.dataset.kpi1RenamePeriod;
+  const kpi1EditDefinitionId = e.target.closest("[data-kpi1-edit-definition]")?.dataset.kpi1EditDefinition;
+  const kpi1ToggleDefinitionId = e.target.closest("[data-kpi1-toggle-definition]")?.dataset.kpi1ToggleDefinition;
+  const kpi1SaveMatrixId = e.target.closest("[data-kpi1-save-matrix]")?.dataset.kpi1SaveMatrix;
   const kpiProposalDetailId = e.target.closest("[data-kpi-proposal-detail]")?.dataset.kpiProposalDetail;
   const editKpiProposalId = e.target.closest("[data-edit-kpi-proposal]")?.dataset.editKpiProposal;
   const customerKpiProposalId = e.target.closest("[data-open-kpi-proposal-customer]")?.dataset.openKpiProposalCustomer;
@@ -7954,6 +8303,11 @@ document.addEventListener("click", e => {
   if (kpiRuleExplainId) openKpiRuleExplanation(kpiRuleExplainId);
   if (kpiRuleProposalId) openKpiRuleProposals(kpiRuleProposalId);
   if (kpiOwnerDetailBtn) openKpiOwnerDetail(kpiOwnerDetailBtn.dataset.kpiOwnerDetail, kpiOwnerDetailBtn.dataset.ownerKey);
+  if (kpi1SelectPeriodId) selectKpi1Period(kpi1SelectPeriodId);
+  if (kpi1RenamePeriodId) runAction(`kpi1Rename:${kpi1RenamePeriodId}`, "kpi1Rename", "Đang lưu...", () => renameKpi1Period(kpi1RenamePeriodId));
+  if (kpi1EditDefinitionId) editKpi1Definition(kpi1EditDefinitionId);
+  if (kpi1ToggleDefinitionId) runAction(`kpi1Toggle:${kpi1ToggleDefinitionId}`, "kpi1Toggle", "Đang cập nhật...", () => toggleKpi1Definition(kpi1ToggleDefinitionId));
+  if (kpi1SaveMatrixId) runAction(`kpi1Matrix:${kpi1SaveMatrixId}`, "kpi1Matrix", "Đang lưu ma trận...", () => saveKpi1MatrixRow(kpi1SaveMatrixId));
   if (kpiProposalDetailId) openKpiProposalDetail(kpiProposalDetailId);
   if (editKpiProposalId) openEditKpiProposal(editKpiProposalId);
   if (customerKpiProposalId) openKpiProposalModal(customerKpiProposalId);
@@ -8046,6 +8400,12 @@ on("myKpiProposalStatus", "change", renderMyKpiProposalPanel);
 on("kpiApprovalScope", "change", renderKpiApprovalPanel);
 on("resetMyKpiProposalFilterBtn", "click", resetMyKpiProposalFilter);
 on("resetKpiApprovalFilterBtn", "click", resetKpiApprovalFilter);
+on("kpi1ReloadBtn", "click", () => runAction("kpi1ReloadBtn", "kpi1Reload", "Đang tải...", reloadKpiFoundationData));
+on("kpi1CreatePeriodBtn", "click", () => runAction("kpi1CreatePeriodBtn", "kpi1CreatePeriod", "Đang tạo...", createKpi1Period));
+on("kpi1SaveDefinitionBtn", "click", () => runAction("kpi1SaveDefinitionBtn", "kpi1SaveDefinition", "Đang lưu...", saveKpi1Definition));
+on("kpi1CancelDefinitionBtn", "click", resetKpi1DefinitionForm);
+on("kpi1ActivatePeriodBtn", "click", () => runAction("kpi1ActivatePeriodBtn", "kpi1Activate", "Đang kích hoạt...", activateKpi1Period));
+on("kpi1ClosePeriodDetailBtn", "click", closeKpi1PeriodDetail);
 on("crmViewBtn", "click", () => setMainView("crm"));
 on("customersViewBtn", "click", () => setMainView("customers"));
 on("kpiViewBtn", "click", () => setMainView("kpi"));
