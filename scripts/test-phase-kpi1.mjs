@@ -104,7 +104,7 @@ check(/function renderKpiRuleList\(\)/.test(app), "Legacy KPI rule renderer must
 check(/function renderMyKpiProposalPanel\(\)/.test(app), "Legacy sale KPI proposal list must remain available.");
 check(/function openKpiProposalModal\(/.test(app) && /function submitKpiProposal\(\)/.test(app), "Legacy sale KPI proposal workflow must remain available.");
 check(/function renderKpiApprovalPanel\(\)/.test(app), "Legacy manager KPI approval workflow must remain available.");
-check(/KPI hiện tại \(legacy\)/.test(html), "Legacy KPI compatibility label missing.");
+check(/KPI cũ — Chỉ đọc từ 01\/09\/2026/.test(html), "Legacy KPI cutover/history label missing.");
 
 const ids = [...html.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
 const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];

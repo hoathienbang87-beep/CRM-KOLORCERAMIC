@@ -69,6 +69,12 @@ import {
   groupEvidenceCount,
   kpiValue as kpiTeamValue
 } from "./kpi-team.js";
+import {
+  KPI_LEGACY_CUTOVER_AT,
+  isLegacyKpiPreCutover,
+  legacyCloseoutEligible,
+  kpiCutoverStatusText
+} from "./kpi-cutover.js";
 let currentUser = null;
 let appUser = null;
 let settings = {...DEFAULT_SETTINGS};
@@ -136,6 +142,16 @@ const kpiTeamState = {
   proposalToken: 0,
   historyToken: 0
 };
+const kpiCutoverState = {
+  loaded: false,
+  loading: false,
+  preCutover: isLegacyKpiPreCutover(),
+  legacyPendingCount: 0,
+  canonicalPendingCount: 0,
+  serverNow: "",
+  cutoverAt: KPI_LEGACY_CUTOVER_AT,
+  error: ""
+};
 let auditLogs = [];
 let unsubscribers = [];
 let selectedCustomerId = "";
@@ -188,6 +204,64 @@ const ownerEmail = () => clean(appUser?.email) || clean(currentUser?.email);
 const sameIdentity = (a, b) => !!clean(a) && !!clean(b) && normalizeKey(a) === normalizeKey(b);
 const ownerMatchesCurrentUser = item => sameIdentity(item?.ownerUserId, appUser?.uid) || sameIdentity(item?.ownerEmail, ownerEmail()) || sameIdentity(item?.owner, ownerName());
 const canEditCustomer = c => !!c?.id && (isManager() || ownerMatchesCurrentUser(c));
+
+const legacyKpiPreCutover = () => kpiCutoverState.loaded ? kpiCutoverState.preCutover : isLegacyKpiPreCutover();
+const legacyVisiblePendingCount = () => kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length;
+const legacyKpiCloseoutAllowed = proposal => legacyKpiPreCutover() || legacyCloseoutEligible(proposal, isPendingKpiProposal(proposal));
+const operationalKpiPendingCount = () => legacyKpiPreCutover()
+  ? legacyVisiblePendingCount()
+  : Number(kpiCutoverState.canonicalPendingCount || 0);
+
+async function refreshCanonicalKpiPendingCount() {
+  if (!isManager() || legacyKpiPreCutover()) {
+    kpiCutoverState.canonicalPendingCount = 0;
+    return 0;
+  }
+  const result = await supabase
+    .from("kpi_submission_events")
+    .select("id", {count: "exact", head: true})
+    .eq("status", "PENDING");
+  if (result.error) throw result.error;
+  kpiCutoverState.canonicalPendingCount = Number(result.count || 0);
+  return kpiCutoverState.canonicalPendingCount;
+}
+
+async function refreshKpiCutoverState({render = true} = {}) {
+  if (!currentUser || !appUser || kpiCutoverState.loading) return;
+  kpiCutoverState.loading = true;
+  kpiCutoverState.error = "";
+  try {
+    const status = await callCrmRpc("crm_legacy_kpi_cutover_status", {});
+    kpiCutoverState.loaded = true;
+    kpiCutoverState.preCutover = status?.preCutover !== false;
+    kpiCutoverState.legacyPendingCount = Number(status?.legacyPendingCount || 0);
+    kpiCutoverState.serverNow = clean(status?.serverNow);
+    kpiCutoverState.cutoverAt = clean(status?.cutoverAt) || kpiCutoverState.cutoverAt;
+    await refreshCanonicalKpiPendingCount();
+  } catch (error) {
+    kpiCutoverState.error = authMessage(error);
+    if (!kpiCutoverState.loaded) kpiCutoverState.preCutover = isLegacyKpiPreCutover();
+    throw error;
+  } finally {
+    kpiCutoverState.loading = false;
+    if (render) {
+      renderKpiCutoverStatus();
+      renderExecutiveDashboard();
+      renderReportCenter();
+      if (canAccessAdminPanel()) renderAdminDashboard();
+    }
+  }
+}
+
+function renderKpiCutoverStatus() {
+  const target = $("kpiCutoverStatus");
+  if (!target) return;
+  const legacyPendingCount = kpiCutoverState.loaded
+    ? kpiCutoverState.legacyPendingCount
+    : legacyVisiblePendingCount();
+  target.classList.toggle("post-cutover", !legacyKpiPreCutover());
+  target.innerHTML = `<b>${legacyKpiPreCutover() ? "Chuẩn bị chuyển hệ thống KPI" : "KPI hiện tại"}</b><span>${esc(kpiCutoverStatusText({preCutover:legacyKpiPreCutover(), legacyPendingCount}))}</span>${kpiCutoverState.error ? `<span class="error-text">Chưa đồng bộ được trạng thái từ server: ${esc(kpiCutoverState.error)}</span>` : ""}`;
+}
 const logAudit = (action, entity, entityId = "", payload = {}) => setDoc(doc(collection(db, "auditLogs")), {
   action,
   entity,
@@ -2411,7 +2485,7 @@ function updateCareStatusVisual() {
 const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel"];
 const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
 const customerViewIds = ["customerSearchPanel"];
-const kpiViewIds = ["kpiTeamPanel","kpiSummaryPanel","kpiFoundationPanel","kpi2OperationsPanel","kpiRulePanel","kpiApprovalPanel"];
+const kpiViewIds = ["kpiCutoverStatus","kpiTeamPanel","kpiSummaryPanel","kpiFoundationPanel","kpi2OperationsPanel","kpiRulePanel","kpiApprovalPanel"];
 const reportsViewIds = ["reportsPanel"];
 
 function renderCrmView() {
@@ -2452,6 +2526,7 @@ function setMainView(view) {
   document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isReportsView || isAdminView);
   $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView || isManager());
+  $("kpiCutoverStatus")?.classList.toggle("hide", !isKpiView);
   $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView || isManager());
   $("kpiFoundationPanel")?.classList.add("hide");
   $("kpiRulePanel")?.classList.add("hide");
@@ -2467,6 +2542,7 @@ function setMainView(view) {
   if (!isCustomerView && !isKpiView && !isReportsView && !isAdminView) renderCrmView();
   if (isCustomerView) renderCustomers();
   if (isKpiView) {
+    renderKpiCutoverStatus();
     if (isManager()) {
       renderKpiTeamShell();
       reloadKpiTeamSummary().catch(err => notice("Lỗi tải KPI Team: " + authMessage(err), true));
@@ -2548,7 +2624,8 @@ function renderExecutiveDashboard() {
   const boughtCustomers = rows.filter(c => basicPurchaseCountFor(c) > 0);
   const purchaseTimes = rows.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0);
   const purchaseValue = rows.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
-  const pendingKpi = kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length;
+  const pendingKpi = operationalKpiPendingCount();
+  const legacyPendingKpi = legacyVisiblePendingCount();
   const dueCare = rows.filter(isCareDue);
   const overdueCare = rows.filter(isCareOverdue);
   const noDateCare = rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate));
@@ -2564,7 +2641,8 @@ function renderExecutiveDashboard() {
     ["Khách đã mua", boughtCustomers.length, "", ""],
     ["Số lần mua", purchaseTimes, "", ""],
     ["Giá trị mua căn bản", money(purchaseValue), "", ""],
-    ["KPI chờ duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
+    [legacyKpiPreCutover() ? "KPI chờ duyệt" : "KPI hiện tại cần duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
+    ...(!legacyKpiPreCutover() ? [["KPI cũ đang đóng sổ", legacyPendingKpi, legacyPendingKpi ? "warn" : "", "legacy-pending-kpi"]] : []),
     ["Tỉ lệ mua", rows.length ? Math.round(boughtCustomers.length / rows.length * 100) + "%" : "0%", ""]
   ];
   $("executiveGrid").innerHTML = cards.map(([label,value,cls,action]) => `
@@ -3208,6 +3286,21 @@ async function snoozeTask(customerId, days=1) {
 function jumpToPendingKpi() {
   if (!isManager()) return;
   setMainView("kpi");
+  if (!legacyKpiPreCutover()) {
+    loadKpiTeamGlobalQueue({force:true}).catch(err => notice("Không tải được KPI hiện tại cần duyệt: " + authMessage(err), true));
+    return;
+  }
+  setTimeout(() => {
+    $("kpiApprovalPanel")?.scrollIntoView({behavior: "smooth", block: "start"});
+    $("kpiApprovalPanel")?.classList.add("focus-flash");
+    setTimeout(() => $("kpiApprovalPanel")?.classList.remove("focus-flash"), 1400);
+  }, 80);
+}
+
+function jumpToLegacyPendingKpi() {
+  if (!isManager()) return;
+  setMainView("kpi");
+  setKpiTeamMode("library");
   setTimeout(() => {
     $("kpiApprovalPanel")?.scrollIntoView({behavior: "smooth", block: "start"});
     $("kpiApprovalPanel")?.classList.add("focus-flash");
@@ -3593,7 +3686,7 @@ function renderCustomers() {
       <td class="action-col"><div class="row-actions">
         <button class="small primary" data-open-care="${esc(c.id)}">Chăm sóc KH</button>
         <button class="small" data-open-deal="${esc(c.id)}">Mua căn bản</button>
-        <button class="small primary" data-open-kpi-proposal-customer="${esc(c.id)}">Đề xuất KPI</button>
+        ${legacyKpiPreCutover() ? `<button class="small primary" data-open-kpi-proposal-customer="${esc(c.id)}">Đề xuất KPI</button>` : ""}
       </div></td>
     </tr>`;
   }).join("") : `<tr><td colspan="11" class="muted">Không có dữ liệu phù hợp.</td></tr>`;
@@ -3606,6 +3699,9 @@ function renderKpiTable() {
   const month = clean($("kpiRuleMonth").value) || currentMonth();
   const monthRules = activeKpiRules();
   $("exportKpiBtn")?.classList.toggle("hide", !isManager());
+  if ($("exportKpiBtn")) $("exportKpiBtn").textContent = legacyKpiPreCutover() ? "Xuất KPI" : "Xuất KPI cũ";
+  $("openKpiProposalBtn")?.classList.toggle("hide", !isSale() || !legacyKpiPreCutover());
+  $("openKpiProposalBtnTop")?.classList.toggle("hide", !legacyKpiPreCutover());
   const ownerKeys = reportOwnerKeys();
   const dynamicHeads = monthRules.map(rule => `
     <th>
@@ -3807,7 +3903,7 @@ async function exportKpiReport() {
     "Số lần mua", "Giá trị mua", "Tỉ lệ mua", ...dynamicHeads
   ];
   const summaryTable = [
-    [`Báo cáo KPI tháng ${month}${week ? " · tuần " + week : ""}`, ...Array(Math.max(0, summaryHeader.length - 1)).fill("")],
+    [`Báo cáo KPI cũ tháng ${month}${week ? " · tuần " + week : ""}`, ...Array(Math.max(0, summaryHeader.length - 1)).fill("")],
     summaryHeader,
     ...summaryRows.map(row => [
       personExportCell(row.owner, row.email), row.totalCustomers, row.monthLead, row.careCount,
@@ -3841,7 +3937,7 @@ async function exportKpiReport() {
   if (exportXlsx([
     { name: "Tong hop KPI", rows: summaryTable },
     { name: "De xuat KPI", rows: proposalTable }
-  ], `crm-kpi-report-${month}`) && logged) notice("Đã xuất báo cáo KPI và ghi log thao tác.");
+  ], `crm-kpi-cu-${month}`) && logged) notice("Đã xuất báo cáo KPI cũ và ghi log thao tác.");
 }
 
 async function logManagementExport(report) {
@@ -3873,7 +3969,8 @@ async function exportManagementReport() {
     boughtCustomers: reportCustomers.filter(c => basicPurchaseCountFor(c) > 0).length,
     purchaseTimes: reportCustomers.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0),
     purchaseValue: reportCustomers.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0),
-    pendingKpi: kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length
+    pendingKpi: operationalKpiPendingCount(),
+    legacyPendingKpi: legacyVisiblePendingCount()
   };
   const summaryRows = [
     ["Báo cáo quản trị CRM", ""],
@@ -3887,7 +3984,8 @@ async function exportManagementReport() {
     ["Khách đã mua căn bản", report.boughtCustomers],
     ["Số lần mua căn bản", report.purchaseTimes],
     ["Giá trị mua căn bản", money(report.purchaseValue)],
-    ["KPI chờ duyệt", report.pendingKpi]
+    [legacyKpiPreCutover() ? "KPI chờ duyệt" : "KPI hiện tại cần duyệt", report.pendingKpi],
+    ...(!legacyKpiPreCutover() ? [["KPI cũ đang đóng sổ", report.legacyPendingKpi]] : [])
   ];
   const pipelineRows = [
     ["Pipeline", "Số khách", "Tỷ trọng"],
@@ -4441,7 +4539,9 @@ function renderKpiTeamShell() {
     $("kpiTeamPendingBtn").classList.toggle("primary", kpiTeamState.globalQueueOpen);
   }
   if (kpiTeamState.activeMode === "library") {
-    $("kpiTeamStatus").textContent = "Bộ KPI dùng chung, cấu hình kỳ và KPI definition. Dữ liệu legacy được giữ bên dưới để không mất luồng cũ.";
+    $("kpiTeamStatus").textContent = legacyKpiPreCutover()
+      ? "Bộ KPI-2 tháng 09 có thể chuẩn bị ở trạng thái DRAFT. KPI tháng 08 vẫn vận hành trên hệ thống cũ."
+      : "Bộ KPI-2 là cấu hình vận hành hiện tại. KPI cũ bên dưới chỉ dùng cho lịch sử và đóng sổ.";
     $("kpiTeamContent").innerHTML = `<div class="kpi-team-empty"><b>Bộ KPI</b><span>Dùng các khối cấu hình bên dưới. KPI definition không gắn riêng với một nhân viên.</span></div>`;
   } else if (kpiTeamState.globalQueueOpen) {
     renderKpiTeamGlobalQueue();
@@ -5091,6 +5191,7 @@ async function reviewSelectedKpi2Events(){
   if(decision==='REJECTED'&&!reason)return notice('Từ chối cần chọn reason code.',true);if((decision==='NEEDS_REVISION'||reason==='OTHER')&&!note)return notice('Cần ghi chú Manager.',true);
   if(!confirm(`${decision} ${selected.length} event? Toàn bộ batch sẽ rollback nếu một event lỗi.`))return;
   await callCrmRpc('crm_kpi_review_events',{p_request_id:crypto.randomUUID(),p_rows:selected,p_decision:decision,p_reason_code:reason,p_manager_note:note});
+  await refreshKpiCutoverState({render:false});
   if(teamReviewVisible){
     kpiTeamState.summaryCacheKey='';
     kpiTeamState.globalQueueEvents=[];
@@ -5170,9 +5271,9 @@ function renderKpiAssignmentBuilder() {
   const defaultTarget = Number($("kpiRuleTarget")?.value || 0);
   $("kpiAssignRows").innerHTML = users.length ? users.map(u => `
     <label class="kpi-assign-row">
-      <input type="checkbox" data-kpi-assign-email="${esc(u.email)}" ${!editingRule || assigned.includes(u.email) ? "checked" : ""}>
+      <input type="checkbox" data-kpi-assign-email="${esc(u.email)}" ${!editingRule || assigned.includes(u.email) ? "checked" : ""} ${legacyKpiPreCutover() ? "" : "disabled"}>
       <span><b>${esc(u.name || u.email)}</b><div class="muted">${esc(u.email)}</div></span>
-      <input type="number" min="0" step="1" value="${esc(editingRule ? kpiRuleTargetForOwner(editingRule, u.email) : (defaultTarget || ""))}" placeholder="Chỉ tiêu" data-kpi-target-email="${esc(u.email)}">
+      <input type="number" min="0" step="1" value="${esc(editingRule ? kpiRuleTargetForOwner(editingRule, u.email) : (defaultTarget || ""))}" placeholder="Chỉ tiêu" data-kpi-target-email="${esc(u.email)}" ${legacyKpiPreCutover() ? "" : "disabled"}>
     </label>
   `).join("") : `<div class="muted">Chưa có nhân viên active để gán KPI.</div>`;
 }
@@ -5265,7 +5366,7 @@ function renderKpiControlRows() {
         <td>${ownerRows || "<span class='muted'>Chưa gán nhân viên</span>"}</td>
         <td>${kpiProgressHtml(totalValue, totalTarget)}</td>
         <td><span class="pill ${statusClass}">${statusLabel}</span></td>
-        <td><div class="actions"><button class="small" data-edit-kpi-rule="${esc(rule.id)}">Sửa</button><button class="small" data-kpi-rule-proposals="${esc(rule.id)}">Chi tiết KPI</button>${rule.active === false ? `<button class="small primary" data-activate-kpi-rule="${esc(rule.id)}">Bật lại</button>` : `<button class="small danger" data-disable-kpi-rule="${esc(rule.id)}">Tắt</button>`}</div></td>
+        <td><div class="actions">${legacyKpiPreCutover() ? `<button class="small" data-edit-kpi-rule="${esc(rule.id)}">Sửa</button>${rule.active === false ? `<button class="small primary" data-activate-kpi-rule="${esc(rule.id)}">Bật lại</button>` : `<button class="small danger" data-disable-kpi-rule="${esc(rule.id)}">Tắt</button>`}` : `<span class="pill">Chỉ đọc</span>`}<button class="small" data-kpi-rule-proposals="${esc(rule.id)}">Chi tiết KPI cũ</button></div></td>
       </tr>
     `;
   }).join("") : `<tr><td colspan="5" class="muted">Chưa có KPI.</td></tr>`;
@@ -5273,6 +5374,15 @@ function renderKpiControlRows() {
 
 function renderKpiRuleList() {
   if (!isManager()) return;
+  const readOnly = !legacyKpiPreCutover();
+  ["kpiRuleMonth","kpiRuleName","kpiRuleDescription","kpiRuleTarget","kpiRuleCountMode"].forEach(id => {
+    if ($(id)) $(id).disabled = readOnly;
+  });
+  if ($("saveKpiRuleBtn")) {
+    $("saveKpiRuleBtn").disabled = readOnly;
+    $("saveKpiRuleBtn").textContent = readOnly ? "KPI cũ chỉ đọc" : (editingKpiRuleId ? "Lưu KPI" : "Tạo KPI");
+  }
+  if (readOnly) $("cancelEditKpiRuleBtn")?.classList.add("hide");
   renderKpiAssignmentBuilder();
   renderKpiControlRows();
 }
@@ -5306,8 +5416,7 @@ function renderKpiApprovalPanel() {
         <div class="kpi-approval-actions">
           <button class="small" data-kpi-proposal-detail="${esc(p.id)}">Chi tiết</button>
           ${isAdmin() ? `<button class="small danger" data-delete-kpi-proposal="${esc(p.id)}">Ẩn test</button>` : ""}
-          <button class="small primary" data-approve-kpi-proposal="${esc(p.id)}">Duyệt</button>
-          <button class="small danger" data-reject-kpi-proposal="${esc(p.id)}">Từ chối</button>
+          ${legacyKpiCloseoutAllowed(p) ? `<button class="small primary" data-approve-kpi-proposal="${esc(p.id)}">Duyệt</button><button class="small danger" data-reject-kpi-proposal="${esc(p.id)}">Từ chối</button>` : `<span class="pill">Chỉ đọc</span>`}
         </div>
       </div>
     </div>
@@ -5502,12 +5611,12 @@ function canViewKpiProposalDetail(proposal) {
 
 function canEditKpiProposal(proposal) {
   if (!proposal || proposal.isDeleted || !isPendingKpiProposal(proposal)) return false;
-  return [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(proposal, key));
+  return legacyKpiCloseoutAllowed(proposal) && [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(proposal, key));
 }
 
 function canSoftDeleteKpiProposal(proposal) {
   if (!proposal || proposal.isDeleted || isAdmin() || !isPendingKpiProposal(proposal)) return false;
-  return [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(proposal, key));
+  return legacyKpiCloseoutAllowed(proposal) && [ownerEmail(), ownerName()].some(key => kpiProposalMatchesOwner(proposal, key));
 }
 
 function openKpiOwnerDetail(ruleId, ownerKey) {
@@ -5569,6 +5678,7 @@ function openKpiProposalDetail(proposalId) {
 
 async function saveKpiRule() {
   if (!isManager()) return notice("Chỉ admin/manager được tạo KPI.", true);
+  if (!legacyKpiPreCutover()) return notice("KPI cũ đã chuyển sang chỉ đọc từ 01/09/2026. Hãy cấu hình KPI-2 trong Bộ KPI.", true);
   const assignments = collectKpiAssignments();
   const existingRule = editingKpiRuleId ? kpiRules.find(r => r.id === editingKpiRuleId) : null;
   const data = {
@@ -5623,6 +5733,7 @@ function resetKpiRuleForm() {
 
 function editKpiRule(ruleId) {
   if (!isManager()) return notice("Chỉ admin/manager được sửa KPI.", true);
+  if (!legacyKpiPreCutover()) return notice("KPI cũ đã chuyển sang chỉ đọc từ 01/09/2026.", true);
   const rule = kpiRules.find(r => r.id === ruleId);
   if (!rule) return notice("Không tìm thấy KPI.", true);
   editingKpiRuleId = rule.id;
@@ -5638,6 +5749,7 @@ function editKpiRule(ruleId) {
 
 async function disableKpiRule(ruleId) {
   if (!isManager()) return notice("Chỉ admin/manager được tắt KPI.", true);
+  if (!legacyKpiPreCutover()) return notice("Không thể thay đổi KPI cũ sau 01/09/2026.", true);
   if (!ruleId) return;
   if (!confirm("Tắt KPI này? Dữ liệu đề xuất vẫn giữ nguyên, sale sẽ không chọn KPI này cho đến khi bật lại.")) return;
   try {
@@ -5656,6 +5768,7 @@ async function disableKpiRule(ruleId) {
 
 async function activateKpiRule(ruleId) {
   if (!isManager()) return notice("Chỉ admin/manager được bật lại KPI.", true);
+  if (!legacyKpiPreCutover()) return notice("Không thể kích hoạt lại KPI cũ sau 01/09/2026.", true);
   if (!ruleId) return;
   try {
     await setDoc(doc(db, "kpiRules", ruleId), {
@@ -5715,6 +5828,10 @@ function fileExtension(file) {
 async function uploadKpiEvidenceFiles(proposalId) {
   const files = proposalEvidenceFiles();
   if (!files.length) return [];
+  const existingProposal = editingKpiProposalId ? kpiProposals.find(p => p.id === editingKpiProposalId) : null;
+  if (!legacyKpiPreCutover() && !legacyCloseoutEligible(existingProposal, isPendingKpiProposal(existingProposal))) {
+    throw new Error("KPI cũ đã ngừng nhận minh chứng cho đề xuất mới từ 01/09/2026.");
+  }
   if (files.length > KPI_EVIDENCE_MAX_FILES) {
     throw new Error(`Chỉ được chọn tối đa ${KPI_EVIDENCE_MAX_FILES} ảnh minh chứng.`);
   }
@@ -5745,6 +5862,7 @@ async function uploadKpiEvidenceFiles(proposalId) {
 }
 
 function openKpiProposalModal(source = "") {
+  if (!legacyKpiPreCutover()) return notice("KPI cũ đã ngừng nhận đề xuất mới từ 01/09/2026. Hãy sử dụng KPI hiện tại.", true);
   const customerId = typeof source === "string" ? source : "";
   const customer = customerId ? customers.find(c => c.id === customerId) : null;
   editingKpiProposalId = "";
@@ -5836,6 +5954,8 @@ async function submitKpiProposal() {
   if (rule.active === false) return notice("KPI này đang tắt. Admin/manager cần bật lại trước khi gửi đề xuất.", true);
   if (!kpiRuleAppliesToCurrentUser(rule)) return notice("KPI này chưa được gán cho bạn.", true);
   const existingProposal = editingKpiProposalId ? kpiProposals.find(p => p.id === editingKpiProposalId) : null;
+  if (!editingKpiProposalId && !legacyKpiPreCutover()) return notice("KPI cũ đã ngừng nhận đề xuất mới từ 01/09/2026. Hãy sử dụng KPI hiện tại.", true);
+  if (editingKpiProposalId && !legacyKpiCloseoutAllowed(existingProposal)) return notice("Chỉ đề xuất KPI cũ pending tạo trước 01/09/2026 mới được sửa để đóng sổ.", true);
   if (editingKpiProposalId && !canEditKpiProposal(existingProposal)) return notice("Đề xuất này đã được duyệt/từ chối hoặc bạn không còn quyền sửa.", true);
   const isEditingProposal = Boolean(editingKpiProposalId);
   const proposalRef = editingKpiProposalId ? doc(db, "kpiProposals", editingKpiProposalId) : doc(collection(db, "kpiProposals"));
@@ -5874,6 +5994,7 @@ async function submitKpiProposal() {
       p_proposal_id: proposalRef.id,
       p_proposal: data
     });
+    await refreshKpiCutoverState({render:false});
     closeKpiProposalModal();
     notice(isEditingProposal ? "Đã cập nhật đề xuất KPI." : "Đã gửi đề xuất KPI cho manager/admin.");
   } catch (err) {
@@ -5886,6 +6007,7 @@ async function reviewKpiProposal(proposalId, status) {
   const proposal = kpiProposals.find(p => p.id === proposalId);
   if (!proposal) return notice("Không tìm thấy đề xuất KPI.", true);
   if (!isPendingKpiProposal(proposal)) return notice("Đề xuất KPI này đã được xử lý, không duyệt/từ chối lại để giữ log.", true);
+  if (!legacyKpiCloseoutAllowed(proposal)) return notice("Chỉ proposal KPI cũ pending tạo trước 01/09/2026 mới được đóng sổ.", true);
   const nextStatus = status === "approved" ? "approved" : "rejected";
   const reviewNote = nextStatus === "rejected" ? clean(prompt("Lý do từ chối đề xuất KPI này?", "") || "") : "";
   const rule = kpiRules.find(r => r.id === proposal.kpiRuleId) || {};
@@ -5897,6 +6019,7 @@ async function reviewKpiProposal(proposalId, status) {
       p_review_note: reviewNote,
       p_review_snapshot: reviewSnapshot
     });
+    await refreshKpiCutoverState({render:false});
     notice(nextStatus === "approved" ? "Đã duyệt đề xuất KPI." : "Đã từ chối đề xuất KPI.");
   } catch (err) {
     notice("Không cập nhật được đề xuất KPI: " + authMessage(err), true);
@@ -5907,9 +6030,11 @@ async function deleteKpiProposal(proposalId) {
   if (!isAdmin()) return notice("Chỉ admin được ẩn KPI test.", true);
   const proposal = kpiProposals.find(p => p.id === proposalId);
   if (!proposal) return notice("Không tìm thấy đề xuất KPI.", true);
+  if (!legacyKpiCloseoutAllowed(proposal)) return notice("Sau 01/09/2026 chỉ proposal KPI cũ pending mới được đóng sổ.", true);
   if (!confirm(`Ẩn KPI test của ${proposal.owner || proposal.ownerEmail || "nhân viên"}? Dòng này sẽ không còn xuất trong báo cáo KPI nhưng vẫn giữ audit log.`)) return;
   try {
     await callCrmRpc("crm_archive_kpi_proposal", {p_proposal_id: proposalId});
+    await refreshKpiCutoverState({render:false});
     closeDetailModal();
     notice("Đã ẩn KPI test khỏi báo cáo.");
   } catch (err) {
@@ -5924,6 +6049,7 @@ async function softDeleteKpiProposal(proposalId) {
   if (!confirm("Xóa đề xuất KPI đang chờ duyệt này? Dữ liệu sẽ được ẩn khỏi KPI và vẫn có log kiểm tra khi cần.")) return;
   try {
     await callCrmRpc("crm_archive_kpi_proposal", {p_proposal_id: proposalId});
+    await refreshKpiCutoverState({render:false});
     closeDetailModal();
     notice("Đã xóa đề xuất KPI.");
   } catch (err) {
@@ -8334,19 +8460,21 @@ function renderReportCenter() {
   const monthCareLogs = careLogs.filter(l => !l.isDeleted && reportIds.has(l.customerId) && monthOf(careLogActivityDate(l)) === month);
   const boughtCustomers = reportCustomers.filter(c => basicPurchaseCountFor(c) > 0);
   const purchaseValue = reportCustomers.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
+  const pendingKpi = operationalKpiPendingCount();
+  const legacyPendingKpi = legacyVisiblePendingCount();
   const cards = [
-    ["Khách đang quản lý", reportCustomers.length, ""],
-    ["Khách mới tháng này", monthCustomers.length, ""],
-    ["Cần chăm", dueCare.length, dueCare.length ? "warn" : ""],
-    ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "warn" : ""],
-    ["Lượt chăm tháng", monthCareLogs.length, ""],
-    ["Khách đã mua căn bản", boughtCustomers.length, ""],
-    ["Giá trị mua căn bản", money(purchaseValue), ""],
-    ["KPI chờ duyệt", kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length, kpiProposals.some(p => isPendingKpiProposal(p) && !p.isDeleted) ? "warn" : ""]
+    ["Khách đang quản lý", reportCustomers.length, "", "managed-customers"],
+    ["Khách mới tháng này", monthCustomers.length, "", "month-customers"],
+    ["Cần chăm", dueCare.length, dueCare.length ? "warn" : "", "due-care"],
+    ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "warn" : "", "overdue-care"],
+    ["Lượt chăm tháng", monthCareLogs.length, "", "month-care"],
+    ["Khách đã mua căn bản", boughtCustomers.length, "", "bought-customers"],
+    ["Giá trị mua căn bản", money(purchaseValue), "", "purchase-value"],
+    [legacyKpiPreCutover() ? "KPI chờ duyệt" : "KPI hiện tại cần duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
+    ...(!legacyKpiPreCutover() ? [["KPI cũ đang đóng sổ", legacyPendingKpi, legacyPendingKpi ? "warn" : "", "legacy-pending-kpi"]] : [])
   ];
   $("reportCenterTime").textContent = `Cập nhật ${new Date().toLocaleString("vi-VN")}`;
-  $("reportCenterGrid").innerHTML = cards.map(([label,value,cls], index) => {
-    const action = ["managed-customers","month-customers","due-care","overdue-care","month-care","bought-customers","purchase-value","pending-kpi"][index];
+  $("reportCenterGrid").innerHTML = cards.map(([label,value,cls,action]) => {
     return `
     <div class="executive-card report-card ${esc(cls)} clickable" role="button" tabindex="0" data-dashboard-action="${esc(action)}">
       <span class="muted">${esc(label)}</span>
@@ -9004,7 +9132,8 @@ function renderAdminDashboard() {
   const managedCustomers = allCustomers.length ? allCustomers : customers;
   const monthCustomers = managedCustomers.filter(c => monthOf(c.createdAt) === currentMonth() && !c.isDeleted).length;
   const dueCare = managedCustomers.filter(c => !c.isDeleted && isCareDue(c)).length;
-  const pendingKpi = kpiProposals.filter(p => isPendingKpiProposal(p) && !p.isDeleted).length;
+  const pendingKpi = operationalKpiPendingCount();
+  const legacyPendingKpi = legacyVisiblePendingCount();
   const activeUsers = users.filter(u => u.active !== false).length;
   const warnings = [
     managedCustomers.filter(c => !clean(c.ownerEmail) && !clean(c.owner)).length ? "Có khách thiếu phụ trách" : "",
@@ -9015,7 +9144,8 @@ function renderAdminDashboard() {
     ["Tổng khách hàng", managedCustomers.filter(c => !c.isDeleted).length, "Dữ liệu khách đang quản lý"],
     ["Khách mới tháng này", monthCustomers, "Khách được tạo trong tháng"],
     ["Khách cần chăm", dueCare, "Theo logic hẹn chăm hiện tại", dueCare ? "warn" : ""],
-    ["KPI chờ duyệt", pendingKpi, "Đề xuất cần admin/manager xử lý", pendingKpi ? "warn" : ""],
+    [legacyKpiPreCutover() ? "KPI chờ duyệt" : "KPI hiện tại cần duyệt", pendingKpi, "Đề xuất KPI-2 cần admin/manager xử lý", pendingKpi ? "warn" : ""],
+    ...(!legacyKpiPreCutover() ? [["KPI cũ đang đóng sổ", legacyPendingKpi, "Proposal legacy pending tạo trước 01/09/2026", legacyPendingKpi ? "warn" : ""]] : []),
     ["User hoạt động", activeUsers, "Tài khoản active"],
     ["Cảnh báo", warnings.length, warnings.join(" · ") || "Chưa có cảnh báo nổi bật", warnings.length ? "warn" : ""]
   ];
@@ -9115,6 +9245,7 @@ async function reloadApp() {
   try {
     await loadSettings();
     if (canAccessAdminPanel()) await loadCompanySettings();
+    await refreshKpiCutoverState({render:false});
     watchData();
     renderAll();
     notice("Đã tải lại settings và dữ liệu mới nhất.");
@@ -9206,6 +9337,7 @@ document.addEventListener("click", e => {
   if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
   if (["month-care","purchase-value"].includes(dashboardAction)) openDashboardActivityDetail(dashboardAction);
   if (dashboardAction === "pending-kpi") jumpToPendingKpi();
+  if (dashboardAction === "legacy-pending-kpi") jumpToLegacyPendingKpi();
   if (careId) {
     closeDetailModal();
     openDrawer(careId, "care");
@@ -9300,6 +9432,7 @@ document.addEventListener("keydown", e => {
   if (["pending-deals","completed-deals","month-revenue","deposit-deals","canceled-deals"].includes(dashboardAction)) openDashboardDealDetail(dashboardAction);
   if (["month-care","purchase-value"].includes(dashboardAction)) openDashboardActivityDetail(dashboardAction);
   if (dashboardAction === "pending-kpi") jumpToPendingKpi();
+  if (dashboardAction === "legacy-pending-kpi") jumpToLegacyPendingKpi();
 });
 
 $("loginBtn")?.addEventListener("click", () => runAction("loginBtn", "login", "Đang đăng nhập...", loginEmailPassword));
@@ -9511,6 +9644,7 @@ onAuthStateChanged(auth, async user => {
     if (appUser.active === false) throw new Error("Tài khoản đã bị khóa.");
     await loadSettings();
     if (canAccessAdminPanel()) await loadCompanySettings();
+    await refreshKpiCutoverState({render:false});
     startPresence();
     showApp();
     watchData();

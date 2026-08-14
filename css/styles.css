@@ -521,6 +521,10 @@
 .kpi-team-skeleton{display:grid;gap:8px}
 .kpi-team-skeleton span{height:72px;border-radius:8px;background:linear-gradient(90deg,#edf2f7 25%,#f8fafc 50%,#edf2f7 75%);background-size:200% 100%;animation:kpiTeamPulse 1.3s infinite}
 @keyframes kpiTeamPulse{to{background-position:-200% 0}}
+.kpi-cutover-status{margin-top:14px;padding:11px 14px;border:1px solid #9fc8e8;border-left:4px solid #2779bd;border-radius:6px;background:#eef7ff;color:#173b5b;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.kpi-cutover-status.post-cutover{border-color:#8ccdb8;border-left-color:#16836d;background:#eefaf6;color:#134e43}
+.kpi-cutover-status b{font-size:14px}
+.kpi-cutover-status span{font-size:13px}
 .kpi-team-detail-drawer{width:min(880px,calc(100% - 24px))}
 .kpi-team-detail-head{top:-18px;margin:-18px -18px 12px;padding:18px;background:#fff}
 .kpi-team-detail-summary{display:grid;grid-template-columns:1.35fr repeat(2,minmax(110px,.55fr)) minmax(150px,.7fr);gap:9px;margin-bottom:10px}

@@ -300,6 +300,8 @@
           <div id="customerPager" class="list-pager"></div>
         </div>
 
+        <div id="kpiCutoverStatus" class="kpi-cutover-status hide" role="status" aria-live="polite"></div>
+
         <div id="kpiTeamPanel" class="panel hide kpi-team-panel" style="margin-top:14px">
           <div class="pro-section-title kpi-team-header">
             <div>
@@ -345,7 +347,7 @@
 
         <div id="kpiApprovalPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
-            <h3>Duyệt KPI legacy</h3>
+            <h3>KPI cũ — Đang đóng sổ</h3>
             <div class="actions">
               <select id="kpiApprovalScope" class="small-select" aria-label="Lọc KPI chờ duyệt">
                 <option value="all">Tất cả chờ duyệt</option>
@@ -355,16 +357,16 @@
               <button id="resetKpiApprovalFilterBtn" class="small" type="button">Xóa lọc</button>
             </div>
           </div>
-          <div class="muted" style="margin-bottom:8px">KPI chỉ được tính sau khi admin/manager duyệt. Đề xuất tồn tháng cũ vẫn hiện ở đây để xử lý tiếp.</div>
+          <div class="muted" style="margin-bottom:8px">Hàng đợi lịch sử được tách khỏi KPI-2. Sau cutover chỉ proposal pending tạo trước 01/09/2026 mới được xử lý.</div>
           <div id="kpiApprovalList" class="rule-list muted">Chưa có KPI chờ duyệt.</div>
         </div>
 
         <div id="kpiSummaryPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
-            <h3>KPI nhân viên legacy</h3>
+            <h3>KPI cũ — Lịch sử và đóng sổ</h3>
             <div class="actions">
               <button id="openKpiProposalBtnTop" class="small primary" type="button">Đề xuất KPI</button>
-              <button id="exportKpiBtn" class="small primary hide" type="button">Xuất KPI</button>
+              <button id="exportKpiBtn" class="small primary hide" type="button">Xuất KPI cũ</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -375,7 +377,7 @@
           </div>
           <div id="kpiMyProposalPanel" class="section" style="margin-top:14px">
             <div class="pro-section-title">
-              <h3>Đề xuất KPI của tôi</h3>
+              <h3>Đề xuất KPI cũ của tôi</h3>
               <div class="actions">
                 <select id="myKpiProposalStatus" class="small-select" aria-label="Lọc đề xuất KPI của tôi">
                   <option value="">Tất cả trạng thái</option>
@@ -508,7 +510,7 @@
         </div>
 
         <div id="kpiRulePanel" class="panel hide" style="margin-top:14px">
-          <h3>KPI hiện tại (legacy)</h3>
+          <h3>KPI cũ — Chỉ đọc từ 01/09/2026</h3>
           <div class="kpi-rule-grid">
             <div class="field"><label>Tháng báo cáo</label><input id="kpiRuleMonth" type="month"></div>
             <div class="field"><label>Tên KPI</label><input id="kpiRuleName" placeholder="Gửi kệ trưng bày"></div>
