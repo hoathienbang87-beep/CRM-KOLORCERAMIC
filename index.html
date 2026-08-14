@@ -300,9 +300,52 @@
           <div id="customerPager" class="list-pager"></div>
         </div>
 
+        <div id="kpiTeamPanel" class="panel hide kpi-team-panel" style="margin-top:14px">
+          <div class="pro-section-title kpi-team-header">
+            <div>
+              <h3>KPI Team</h3>
+              <div class="muted">Theo dõi tiến độ và đề xuất KPI theo từng nhân viên.</div>
+            </div>
+            <div class="actions">
+              <button id="kpiTeamPendingBtn" class="small" type="button">Cần duyệt (0)</button>
+              <button id="kpiTeamReloadBtn" class="small" type="button">Tải lại</button>
+            </div>
+          </div>
+          <div class="kpi-team-mode-tabs" role="tablist" aria-label="Chế độ KPI Team">
+            <button id="kpiTeamEmployeesModeBtn" class="small primary" type="button" role="tab" aria-selected="true" data-kpi-team-mode="employees">Nhân viên</button>
+            <button id="kpiTeamLibraryModeBtn" class="small" type="button" role="tab" aria-selected="false" data-kpi-team-mode="library">Bộ KPI</button>
+            <button id="kpiTeamHistoryModeBtn" class="small" type="button" role="tab" aria-selected="false" data-kpi-team-mode="history">Lịch sử</button>
+          </div>
+          <div class="kpi-team-toolbar">
+            <div class="field">
+              <label for="kpiTeamPeriod">Kỳ KPI</label>
+              <select id="kpiTeamPeriod"></select>
+            </div>
+            <div id="kpiTeamSearchField" class="field">
+              <label for="kpiTeamSearch">Tìm nhân viên</label>
+              <input id="kpiTeamSearch" type="search" placeholder="Tên hoặc email..." autocomplete="off">
+            </div>
+            <div id="kpiTeamProgressField" class="field">
+              <label for="kpiTeamProgressFilter">Tiến độ</label>
+              <select id="kpiTeamProgressFilter">
+                <option value="all">Tất cả</option>
+                <option value="in-progress">Đang thực hiện</option>
+                <option value="complete">Đã đạt</option>
+                <option value="attention">Cần xử lý</option>
+                <option value="unassigned">Chưa gán KPI</option>
+              </select>
+            </div>
+            <label id="kpiTeamPendingOnlyField" class="kpi-team-check"><input id="kpiTeamPendingOnly" type="checkbox"> Chỉ có chờ duyệt</label>
+          </div>
+          <div id="kpiTeamStatus" class="kpi-team-status muted" aria-live="polite"></div>
+          <div id="kpiTeamContent" class="kpi-team-content">
+            <div class="kpi-team-skeleton" aria-label="Đang tải KPI"><span></span><span></span><span></span></div>
+          </div>
+        </div>
+
         <div id="kpiApprovalPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
-            <h3>Duyệt KPI</h3>
+            <h3>Duyệt KPI legacy</h3>
             <div class="actions">
               <select id="kpiApprovalScope" class="small-select" aria-label="Lọc KPI chờ duyệt">
                 <option value="all">Tất cả chờ duyệt</option>
@@ -318,7 +361,7 @@
 
         <div id="kpiSummaryPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
-            <h3>KPI nhân viên</h3>
+            <h3>KPI nhân viên legacy</h3>
             <div class="actions">
               <button id="openKpiProposalBtnTop" class="small primary" type="button">Đề xuất KPI</button>
               <button id="exportKpiBtn" class="small primary hide" type="button">Xuất KPI</button>
@@ -910,6 +953,46 @@
     <div class="field"><label>Link minh chứng bổ sung</label><textarea id="proposalEvidenceUrl" placeholder="Có thể dán thêm link nếu cần, mỗi dòng một link..."></textarea></div>
     <div class="actions">
       <button id="submitKpiProposalBtn" class="primary" type="button">Gửi đề xuất</button>
+    </div>
+  </aside>
+
+  <div id="kpiTeamDetailBackdrop" class="drawer-backdrop hide"></div>
+  <aside id="kpiTeamDetailDrawer" class="drawer kpi-team-detail-drawer hide" role="dialog" aria-modal="true" aria-labelledby="kpiTeamDetailName">
+    <div class="drawer-head kpi-team-detail-head">
+      <div>
+        <h2 id="kpiTeamDetailName" style="margin:0">Chi tiết KPI nhân viên</h2>
+        <div id="kpiTeamDetailSubtitle" class="muted"></div>
+      </div>
+      <button id="kpiTeamDetailCloseBtn" class="small" type="button" aria-label="Đóng chi tiết KPI">Đóng</button>
+    </div>
+    <div id="kpiTeamDetailSummary" class="kpi-team-detail-summary"></div>
+    <div class="kpi-team-detail-tabs" role="tablist" aria-label="Chi tiết KPI nhân viên">
+      <button class="small primary" type="button" role="tab" aria-selected="true" data-kpi-employee-tab="overview">Tổng quan</button>
+      <button class="small" type="button" role="tab" aria-selected="false" data-kpi-employee-tab="kpis">KPI</button>
+      <button class="small" type="button" role="tab" aria-selected="false" data-kpi-employee-tab="proposals">Đề xuất</button>
+      <button class="small" type="button" role="tab" aria-selected="false" data-kpi-employee-tab="history">Lịch sử</button>
+    </div>
+    <div id="kpiTeamDetailStatus" class="kpi-team-status muted" aria-live="polite"></div>
+    <div id="kpiTeamDetailContent" class="kpi-team-detail-content"></div>
+  </aside>
+
+  <div id="kpiTeamAssignBackdrop" class="drawer-backdrop hide"></div>
+  <aside id="kpiTeamAssignDrawer" class="drawer kpi-team-assign-drawer hide" role="dialog" aria-modal="true" aria-labelledby="kpiTeamAssignTitle">
+    <div class="drawer-head">
+      <div>
+        <h2 id="kpiTeamAssignTitle" style="margin:0">Gán KPI</h2>
+        <div id="kpiTeamAssignSubtitle" class="muted"></div>
+      </div>
+      <button id="kpiTeamAssignCloseBtn" class="small" type="button" aria-label="Đóng form gán KPI">Đóng</button>
+    </div>
+    <div class="field"><label for="kpiTeamAssignDefinition">KPI trong Bộ KPI</label><select id="kpiTeamAssignDefinition"></select></div>
+    <div id="kpiTeamAssignDefinitionMeta" class="detail-note muted"></div>
+    <div class="field"><label for="kpiTeamAssignTarget">Mục tiêu</label><input id="kpiTeamAssignTarget" type="number" min="0.01" step="0.01" placeholder="Nhập mục tiêu lớn hơn 0"></div>
+    <label class="kpi-team-check kpi-team-score-check"><input id="kpiTeamAssignScoreEnabled" type="checkbox"> Tính vào điểm KPI tháng</label>
+    <div id="kpiTeamAssignWarning" class="maintenance-note hide"></div>
+    <div class="actions kpi-team-assign-actions">
+      <button id="kpiTeamAssignCancelBtn" type="button">Hủy</button>
+      <button id="kpiTeamAssignSubmitBtn" class="primary" type="button">Xác nhận gán</button>
     </div>
   </aside>
 

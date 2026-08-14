@@ -489,3 +489,95 @@
 .kpi2-review-toolbar{display:grid;grid-template-columns:180px 210px minmax(220px,1fr) auto;gap:8px;margin:10px 0}.kpi2-review-limit{max-height:520px;overflow:auto}
 @media(max-width:900px){.kpi1-foundation-grid{grid-template-columns:1fr}.kpi1-summary-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}}
 @media(max-width:900px){.kpi2-review-toolbar{grid-template-columns:1fr}.kpi2-candidate-row{grid-template-columns:28px 1fr}}
+
+/* KPI-2.1B employee-centric Manager workspace. */
+.kpi-team-panel{border-top:3px solid var(--brand)}
+.kpi-team-header{align-items:flex-start}
+.kpi-team-mode-tabs,.kpi-team-detail-tabs,.kpi-team-event-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.kpi-team-mode-tabs{padding:6px;border:1px solid #d8e5f2;background:#f5f9fd;border-radius:8px}
+.kpi-team-toolbar{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(260px,1.3fr) minmax(190px,.8fr) auto;gap:10px;align-items:end;padding:12px;border:1px solid #dbe7f4;background:#f8fbff;border-radius:8px}
+.kpi-team-toolbar .field{margin:0}
+.kpi-team-check{display:flex;align-items:center;gap:8px;min-height:42px;font-weight:750}
+.kpi-team-check input{width:auto;margin:0}
+.kpi-team-status{min-height:22px;margin:10px 0 6px}
+.error-text{color:#b42318;font-weight:750}
+.kpi-team-content{min-height:180px}
+.kpi-team-employee-list,.kpi-team-event-list,.kpi-team-assignment-list,.kpi-team-history-list{display:grid;gap:8px;max-height:620px;overflow:auto;padding-right:4px}
+.kpi-team-employee-row{display:grid;grid-template-columns:minmax(190px,1.1fr) minmax(150px,.65fr) minmax(240px,1fr) auto;gap:16px;align-items:center;padding:13px;border:1px solid #d8e5f2;border-left:4px solid var(--brand);border-radius:8px;background:#fff}
+.kpi-team-employee-row.needs-attention{border-left-color:#f59e0b;background:#fffbeb}
+.kpi-team-employee-identity,.kpi-team-history-row>div,.kpi-team-event-head>div,.kpi-team-assignment-head>div{display:grid;gap:3px;min-width:0}
+.kpi-team-employee-identity b{font-size:15px;overflow-wrap:anywhere}
+.kpi-team-employee-identity span,.kpi-team-history-row span,.kpi-team-event-head span,.kpi-team-assignment-head span{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.kpi-team-score{display:grid;gap:6px}
+.kpi-team-score>b{font-size:20px}
+.kpi-team-progress{height:8px;border-radius:999px;background:#e8eef5;overflow:hidden;min-width:120px}
+.kpi-team-progress>span{display:block;height:100%;border-radius:inherit;background:var(--brand)}
+.kpi-team-employee-meta{display:flex;gap:7px;flex-wrap:wrap;align-items:center;color:#334155;font-size:13px}
+.kpi-team-employee-meta>span:not(.pill){padding:4px 7px;border:1px solid #d9e5f3;border-radius:999px;background:#f7fafc}
+.kpi-team-row-actions{display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap}
+.kpi-team-empty{display:grid;justify-items:start;gap:7px;padding:20px;border:1px dashed #bdcde0;border-radius:8px;background:#f8fbff;color:var(--muted)}
+.kpi-team-empty b{color:var(--ink);font-size:16px}
+.kpi-team-empty.compact{padding:12px}
+.kpi-team-skeleton{display:grid;gap:8px}
+.kpi-team-skeleton span{height:72px;border-radius:8px;background:linear-gradient(90deg,#edf2f7 25%,#f8fafc 50%,#edf2f7 75%);background-size:200% 100%;animation:kpiTeamPulse 1.3s infinite}
+@keyframes kpiTeamPulse{to{background-position:-200% 0}}
+.kpi-team-detail-drawer{width:min(880px,calc(100% - 24px))}
+.kpi-team-detail-head{top:-18px;margin:-18px -18px 12px;padding:18px;background:#fff}
+.kpi-team-detail-summary{display:grid;grid-template-columns:1.35fr repeat(2,minmax(110px,.55fr)) minmax(150px,.7fr);gap:9px;margin-bottom:10px}
+.kpi-team-detail-summary>div,.kpi-team-overview-grid>div{display:grid;gap:5px;padding:11px;border:1px solid #d8e5f2;border-radius:8px;background:#f8fbff}
+.kpi-team-detail-summary span,.kpi-team-overview-grid span{font-size:12px;color:var(--muted);font-weight:700}
+.kpi-team-detail-summary b,.kpi-team-overview-grid b{font-size:20px}
+.kpi-team-detail-action{align-content:start}
+.kpi-team-detail-tabs{position:sticky;top:66px;z-index:2;padding:7px 0;background:#fff;border-bottom:1px solid #e2e8f0;overflow-x:auto;flex-wrap:nowrap}
+.kpi-team-detail-content{min-height:260px}
+.kpi-team-overview-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:8px 0 16px}
+.kpi-team-attention-list{display:grid;gap:7px}
+.kpi-team-attention-list button{display:flex;justify-content:space-between;gap:12px;align-items:center;text-align:left;background:#fff;border:1px solid #d8e5f2;color:var(--ink)}
+.kpi-team-attention-list button span{display:grid;gap:3px}
+.kpi-team-attention-list small{color:var(--muted)}
+.kpi-team-assignment-card,.kpi-team-event-card{border:1px solid #d8e5f2;border-left:4px solid var(--brand);border-radius:8px;padding:12px;background:#fff}
+.kpi-team-event-card.is-focused{outline:3px solid rgba(20,122,104,.24);border-color:var(--brand)}
+.kpi-team-assignment-head,.kpi-team-event-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px}
+.kpi-team-assignment-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px}
+.kpi-team-assignment-metrics>div{display:grid;gap:3px;padding:10px;border-radius:7px;background:#f5f9fd}
+.kpi-team-assignment-metrics span,.kpi-team-assignment-metrics small{color:var(--muted)}
+.kpi-team-assignment-metrics b{font-size:18px}
+.kpi-team-event-filters{overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
+.kpi-team-review-controls{display:grid;grid-template-columns:160px 200px minmax(190px,1fr) auto;gap:8px;margin:10px 0;padding:10px;border:1px solid #f2d08a;border-radius:8px;background:#fffbeb}
+.kpi-team-event-body{display:grid;gap:5px;margin-bottom:9px}
+.kpi-team-event-body>span{font-size:13px;color:var(--muted)}
+.kpi-team-history-row{display:grid;grid-template-columns:1fr .65fr auto;gap:12px;align-items:center;padding:12px;border:1px solid #d8e5f2;border-radius:8px;background:#fff}
+.kpi-team-history-detail{border:1px solid #d8e5f2;border-radius:8px;background:#fff;overflow:hidden}
+.kpi-team-history-detail summary{display:grid;grid-template-columns:1fr .7fr;gap:12px;cursor:pointer;padding:12px}
+.kpi-team-history-detail summary>span{display:grid;gap:3px}
+.kpi-team-history-detail small{color:var(--muted)}
+.kpi-team-history-assignments{display:grid;gap:1px;border-top:1px solid #d8e5f2;background:#d8e5f2}
+.kpi-team-history-assignments>div{display:flex;justify-content:space-between;gap:10px;padding:10px;background:#f8fbff}
+.kpi-team-history-assignments span{display:grid;gap:2px}
+.kpi-team-score-check{padding:10px;border:1px solid #d8e5f2;border-radius:8px;background:#f8fbff}
+.kpi-team-assign-actions{justify-content:flex-end;margin-top:14px}
+
+@media(max-width:1024px){
+  .kpi-team-toolbar{grid-template-columns:repeat(2,minmax(180px,1fr))}
+  .kpi-team-employee-row{grid-template-columns:minmax(180px,1fr) minmax(140px,.65fr);gap:10px}
+  .kpi-team-employee-meta,.kpi-team-row-actions{grid-column:span 1}
+  .kpi-team-review-controls{grid-template-columns:1fr 1fr}
+}
+@media(max-width:760px){
+  .kpi-team-header{display:grid}
+  .kpi-team-toolbar{grid-template-columns:1fr;padding:10px}
+  .kpi-team-mode-tabs{overflow-x:auto;flex-wrap:nowrap}
+  .kpi-team-mode-tabs button{flex:0 0 auto}
+  .kpi-team-employee-list,.kpi-team-event-list,.kpi-team-assignment-list,.kpi-team-history-list{max-height:none;overflow:visible}
+  .kpi-team-employee-row{grid-template-columns:1fr;padding:12px}
+  .kpi-team-row-actions{justify-content:stretch}
+  .kpi-team-row-actions button{flex:1 1 140px}
+  .kpi-team-detail-drawer{width:100%;height:100%;max-height:none;border-radius:0}
+  .kpi-team-detail-head{top:-18px}
+  .kpi-team-detail-summary,.kpi-team-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi-team-detail-tabs{top:64px}
+  .kpi-team-review-controls,.kpi-team-assignment-metrics,.kpi-team-history-row,.kpi-team-history-detail summary{grid-template-columns:1fr}
+  .kpi-team-review-controls button{width:100%}
+  .kpi-team-history-assignments>div{display:grid}
+  .kpi-team-assign-actions{display:grid;grid-template-columns:1fr 1fr}
+}

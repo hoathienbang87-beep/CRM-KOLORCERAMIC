@@ -56,6 +56,19 @@ import {
   parseImportDate,
   parseImportAmount,
 } from "../utils/csv.js";
+import {
+  assignmentEmployeeId,
+  assignmentId as kpiTeamAssignmentId,
+  assignmentProgressMetrics,
+  buildKpiEmployeeSummaries,
+  definitionName as kpiTeamDefinitionName,
+  eligibleKpiEmployees,
+  eventStatusKey,
+  filterKpiEmployeeSummaries,
+  filterKpiEvents,
+  groupEvidenceCount,
+  kpiValue as kpiTeamValue
+} from "./kpi-team.js";
 let currentUser = null;
 let appUser = null;
 let settings = {...DEFAULT_SETTINGS};
@@ -93,6 +106,36 @@ let kpi2EvidenceBusy = false;
 let kpi2Candidates = [];
 let kpi2DuplicateDetails = [];
 let selectedKpiFoundationPeriodId = "";
+const kpiTeamState = {
+  activeMode: "employees",
+  selectedPeriodId: "",
+  employeeSearch: "",
+  progressFilter: "all",
+  pendingOnly: false,
+  assignmentProgress: [],
+  monthlyScores: [],
+  selectedEmployeeId: "",
+  activeEmployeeTab: "overview",
+  eventStatus: "all",
+  employeeEvents: [],
+  employeeEvidence: [],
+  proposalCacheKey: "",
+  duplicateDetails: [],
+  globalQueueOpen: false,
+  globalQueueEvents: [],
+  focusedEventId: "",
+  historyProgress: [],
+  historyPeriods: [],
+  historyScoresByPeriod: new Map(),
+  summaryCacheKey: "",
+  summaryInFlightKey: "",
+  loading: {summary:false, proposals:false, queue:false, history:false},
+  errors: {summary:"", proposals:"", queue:"", history:""},
+  requests: {summary:0, proposals:0, queue:0, history:0},
+  summaryToken: 0,
+  proposalToken: 0,
+  historyToken: 0
+};
 let auditLogs = [];
 let unsubscribers = [];
 let selectedCustomerId = "";
@@ -2368,7 +2411,7 @@ function updateCareStatusVisual() {
 const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel"];
 const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
 const customerViewIds = ["customerSearchPanel"];
-const kpiViewIds = ["kpiSummaryPanel","kpiFoundationPanel","kpi2OperationsPanel","kpiRulePanel","kpiApprovalPanel"];
+const kpiViewIds = ["kpiTeamPanel","kpiSummaryPanel","kpiFoundationPanel","kpi2OperationsPanel","kpiRulePanel","kpiApprovalPanel"];
 const reportsViewIds = ["reportsPanel"];
 
 function renderCrmView() {
@@ -2407,11 +2450,12 @@ function setMainView(view) {
   }
   customerViewIds.forEach(id => $(id)?.classList.toggle("hide", !isCustomerView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isReportsView || isAdminView);
-  $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView);
-  $("kpiFoundationPanel")?.classList.toggle("hide", !isKpiView || !isManager());
-  $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView);
-  $("kpiRulePanel")?.classList.toggle("hide", !isKpiView || !isManager());
-  $("kpiApprovalPanel")?.classList.toggle("hide", !isKpiView || !isManager());
+  $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager());
+  $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView || isManager());
+  $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView || isManager());
+  $("kpiFoundationPanel")?.classList.add("hide");
+  $("kpiRulePanel")?.classList.add("hide");
+  $("kpiApprovalPanel")?.classList.add("hide");
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
   $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
@@ -2423,12 +2467,22 @@ function setMainView(view) {
   if (!isCustomerView && !isKpiView && !isReportsView && !isAdminView) renderCrmView();
   if (isCustomerView) renderCustomers();
   if (isKpiView) {
-    reloadKpi2Data().catch(err => notice("Lỗi tải KPI mới: " + authMessage(err), true));
-    renderKpiTable();
-    renderMyKpiProposalPanel();
-    renderKpiRuleList();
-    renderKpiApprovalPanel();
-    renderKpiFoundation();
+    if (isManager()) {
+      renderKpiTeamShell();
+      reloadKpiTeamSummary().catch(err => notice("Lỗi tải KPI Team: " + authMessage(err), true));
+      if (kpiTeamState.activeMode === "library") {
+        renderKpiTable();
+        renderMyKpiProposalPanel();
+        renderKpiRuleList();
+        renderKpiApprovalPanel();
+        renderKpiFoundation();
+      }
+    } else {
+      reloadKpi2Data().catch(err => notice("Lỗi tải KPI mới: " + authMessage(err), true));
+      renderKpiTable();
+      renderMyKpiProposalPanel();
+    }
+    applyKpiManagerModeVisibility();
   }
   if (isReportsView) renderReportCenter();
   if (isAdminView) {
@@ -4260,6 +4314,620 @@ function kpi2DatetimeLocalValue(value = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function kpiTeamPeriod() {
+  return kpiPeriods.find(period => clean(period.id) === clean(kpiTeamState.selectedPeriodId)) || null;
+}
+
+function ensureKpiTeamPeriod() {
+  if (kpiTeamPeriod()) return kpiTeamPeriod();
+  const current = kpiPeriods.find(period => clean(period.periodMonth).slice(0, 7) === currentMonth());
+  const active = kpiPeriods.find(period => clean(period.status).toUpperCase() === "ACTIVE");
+  const selected = current || active || kpiPeriods[0] || null;
+  kpiTeamState.selectedPeriodId = selected?.id || "";
+  return selected;
+}
+
+function kpiTeamRawAssignments(periodId = kpiTeamState.selectedPeriodId) {
+  return kpiAssignments
+    .filter(row => clean(row.periodId) === clean(periodId))
+    .filter(row => clean(row.assignmentStatus || "ASSIGNED").toUpperCase() === "ASSIGNED");
+}
+
+function kpiTeamEmployeeAssignments(employeeId = kpiTeamState.selectedEmployeeId) {
+  const progressRows = kpiTeamState.assignmentProgress.filter(row => clean(kpiTeamValue(row, "employeeId", "employee_id")) === clean(employeeId));
+  if (progressRows.length) return progressRows;
+  return kpiTeamRawAssignments().filter(row => assignmentEmployeeId(row) === clean(employeeId));
+}
+
+function kpiTeamSummaries() {
+  const period = ensureKpiTeamPeriod();
+  return buildKpiEmployeeSummaries({
+    employees: eligibleKpiEmployees(users),
+    progress: kpiTeamState.assignmentProgress,
+    monthlyScores: kpiTeamState.monthlyScores,
+    draftAssignments: kpiTeamRawAssignments(period?.id),
+    periodStatus: period?.status
+  });
+}
+
+function kpiTeamSelectedSummary() {
+  return kpiTeamSummaries().find(row => row.id === clean(kpiTeamState.selectedEmployeeId)) || null;
+}
+
+function kpiTeamNumber(value, digits = 0) {
+  const number = Number(value || 0);
+  return number.toLocaleString("vi-VN", {maximumFractionDigits:digits});
+}
+
+function kpiTeamScoreText(summary) {
+  if (!summary?.assignedCount) return "Chưa có KPI";
+  if (!summary?.hasScore) return "Chưa có điểm";
+  return `${kpiTeamNumber(summary.monthlyScore, 2)}%`;
+}
+
+function kpiTeamProgressWidth(summary) {
+  return summary?.hasScore ? Math.max(0, Math.min(100, Number(summary.monthlyScore || 0))) : 0;
+}
+
+function kpiTeamStatusLabel(status) {
+  const value = clean(status).toUpperCase();
+  if (value === "APPROVED") return "Đã duyệt";
+  if (value === "REJECTED") return "Từ chối";
+  if (value === "NEEDS_REVISION") return "Cần sửa";
+  return "Chờ duyệt";
+}
+
+function kpiTeamStatusClass(status) {
+  const value = clean(status).toUpperCase();
+  if (value === "APPROVED") return "green";
+  if (value === "REJECTED" || value === "NEEDS_REVISION") return "red";
+  return "orange";
+}
+
+function kpiTeamSkeleton(count = 4) {
+  return `<div class="kpi-team-skeleton" aria-label="Đang tải KPI">${Array.from({length:count}, () => "<span></span>").join("")}</div>`;
+}
+
+function setKpiTeamMode(mode) {
+  if (!isManager()) return;
+  kpiTeamState.activeMode = ["library", "history"].includes(mode) ? mode : "employees";
+  kpiTeamState.globalQueueOpen = false;
+  renderKpiTeamShell();
+  applyKpiManagerModeVisibility();
+  if (kpiTeamState.activeMode === "library") {
+    renderKpiTable();
+    renderMyKpiProposalPanel();
+    renderKpiRuleList();
+    renderKpiApprovalPanel();
+    renderKpiFoundation();
+  }
+}
+
+function applyKpiManagerModeVisibility() {
+  if (!isManager() || activeMainView !== "kpi") return;
+  const library = kpiTeamState.activeMode === "library";
+  $("kpiFoundationPanel")?.classList.toggle("hide", !library);
+  $("kpiRulePanel")?.classList.toggle("hide", !library);
+  $("kpiApprovalPanel")?.classList.toggle("hide", !library);
+  $("kpiSummaryPanel")?.classList.toggle("hide", !library);
+  $("kpi2OperationsPanel")?.classList.add("hide");
+}
+
+function renderKpiTeamShell() {
+  if (!isManager() || !$("kpiTeamPanel")) return;
+  const period = ensureKpiTeamPeriod();
+  const periodSelect = $("kpiTeamPeriod");
+  if (periodSelect) {
+    periodSelect.innerHTML = kpiPeriods.length
+      ? kpiPeriods.map(row => `<option value="${esc(row.id)}" ${clean(row.id) === clean(period?.id) ? "selected" : ""}>${esc(kpi1PeriodLabel(row))} · ${esc(clean(row.status).toUpperCase())}</option>`).join("")
+      : `<option value="">Chưa có kỳ KPI</option>`;
+    periodSelect.disabled = !kpiPeriods.length;
+  }
+  document.querySelectorAll("[data-kpi-team-mode]").forEach(button => {
+    const active = button.dataset.kpiTeamMode === kpiTeamState.activeMode;
+    button.classList.toggle("primary", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  const showFilters = kpiTeamState.activeMode === "employees" && !kpiTeamState.globalQueueOpen;
+  $("kpiTeamSearchField")?.classList.toggle("hide", !showFilters);
+  $("kpiTeamProgressField")?.classList.toggle("hide", !showFilters);
+  $("kpiTeamPendingOnlyField")?.classList.toggle("hide", !showFilters);
+  if ($("kpiTeamSearch")) $("kpiTeamSearch").value = kpiTeamState.employeeSearch;
+  if ($("kpiTeamProgressFilter")) $("kpiTeamProgressFilter").value = kpiTeamState.progressFilter;
+  if ($("kpiTeamPendingOnly")) $("kpiTeamPendingOnly").checked = kpiTeamState.pendingOnly;
+  const pending = kpiTeamSummaries().reduce((sum, row) => sum + row.pendingCount, 0);
+  if ($("kpiTeamPendingBtn")) {
+    $("kpiTeamPendingBtn").textContent = `Cần duyệt (${pending})`;
+    $("kpiTeamPendingBtn").classList.toggle("primary", kpiTeamState.globalQueueOpen);
+  }
+  if (kpiTeamState.activeMode === "library") {
+    $("kpiTeamStatus").textContent = "Bộ KPI dùng chung, cấu hình kỳ và KPI definition. Dữ liệu legacy được giữ bên dưới để không mất luồng cũ.";
+    $("kpiTeamContent").innerHTML = `<div class="kpi-team-empty"><b>Bộ KPI</b><span>Dùng các khối cấu hình bên dưới. KPI definition không gắn riêng với một nhân viên.</span></div>`;
+  } else if (kpiTeamState.globalQueueOpen) {
+    renderKpiTeamGlobalQueue();
+  } else if (kpiTeamState.activeMode === "history") {
+    renderKpiTeamHistoryMode();
+  } else {
+    renderKpiTeamEmployeeList();
+  }
+}
+
+function renderKpiTeamEmployeeList() {
+  const target = $("kpiTeamContent");
+  if (!target) return;
+  if (kpiTeamState.loading.summary) {
+    $("kpiTeamStatus").textContent = "Đang tải tiến độ KPI...";
+    target.innerHTML = kpiTeamSkeleton();
+    return;
+  }
+  if (kpiTeamState.errors.summary) {
+    $("kpiTeamStatus").innerHTML = `<span class="error-text">${esc(kpiTeamState.errors.summary)}</span>`;
+    target.innerHTML = `<div class="kpi-team-empty"><b>Không tải được tiến độ KPI.</b><button class="small primary" type="button" data-kpi-team-retry="summary">Thử lại</button></div>`;
+    return;
+  }
+  const allRows = kpiTeamSummaries();
+  const rows = filterKpiEmployeeSummaries(allRows, {
+    search:kpiTeamState.employeeSearch,
+    progressFilter:kpiTeamState.progressFilter,
+    pendingOnly:kpiTeamState.pendingOnly
+  });
+  const period = kpiTeamPeriod();
+  $("kpiTeamStatus").textContent = period
+    ? `${rows.length}/${allRows.length} nhân viên · ${kpi1PeriodLabel(period)} · ${clean(period.status).toUpperCase()}`
+    : "Chưa có kỳ KPI.";
+  if (!period) {
+    target.innerHTML = `<div class="kpi-team-empty"><b>Chưa có kỳ KPI để theo dõi.</b><span>Hãy mở Bộ KPI để tạo kỳ mới.</span><button class="small primary" type="button" data-kpi-team-mode="library">Mở Bộ KPI</button></div>`;
+    return;
+  }
+  if (!allRows.length) {
+    target.innerHTML = `<div class="kpi-team-empty"><b>Chưa có nhân viên Sale đang hoạt động.</b><span>Danh sách chỉ gồm Sale active và lifecycle active.</span></div>`;
+    return;
+  }
+  if (!rows.length) {
+    target.innerHTML = `<div class="kpi-team-empty"><b>Không có nhân viên phù hợp bộ lọc.</b><button class="small" type="button" data-kpi-team-clear-filter>Xóa lọc</button></div>`;
+    return;
+  }
+  target.innerHTML = `<div class="kpi-team-employee-list">${rows.map(summary => {
+    const canAssign = clean(period.status).toUpperCase() === "DRAFT";
+    return `<article class="kpi-team-employee-row ${summary.unresolvedCount ? "needs-attention" : ""}">
+      <div class="kpi-team-employee-identity"><b>${esc(summary.name)}</b><span>${esc(summary.email || "Sale")}</span></div>
+      <div class="kpi-team-score"><b>${esc(kpiTeamScoreText(summary))}</b><div class="kpi-team-progress" aria-label="Tiến độ ${esc(kpiTeamScoreText(summary))}"><span style="width:${esc(kpiTeamProgressWidth(summary))}%"></span></div></div>
+      <div class="kpi-team-employee-meta"><span>${esc(summary.assignedCount)} KPI</span><span>${esc(summary.pendingCount)} chờ duyệt</span>${summary.referenceCount ? `<span>${esc(summary.referenceCount)} tham chiếu</span>` : ""}${summary.revisionCount ? `<span class="pill red">${esc(summary.revisionCount)} cần sửa</span>` : ""}</div>
+      <div class="kpi-team-row-actions"><button class="small" type="button" data-kpi-team-open-employee="${esc(summary.id)}">Xem chi tiết</button>${summary.assignedCount === 0 && canAssign ? `<button class="small primary" type="button" data-kpi-team-assign-employee="${esc(summary.id)}">+ Gán KPI</button>` : ""}</div>
+    </article>`;
+  }).join("")}</div>`;
+}
+
+function renderKpiTeamHistoryMode() {
+  const target = $("kpiTeamContent");
+  if (!target) return;
+  if (kpiTeamState.loading.summary) {
+    $("kpiTeamStatus").textContent = "Đang tải lịch sử kỳ KPI...";
+    target.innerHTML = kpiTeamSkeleton(3);
+    return;
+  }
+  const period = kpiTeamPeriod();
+  const rows = kpiTeamSummaries();
+  $("kpiTeamStatus").textContent = period ? `Bảng kết quả team kỳ ${kpi1PeriodLabel(period)} · ${clean(period.status).toUpperCase()}` : "Chưa có kỳ KPI.";
+  target.innerHTML = period ? `<div class="kpi-team-history-list">${rows.length ? rows.map(summary => `<div class="kpi-team-history-row"><div><b>${esc(summary.name)}</b><span>${esc(summary.email)}</span></div><div><b>${esc(kpiTeamScoreText(summary))}</b><span>${esc(summary.assignedCount)} KPI · ${esc(clean(period.status).toUpperCase())}</span></div><button class="small" type="button" data-kpi-team-open-employee="${esc(summary.id)}" data-kpi-team-open-tab="history">Xem lịch sử</button></div>`).join("") : `<div class="kpi-team-empty">Chưa có nhân viên Sale đang hoạt động.</div>`}</div>` : `<div class="kpi-team-empty"><b>Chưa có lịch sử KPI.</b><span>Hãy tạo kỳ KPI trong Bộ KPI.</span></div>`;
+}
+
+async function reloadKpiTeamSummary({force = false} = {}) {
+  if (!isManager() || !currentUser || !$("kpiTeamPanel")) return;
+  const period = ensureKpiTeamPeriod();
+  renderKpiTeamShell();
+  if (!period) return;
+  const cacheKey = `${period.id}:${period.version || 0}`;
+  if (!force && kpiTeamState.summaryCacheKey === cacheKey && !kpiTeamState.errors.summary) return;
+  if (kpiTeamState.loading.summary && kpiTeamState.summaryInFlightKey === cacheKey) return;
+  const token = ++kpiTeamState.summaryToken;
+  kpiTeamState.loading.summary = true;
+  kpiTeamState.summaryInFlightKey = cacheKey;
+  kpiTeamState.errors.summary = "";
+  renderKpiTeamShell();
+  kpiTeamState.requests.summary = 2;
+  try {
+    const [progress, scores] = await Promise.all([
+      callCrmRpc("crm_kpi_get_assignment_progress", {p_period_id:period.id}),
+      callCrmRpc("crm_kpi_get_monthly_scores", {p_period_id:period.id})
+    ]);
+    if (token !== kpiTeamState.summaryToken || clean(period.id) !== clean(kpiTeamState.selectedPeriodId)) return;
+    kpiTeamState.assignmentProgress = progress || [];
+    kpiTeamState.monthlyScores = scores || [];
+    const runtimeStatus = clean(kpiTeamValue(kpiTeamState.assignmentProgress[0], "periodStatus", "period_status")).toUpperCase();
+    if (runtimeStatus && runtimeStatus !== clean(period.status).toUpperCase()) period.status = runtimeStatus;
+    kpiTeamState.summaryCacheKey = cacheKey;
+  } catch (error) {
+    if (token !== kpiTeamState.summaryToken) return;
+    kpiTeamState.errors.summary = `Không tải được tiến độ KPI: ${authMessage(error)}`;
+    throw error;
+  } finally {
+    if (token === kpiTeamState.summaryToken) {
+      kpiTeamState.loading.summary = false;
+      kpiTeamState.summaryInFlightKey = "";
+      renderKpiTeamShell();
+      if (kpiTeamState.selectedEmployeeId) renderKpiTeamEmployeeDetail();
+    }
+  }
+}
+
+function openKpiTeamEmployee(employeeId, tab = "overview") {
+  const summary = kpiTeamSummaries().find(row => row.id === clean(employeeId));
+  if (!summary) return notice("Không tìm thấy nhân viên Sale đang hoạt động.", true);
+  if (clean(kpiTeamState.selectedEmployeeId) !== clean(summary.id)) {
+    kpiTeamState.employeeEvents = [];
+    kpiTeamState.employeeEvidence = [];
+    kpiTeamState.duplicateDetails = [];
+    kpiTeamState.proposalCacheKey = "";
+  }
+  kpiTeamState.selectedEmployeeId = summary.id;
+  kpiTeamState.activeEmployeeTab = ["kpis", "proposals", "history"].includes(tab) ? tab : "overview";
+  kpiTeamState.eventStatus = "all";
+  kpiTeamState.focusedEventId = "";
+  $("kpiTeamDetailBackdrop")?.classList.remove("hide");
+  $("kpiTeamDetailDrawer")?.classList.remove("hide");
+  renderKpiTeamEmployeeDetail();
+  $("kpiTeamDetailCloseBtn")?.focus();
+  if (kpiTeamState.activeEmployeeTab === "proposals") loadKpiTeamEmployeeProposals().catch(error => notice(authMessage(error), true));
+  if (kpiTeamState.activeEmployeeTab === "history") loadKpiTeamEmployeeHistory().catch(error => notice(authMessage(error), true));
+}
+
+function closeKpiTeamEmployee() {
+  $("kpiTeamDetailBackdrop")?.classList.add("hide");
+  $("kpiTeamDetailDrawer")?.classList.add("hide");
+  kpiTeamState.selectedEmployeeId = "";
+  kpiTeamState.employeeEvents = [];
+  kpiTeamState.employeeEvidence = [];
+  kpiTeamState.proposalCacheKey = "";
+  kpiTeamState.duplicateDetails = [];
+  kpiTeamState.focusedEventId = "";
+}
+
+function setKpiTeamEmployeeTab(tab) {
+  if (!["overview", "kpis", "proposals", "history"].includes(tab)) return;
+  kpiTeamState.activeEmployeeTab = tab;
+  renderKpiTeamEmployeeDetail();
+  if (tab === "proposals") loadKpiTeamEmployeeProposals().catch(error => notice(authMessage(error), true));
+  if (tab === "history") loadKpiTeamEmployeeHistory().catch(error => notice(authMessage(error), true));
+}
+
+function renderKpiTeamEmployeeDetail() {
+  const summary = kpiTeamSelectedSummary();
+  const period = kpiTeamPeriod();
+  if (!summary || !period || !$("kpiTeamDetailDrawer") || $("kpiTeamDetailDrawer").classList.contains("hide")) return;
+  $("kpiTeamDetailName").textContent = summary.name;
+  $("kpiTeamDetailSubtitle").textContent = `${summary.email || "Sale"} · Kỳ ${kpi1PeriodLabel(period)} · ${clean(period.status).toUpperCase()}`;
+  const canAssign = clean(period.status).toUpperCase() === "DRAFT";
+  $("kpiTeamDetailSummary").innerHTML = `<div class="kpi-team-detail-score"><span>Tổng KPI</span><b>${esc(kpiTeamScoreText(summary))}</b><div class="kpi-team-progress"><span style="width:${esc(kpiTeamProgressWidth(summary))}%"></span></div></div><div><span>KPI được giao</span><b>${esc(summary.assignedCount)}</b></div><div><span>Chờ duyệt</span><b>${esc(summary.pendingCount)}</b></div><div class="kpi-team-detail-action"><button class="small primary" type="button" data-kpi-team-assign-employee="${esc(summary.id)}" ${canAssign ? "" : "disabled"}>+ Gán KPI</button><span class="muted">${canAssign ? "Kỳ đang DRAFT" : "Chỉ gán KPI khi kỳ DRAFT"}</span></div>`;
+  document.querySelectorAll("[data-kpi-employee-tab]").forEach(button => {
+    const active = button.dataset.kpiEmployeeTab === kpiTeamState.activeEmployeeTab;
+    button.classList.toggle("primary", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  $("kpiTeamDetailStatus").textContent = "";
+  if (kpiTeamState.activeEmployeeTab === "kpis") renderKpiTeamKpiTab(summary, period);
+  else if (kpiTeamState.activeEmployeeTab === "proposals") renderKpiTeamProposalTab(summary);
+  else if (kpiTeamState.activeEmployeeTab === "history") renderKpiTeamEmployeeHistory(summary);
+  else renderKpiTeamOverview(summary);
+}
+
+function renderKpiTeamOverview(summary) {
+  const completed = summary.progressRows.filter(row => assignmentProgressMetrics(row).scoringPercent >= 100).length;
+  const inProgress = Math.max(0, summary.assignedCount - completed);
+  const attention = summary.progressRows.filter(row => {
+    const metric = assignmentProgressMetrics(row);
+    return metric.pendingCount + metric.revisionCount > 0;
+  });
+  $("kpiTeamDetailContent").innerHTML = `<div class="kpi-team-overview-grid"><div><span>Đã đạt mục tiêu</span><b>${esc(completed)}</b></div><div><span>Đang thực hiện</span><b>${esc(inProgress)}</b></div><div><span>Tính điểm tháng</span><b>${esc(summary.scoredCount)}</b></div><div><span>Chỉ tham chiếu</span><b>${esc(summary.referenceCount)}</b></div></div>${summary.assignedCount ? `<div class="table-title">KPI cần chú ý</div>${attention.length ? `<div class="kpi-team-attention-list">${attention.map(row => { const metric=assignmentProgressMetrics(row); return `<button type="button" data-kpi-team-detail-kpi="${esc(kpiTeamAssignmentId(row))}"><span><b>${esc(kpiTeamDefinitionName(row))}</b><small>${esc(metric.actual)} / ${esc(metric.target)}</small></span><span>${metric.pendingCount ? `${esc(metric.pendingCount)} chờ duyệt` : `${esc(metric.revisionCount)} cần sửa`}</span></button>`; }).join("")}</div>` : `<div class="kpi-team-empty compact">Không có KPI cần xử lý ngay.</div>`}` : `<div class="kpi-team-empty"><b>Chưa được gán KPI.</b><span>${clean(kpiTeamPeriod()?.status).toUpperCase() === "DRAFT" ? "Bấm + Gán KPI để bắt đầu." : "Kỳ này không có KPI được giao cho nhân viên."}</span></div>`}`;
+}
+
+function renderKpiTeamKpiTab(summary, period) {
+  const rows = kpiTeamEmployeeAssignments(summary.id);
+  if (!rows.length) {
+    $("kpiTeamDetailContent").innerHTML = `<div class="kpi-team-empty"><b>Chưa được gán KPI.</b><span>${clean(period.status).toUpperCase() === "DRAFT" ? "Bạn có thể gán KPI từ Bộ KPI." : "Kỳ này đã khóa cấu hình."}</span></div>`;
+    return;
+  }
+  const isDraft = clean(period.status).toUpperCase() === "DRAFT";
+  $("kpiTeamDetailContent").innerHTML = `<div class="kpi-team-assignment-list">${rows.map(row => {
+    const metric = assignmentProgressMetrics(row);
+    const snapshot = kpiTeamValue(row, "definitionSnapshot", "definition_snapshot") || {};
+    const target = Number(row.target || metric.target || 0);
+    const scoreEnabled = kpiTeamValue(row, "scoreEnabled", "score_enabled") ?? row.scoreEnabled;
+    return `<article class="kpi-team-assignment-card"><div class="kpi-team-assignment-head"><div><b>${esc(kpiTeamDefinitionName(row))}</b><span>${esc(snapshot.unit || "")}${snapshot.aggregation_mode ? ` · ${esc(snapshot.aggregation_mode)}` : ""}</span></div>${scoreEnabled ? `<span class="pill green">Tính điểm</span>` : `<span class="pill">Tham chiếu</span>`}</div><div class="kpi-team-assignment-metrics"><div><span>Thực tế</span><b>${isDraft ? "Chưa áp dụng" : `${esc(kpiTeamNumber(metric.actual, 2))}/${esc(kpiTeamNumber(target, 2))}`}</b><small>${isDraft ? "Kỳ DRAFT" : `${esc(kpiTeamNumber(metric.actualPercent, 2))}%`}</small></div><div><span>Điểm tính KPI</span><b>${scoreEnabled && !isDraft ? `${esc(kpiTeamNumber(metric.scoringPercent, 2))}%` : "—"}</b><small>${scoreEnabled ? "Tối đa 100%" : "Không tính vào điểm tháng"}</small></div></div><div class="kpi2-progress-meta">${metric.pendingCount ? `<span class="pill orange">Chờ ${esc(metric.pendingCount)}</span>` : ""}${metric.revisionCount ? `<span class="pill red">Cần sửa ${esc(metric.revisionCount)}</span>` : ""}${metric.rejectedCount ? `<span class="pill red">Từ chối ${esc(metric.rejectedCount)}</span>` : ""}</div>${!scoreEnabled ? `<div class="maintenance-note">Tham chiếu — không tính vào điểm tháng</div>` : ""}</article>`;
+  }).join("")}</div>`;
+}
+
+function kpiTeamEventAssignment(event) {
+  return kpiTeamEmployeeAssignments().find(row => kpiTeamAssignmentId(row) === clean(event.assignment_id || event.assignmentId));
+}
+
+async function loadKpiTeamEmployeeProposals({force = false} = {}) {
+  const employeeId = clean(kpiTeamState.selectedEmployeeId);
+  if (!employeeId || !isManager()) return;
+  const cacheKey = `${clean(kpiTeamState.selectedPeriodId)}:${employeeId}`;
+  if (!force && kpiTeamState.proposalCacheKey === cacheKey && !kpiTeamState.errors.proposals) {
+    renderKpiTeamEmployeeDetail();
+    return;
+  }
+  const assignments = kpiTeamEmployeeAssignments(employeeId);
+  const ids = assignments.map(kpiTeamAssignmentId).filter(Boolean);
+  const token = ++kpiTeamState.proposalToken;
+  kpiTeamState.loading.proposals = true;
+  kpiTeamState.errors.proposals = "";
+  kpiTeamState.employeeEvents = [];
+  kpiTeamState.employeeEvidence = [];
+  kpiTeamState.duplicateDetails = [];
+  renderKpiTeamEmployeeDetail();
+  if (!ids.length) {
+    kpiTeamState.loading.proposals = false;
+    renderKpiTeamEmployeeDetail();
+    return;
+  }
+  try {
+    kpiTeamState.requests.proposals = 1;
+    const eventResult = await supabase.from("kpi_submission_events").select("*").in("assignment_id", ids).order("created_at", {ascending:false}).limit(500);
+    if (eventResult.error) throw eventResult.error;
+    if (token !== kpiTeamState.proposalToken || employeeId !== clean(kpiTeamState.selectedEmployeeId)) return;
+    const events = eventResult.data || [];
+    const eventIds = events.map(row => row.id).filter(Boolean);
+    let evidence = [];
+    if (eventIds.length) {
+      kpiTeamState.requests.proposals += 1;
+      const evidenceResult = await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,status").in("event_id", eventIds).eq("status", "ATTACHED").limit(1000);
+      if (evidenceResult.error) throw evidenceResult.error;
+      evidence = evidenceResult.data || [];
+    }
+    let duplicates = [];
+    const possibleDuplicateIds = events.filter(row => row.possible_duplicate).map(row => row.id);
+    if (possibleDuplicateIds.length) {
+      kpiTeamState.requests.proposals += 1;
+      duplicates = await callCrmRpc("crm_kpi_get_duplicate_context", {p_event_ids:possibleDuplicateIds}) || [];
+    }
+    if (token !== kpiTeamState.proposalToken || employeeId !== clean(kpiTeamState.selectedEmployeeId)) return;
+    kpiTeamState.employeeEvents = events;
+    kpiTeamState.employeeEvidence = evidence;
+    kpiTeamState.duplicateDetails = duplicates;
+    kpiTeamState.proposalCacheKey = cacheKey;
+    kpi2Evidence = evidence;
+  } catch (error) {
+    if (token !== kpiTeamState.proposalToken) return;
+    kpiTeamState.errors.proposals = `Không tải được đề xuất của nhân viên: ${authMessage(error)}`;
+    throw error;
+  } finally {
+    if (token === kpiTeamState.proposalToken) {
+      kpiTeamState.loading.proposals = false;
+      renderKpiTeamEmployeeDetail();
+    }
+  }
+}
+
+function renderKpiTeamProposalTab(summary) {
+  const target = $("kpiTeamDetailContent");
+  if (kpiTeamState.loading.proposals) {
+    $("kpiTeamDetailStatus").textContent = "Đang tải đề xuất KPI...";
+    target.innerHTML = kpiTeamSkeleton(3);
+    return;
+  }
+  if (kpiTeamState.errors.proposals) {
+    $("kpiTeamDetailStatus").innerHTML = `<span class="error-text">${esc(kpiTeamState.errors.proposals)}</span>`;
+    target.innerHTML = `<div class="kpi-team-empty"><button class="small primary" type="button" data-kpi-team-retry="proposals">Thử lại</button></div>`;
+    return;
+  }
+  const events = filterKpiEvents(kpiTeamState.employeeEvents, kpiTeamState.eventStatus);
+  const pendingCount = kpiTeamState.employeeEvents.filter(row => clean(row.status).toUpperCase() === "PENDING").length;
+  const evidenceCounts = groupEvidenceCount(kpiTeamState.employeeEvidence);
+  $("kpiTeamDetailStatus").textContent = `${kpiTeamState.employeeEvents.length} đề xuất · ${pendingCount} chờ duyệt`;
+  target.innerHTML = `<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
+    const assignment = kpiTeamEventAssignment(event);
+    const snapshot = event.event_snapshot || {};
+    const evidenceCount = evidenceCounts.get(clean(event.id)) || 0;
+    const duplicateCount = kpiTeamState.duplicateDetails.filter(row => clean(kpiTeamValue(row, "eventId", "event_id")) === clean(event.id)).length;
+    const focused = clean(kpiTeamState.focusedEventId) === clean(event.id);
+    return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}"><div class="kpi-team-event-head"><div>${clean(event.status).toUpperCase()==="PENDING"?`<input type="checkbox" data-kpi2-review-event="${esc(event.id)}" data-version="${esc(event.lock_version)}" aria-label="Chọn đề xuất ${esc(snapshot.title || kpiTeamDefinitionName(assignment))}">`:""}<b>${esc(kpiTeamDefinitionName(assignment))}</b></div><span class="pill ${kpiTeamStatusClass(event.status)}">${esc(kpiTeamStatusLabel(event.status))}</span></div><div class="kpi-team-event-body"><b>${esc(snapshot.title || snapshot.description || snapshot.customer_name || event.source_type || "Đề xuất KPI")}</b><span>${esc(fmtDate(event.event_at))} · Giá trị ${esc(kpiTeamNumber(event.claimed_value, 2))}</span><span>${evidenceCount} ảnh minh chứng${event.location ? " · Có vị trí" : ""}${event.event_at ? " · Có thời gian" : ""}</span>${event.possible_duplicate ? `<span class="pill orange">Có thể trùng${duplicateCount ? ` · ${esc(duplicateCount)} kết quả` : ""}</span>` : ""}${event.manager_note ? `<div class="detail-note">${esc(event.manager_note)}</div>` : ""}</div><div class="actions">${evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${esc(event.id)}">Xem ${esc(evidenceCount)} ảnh</button>` : ""}</div></article>`;
+  }).join("") : `<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${summary.name} chưa có dữ liệu phù hợp.</span></div>`}</div>`;
+}
+
+async function loadKpiTeamGlobalQueue({force = false} = {}) {
+  if (!isManager()) return;
+  kpiTeamState.activeMode = "employees";
+  applyKpiManagerModeVisibility();
+  const ids = kpiTeamState.assignmentProgress.map(kpiTeamAssignmentId).filter(Boolean);
+  if (!force && kpiTeamState.globalQueueEvents.length && !kpiTeamState.errors.queue) return renderKpiTeamGlobalQueue();
+  kpiTeamState.globalQueueOpen = true;
+  kpiTeamState.loading.queue = true;
+  kpiTeamState.errors.queue = "";
+  renderKpiTeamShell();
+  if (!ids.length) {
+    kpiTeamState.globalQueueEvents = [];
+    kpiTeamState.loading.queue = false;
+    renderKpiTeamShell();
+    return;
+  }
+  kpiTeamState.requests.queue = 1;
+  const result = await supabase.from("kpi_submission_events").select("*").in("assignment_id", ids).eq("status", "PENDING").order("created_at", {ascending:false}).limit(500);
+  if (result.error) {
+    kpiTeamState.loading.queue = false;
+    kpiTeamState.errors.queue = `Không tải được hàng đợi: ${authMessage(result.error)}`;
+    renderKpiTeamShell();
+    throw result.error;
+  }
+  kpiTeamState.globalQueueEvents = result.data || [];
+  kpiTeamState.loading.queue = false;
+  renderKpiTeamShell();
+}
+
+function renderKpiTeamGlobalQueue() {
+  const target = $("kpiTeamContent");
+  if (!target) return;
+  $("kpiTeamStatus").textContent = "Hàng đợi phụ để xử lý nhanh; mỗi đề xuất luôn gắn với một nhân viên.";
+  if (kpiTeamState.loading.queue) return void (target.innerHTML = kpiTeamSkeleton(3));
+  if (kpiTeamState.errors.queue) return void (target.innerHTML = `<div class="kpi-team-empty"><b>${esc(kpiTeamState.errors.queue)}</b><button class="small primary" type="button" data-kpi-team-retry="queue">Thử lại</button></div>`);
+  const progressByAssignment = new Map(kpiTeamState.assignmentProgress.map(row => [kpiTeamAssignmentId(row), row]));
+  target.innerHTML = `<div class="pro-section-title"><h3>Cần duyệt</h3><button class="small" type="button" data-kpi-team-close-queue>Quay lại nhân viên</button></div><div class="kpi-team-event-list">${kpiTeamState.globalQueueEvents.length ? kpiTeamState.globalQueueEvents.map(event => {
+    const progress = progressByAssignment.get(clean(event.assignment_id));
+    const employeeId = clean(kpiTeamValue(progress, "employeeId", "employee_id"));
+    const snapshot = event.event_snapshot || {};
+    return `<article class="kpi-team-event-card"><div class="kpi-team-event-head"><div><b>${esc(kpiTeamValue(progress, "employeeName", "employee_name") || "Nhân viên")}</b><span>${esc(kpiTeamDefinitionName(progress))}</span></div><span class="pill orange">Chờ duyệt</span></div><div class="kpi-team-event-body"><b>${esc(snapshot.title || snapshot.description || event.source_type || "Đề xuất KPI")}</b><span>${esc(fmtDate(event.event_at))} · Giá trị ${esc(kpiTeamNumber(event.claimed_value, 2))}</span></div><div class="actions"><button class="small primary" type="button" data-kpi-team-open-event="${esc(event.id)}" data-employee-id="${esc(employeeId)}">Mở đề xuất</button></div></article>`;
+  }).join("") : `<div class="kpi-team-empty"><b>Không có event chờ duyệt.</b></div>`}</div>`;
+}
+
+async function openKpiTeamGlobalEvent(eventId, employeeId) {
+  openKpiTeamEmployee(employeeId, "overview");
+  kpiTeamState.activeEmployeeTab = "proposals";
+  kpiTeamState.focusedEventId = eventId;
+  renderKpiTeamEmployeeDetail();
+  await loadKpiTeamEmployeeProposals({force:true});
+  renderKpiTeamEmployeeDetail();
+  requestAnimationFrame(() => $("kpiTeamDetailDrawer")?.querySelector(".kpi-team-event-card.is-focused")?.scrollIntoView({behavior:"smooth", block:"center"}));
+}
+
+async function loadKpiTeamEmployeeHistory({force = false} = {}) {
+  if (!isManager() || !kpiTeamState.selectedEmployeeId) return;
+  if (!force && kpiTeamState.historyProgress.length && !kpiTeamState.errors.history) return renderKpiTeamEmployeeDetail();
+  const token = ++kpiTeamState.historyToken;
+  kpiTeamState.loading.history = true;
+  kpiTeamState.errors.history = "";
+  renderKpiTeamEmployeeDetail();
+  try {
+    const progress = await callCrmRpc("crm_kpi_get_assignment_progress", {p_period_id:null}) || [];
+    const periodIds = uniq(progress.map(row => clean(kpiTeamValue(row, "periodId", "period_id"))).filter(Boolean));
+    const periods = periodIds.map(id => {
+      const saved = kpiPeriods.find(row => clean(row.id) === id);
+      const sample = progress.find(row => clean(kpiTeamValue(row, "periodId", "period_id")) === id);
+      return saved ? {...saved, status:kpiTeamValue(sample, "periodStatus", "period_status") || saved.status} : {
+        id,
+        periodMonth:kpiTeamValue(sample, "periodMonth", "period_month"),
+        status:kpiTeamValue(sample, "periodStatus", "period_status")
+      };
+    }).sort((a,b) => clean(b.periodMonth).localeCompare(clean(a.periodMonth)));
+    kpiTeamState.requests.history = 1 + periods.length;
+    const scoreRows = await Promise.all(periods.map(async period => [period.id, await callCrmRpc("crm_kpi_get_monthly_scores", {p_period_id:period.id}) || []]));
+    if (token !== kpiTeamState.historyToken) return;
+    kpiTeamState.historyProgress = progress;
+    kpiTeamState.historyPeriods = periods;
+    kpiTeamState.historyScoresByPeriod = new Map(scoreRows);
+  } catch (error) {
+    if (token !== kpiTeamState.historyToken) return;
+    kpiTeamState.errors.history = `Không tải được lịch sử KPI: ${authMessage(error)}`;
+    throw error;
+  } finally {
+    if (token === kpiTeamState.historyToken) {
+      kpiTeamState.loading.history = false;
+      renderKpiTeamEmployeeDetail();
+    }
+  }
+}
+
+function renderKpiTeamEmployeeHistory(summary) {
+  const target = $("kpiTeamDetailContent");
+  if (kpiTeamState.loading.history) {
+    $("kpiTeamDetailStatus").textContent = "Đang tải lịch sử KPI...";
+    target.innerHTML = kpiTeamSkeleton(3);
+    return;
+  }
+  if (kpiTeamState.errors.history) {
+    $("kpiTeamDetailStatus").innerHTML = `<span class="error-text">${esc(kpiTeamState.errors.history)}</span>`;
+    target.innerHTML = `<div class="kpi-team-empty"><button class="small primary" type="button" data-kpi-team-retry="history">Thử lại</button></div>`;
+    return;
+  }
+  const rows = kpiTeamState.historyPeriods
+    .map(period => {
+      const assignments = kpiTeamState.historyProgress.filter(row => clean(kpiTeamValue(row, "periodId", "period_id")) === clean(period.id) && clean(kpiTeamValue(row, "employeeId", "employee_id")) === summary.id);
+      const score = (kpiTeamState.historyScoresByPeriod.get(period.id) || []).find(row => clean(kpiTeamValue(row, "employeeId", "employee_id")) === summary.id);
+      return {period, assignments, score};
+    })
+    .filter(row => row.assignments.length || row.score);
+  $("kpiTeamDetailStatus").textContent = `${rows.length} kỳ KPI có dữ liệu`;
+  target.innerHTML = rows.length ? `<div class="kpi-team-history-list">${rows.map(row => {
+    const monthlyScore = row.score == null ? null : Number(kpiTeamValue(row.score, "monthlyScore", "monthly_score") || 0);
+    const openCount = row.assignments.reduce((sum, item) => sum + (kpiTeamValue(item, "hasOpenItems", "has_open_items") ? 1 : 0), 0);
+    return `<details class="kpi-team-history-detail"><summary><span><b>${esc(kpi1PeriodLabel(row.period))}</b><small>${esc(clean(row.period.status).toUpperCase())}</small></span><span><b>${monthlyScore == null ? "Chưa có điểm" : `${esc(kpiTeamNumber(monthlyScore, 2))}%`}</b><small>${esc(row.assignments.length)} KPI${openCount ? ` · ${esc(openCount)} mục mở` : ""}</small></span></summary><div class="kpi-team-history-assignments">${row.assignments.map(item => { const metric=assignmentProgressMetrics(item); return `<div><span><b>${esc(kpiTeamDefinitionName(item))}</b><small>${kpiTeamValue(item,"scoreEnabled","score_enabled") ? "Tính điểm" : "Tham chiếu"}</small></span><span>${esc(kpiTeamNumber(metric.actual,2))}/${esc(kpiTeamNumber(metric.target,2))} · ${esc(kpiTeamNumber(metric.scoringPercent,2))}%</span></div>`; }).join("")}</div></details>`;
+  }).join("")}</div>` : `<div class="kpi-team-empty"><b>Chưa có dữ liệu KPI ở các kỳ trước.</b></div>`;
+}
+
+function openKpiTeamAssign(employeeId) {
+  const summary = kpiTeamSummaries().find(row => row.id === clean(employeeId));
+  const period = kpiTeamPeriod();
+  if (!summary || !period) return notice("Không tìm thấy nhân viên hoặc kỳ KPI.", true);
+  if (clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ có thể gán hoặc cấu hình KPI khi kỳ đang ở trạng thái DRAFT.", true);
+  const assignedDefinitionIds = new Set(kpiTeamRawAssignments(period.id).filter(row => assignmentEmployeeId(row) === summary.id).map(row => clean(row.definitionId)));
+  const definitions = kpiDefinitions.filter(row => row.active !== false);
+  $("kpiTeamAssignTitle").textContent = `Gán KPI cho ${summary.name}`;
+  $("kpiTeamAssignSubtitle").textContent = `Kỳ ${kpi1PeriodLabel(period)} · DRAFT`;
+  $("kpiTeamAssignDefinition").innerHTML = `<option value="">-- Chọn KPI --</option>${definitions.map(row => `<option value="${esc(row.id)}" ${assignedDefinitionIds.has(clean(row.id)) ? "disabled" : ""}>${esc(row.name || row.code)}${assignedDefinitionIds.has(clean(row.id)) ? " · Đã gán" : ""}</option>`).join("")}`;
+  $("kpiTeamAssignTarget").value = "";
+  $("kpiTeamAssignScoreEnabled").checked = true;
+  $("kpiTeamAssignDefinitionMeta").textContent = definitions.length ? "Chọn KPI dùng chung, sau đó nhập mục tiêu cho nhân viên." : "Bộ KPI chưa có định nghĩa đang hoạt động.";
+  $("kpiTeamAssignWarning").classList.toggle("hide", definitions.length > 0);
+  $("kpiTeamAssignWarning").textContent = definitions.length ? "" : "Chưa có KPI khả dụng. Hãy tạo hoặc bật KPI trong Bộ KPI.";
+  $("kpiTeamAssignSubmitBtn").disabled = !definitions.length;
+  $("kpiTeamAssignDrawer").dataset.employeeId = summary.id;
+  $("kpiTeamAssignBackdrop").classList.remove("hide");
+  $("kpiTeamAssignDrawer").classList.remove("hide");
+  $("kpiTeamAssignDefinition").focus();
+}
+
+function closeKpiTeamAssign() {
+  $("kpiTeamAssignBackdrop")?.classList.add("hide");
+  $("kpiTeamAssignDrawer")?.classList.add("hide");
+  if ($("kpiTeamAssignDrawer")) delete $("kpiTeamAssignDrawer").dataset.employeeId;
+}
+
+function updateKpiTeamAssignDefinitionMeta() {
+  const definition = kpiDefinitions.find(row => clean(row.id) === clean($("kpiTeamAssignDefinition")?.value));
+  if (!definition) {
+    $("kpiTeamAssignDefinitionMeta").textContent = "Chọn KPI dùng chung, sau đó nhập mục tiêu cho nhân viên.";
+    return;
+  }
+  const safeDefault = clean(definition.sourceMetricKey).toLowerCase() !== "deals_v1";
+  $("kpiTeamAssignScoreEnabled").checked = safeDefault;
+  $("kpiTeamAssignDefinitionMeta").textContent = `${definition.aggregationMode || "COUNT"} · ${definition.unit || "đơn vị"}${safeDefault ? "" : " · Mặc định chỉ tham chiếu (fail-closed)"}`;
+}
+
+async function submitKpiTeamAssignment() {
+  const employeeId = clean($("kpiTeamAssignDrawer")?.dataset.employeeId);
+  const definitionId = clean($("kpiTeamAssignDefinition")?.value);
+  const target = Number($("kpiTeamAssignTarget")?.value || 0);
+  const period = kpiTeamPeriod();
+  if (!employeeId || !period) return notice("Thiếu nhân viên hoặc kỳ KPI.", true);
+  if (clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ có thể gán KPI khi kỳ đang ở trạng thái DRAFT.", true);
+  if (!definitionId) return notice("Hãy chọn KPI cần gán.", true);
+  if (!(target > 0)) return notice("Mục tiêu KPI phải lớn hơn 0.", true);
+  const definition = kpiDefinitions.find(row => clean(row.id) === definitionId);
+  const expectedDefault = clean(definition?.sourceMetricKey).toLowerCase() !== "deals_v1";
+  const requestedScoreEnabled = !!$("kpiTeamAssignScoreEnabled")?.checked;
+  let assigned;
+  try {
+    assigned = await callCrmRpc("crm_kpi_assign_employee", {
+      p_period_id:period.id,
+      p_definition_id:definitionId,
+      p_employee_id:employeeId,
+      p_target:target,
+      p_expected_period_version:Number(period.version)
+    });
+    if (requestedScoreEnabled !== expectedDefault) {
+      await callCrmRpc("crm_kpi_update_assignment_options", {
+        p_assignment_id:assigned.id,
+        p_score_enabled:requestedScoreEnabled,
+        p_expected_assignment_version:Number(assigned.lock_version || 1),
+        p_expected_period_version:Number(assigned.periodVersion)
+      });
+    }
+  } catch (error) {
+    kpiTeamState.summaryCacheKey = "";
+    await reloadKpiFoundationData().catch(() => {});
+    await reloadKpiTeamSummary({force:true}).catch(() => {});
+    if (assigned?.id) throw new Error(`KPI đã được gán nhưng chưa cập nhật được tùy chọn tính điểm. Dữ liệu đã được tải lại. ${authMessage(error)}`);
+    throw error;
+  }
+  closeKpiTeamAssign();
+  kpiTeamState.summaryCacheKey = "";
+  await reloadKpiFoundationData();
+  await reloadKpiTeamSummary({force:true});
+  renderKpiTeamEmployeeDetail();
+  notice("Đã gán KPI và tải lại dữ liệu từ hệ thống.");
+}
+
 async function reloadKpi2Data() {
   if (!currentUser || !$('kpi2OperationsPanel')) return;
   kpi2Progress = await callCrmRpc("crm_kpi_get_assignment_progress", {p_period_id:null}) || [];
@@ -4418,14 +5086,23 @@ async function submitKpi2Claim(){
 
 async function reviewSelectedKpi2Events(){
   const selected=[...document.querySelectorAll('[data-kpi2-review-event]:checked')].map(x=>({eventId:x.dataset.kpi2ReviewEvent,expectedVersion:Number(x.dataset.version)}));if(!selected.length)return notice('Hãy chọn event cần xử lý.',true);
-  const decision=$('kpi2ReviewDecision').value,reason=$('kpi2ReviewReason').value||null,note=clean($('kpi2ManagerNote').value)||null;
+  const teamReviewVisible=isManager()&&$('kpiTeamDetailDrawer')&&!$('kpiTeamDetailDrawer').classList.contains('hide')&&$('kpiTeamReviewDecision');
+  const decision=(teamReviewVisible?$('kpiTeamReviewDecision'):$('kpi2ReviewDecision')).value,reason=(teamReviewVisible?$('kpiTeamReviewReason'):$('kpi2ReviewReason')).value||null,note=clean((teamReviewVisible?$('kpiTeamManagerNote'):$('kpi2ManagerNote')).value)||null;
   if(decision==='REJECTED'&&!reason)return notice('Từ chối cần chọn reason code.',true);if((decision==='NEEDS_REVISION'||reason==='OTHER')&&!note)return notice('Cần ghi chú Manager.',true);
   if(!confirm(`${decision} ${selected.length} event? Toàn bộ batch sẽ rollback nếu một event lỗi.`))return;
-  await callCrmRpc('crm_kpi_review_events',{p_request_id:crypto.randomUUID(),p_rows:selected,p_decision:decision,p_reason_code:reason,p_manager_note:note});await reloadKpi2Data();notice(`Đã xử lý ${selected.length} event.`);
+  await callCrmRpc('crm_kpi_review_events',{p_request_id:crypto.randomUUID(),p_rows:selected,p_decision:decision,p_reason_code:reason,p_manager_note:note});
+  if(teamReviewVisible){
+    kpiTeamState.summaryCacheKey='';
+    kpiTeamState.globalQueueEvents=[];
+    await Promise.all([reloadKpiTeamSummary({force:true}),loadKpiTeamEmployeeProposals({force:true})]);
+  }else await reloadKpi2Data();
+  notice(`Đã xử lý ${selected.length} event và tải lại dữ liệu.`);
 }
 
 async function viewKpi2Evidence(eventId){
-  const rows=kpi2Evidence.filter(e=>e.event_id===eventId),urls=[];for(const e of rows){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;urls.push(data.signedUrl);}
+  let rows=kpi2Evidence.filter(e=>clean(e.event_id||e.eventId)===clean(eventId));
+  if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
+  const urls=[];for(const e of rows){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;urls.push(data.signedUrl);}
   openDetail('Minh chứng KPI','URL ký tạm thời trong 2 phút',urls.length?`<div class="evidence-grid">${urls.map(url=>`<img src="${esc(url)}" alt="Minh chứng KPI">`).join('')}</div>`:'<div class="muted">Không có ảnh.</div>');
 }
 
@@ -8481,6 +9158,15 @@ document.addEventListener("click", e => {
   const kpi1EditDefinitionId = e.target.closest("[data-kpi1-edit-definition]")?.dataset.kpi1EditDefinition;
   const kpi1ToggleDefinitionId = e.target.closest("[data-kpi1-toggle-definition]")?.dataset.kpi1ToggleDefinition;
   const kpi1SaveMatrixId = e.target.closest("[data-kpi1-save-matrix]")?.dataset.kpi1SaveMatrix;
+  const kpiTeamMode = e.target.closest("[data-kpi-team-mode]")?.dataset.kpiTeamMode;
+  const kpiTeamEmployeeBtn = e.target.closest("[data-kpi-team-open-employee]");
+  const kpiTeamAssignEmployeeId = e.target.closest("[data-kpi-team-assign-employee]")?.dataset.kpiTeamAssignEmployee;
+  const kpiTeamEmployeeTab = e.target.closest("[data-kpi-employee-tab]")?.dataset.kpiEmployeeTab;
+  const kpiTeamEventFilter = e.target.closest("[data-kpi-team-event-filter]")?.dataset.kpiTeamEventFilter;
+  const kpiTeamOpenEventBtn = e.target.closest("[data-kpi-team-open-event]");
+  const kpiTeamRetry = e.target.closest("[data-kpi-team-retry]")?.dataset.kpiTeamRetry;
+  const kpiTeamDetailKpi = e.target.closest("[data-kpi-team-detail-kpi]")?.dataset.kpiTeamDetailKpi;
+  const kpiTeamReviewBtn = e.target.closest("#kpiTeamReviewBtn");
   const kpi2ClaimId = e.target.closest("[data-kpi2-open-claim]")?.dataset.kpi2OpenClaim;
   const kpi2RevisionId = e.target.closest("[data-kpi2-open-revision]")?.dataset.kpi2OpenRevision;
   const kpi2EvidenceEventId = e.target.closest("[data-kpi2-view-evidence]")?.dataset.kpi2ViewEvidence;
@@ -8544,6 +9230,20 @@ document.addEventListener("click", e => {
   if (kpi1EditDefinitionId) editKpi1Definition(kpi1EditDefinitionId);
   if (kpi1ToggleDefinitionId) runAction(`kpi1Toggle:${kpi1ToggleDefinitionId}`, "kpi1Toggle", "Đang cập nhật...", () => toggleKpi1Definition(kpi1ToggleDefinitionId));
   if (kpi1SaveMatrixId) runAction(`kpi1Matrix:${kpi1SaveMatrixId}`, "kpi1Matrix", "Đang lưu ma trận...", () => saveKpi1MatrixRow(kpi1SaveMatrixId));
+  if (kpiTeamMode) setKpiTeamMode(kpiTeamMode);
+  if (kpiTeamEmployeeBtn) openKpiTeamEmployee(kpiTeamEmployeeBtn.dataset.kpiTeamOpenEmployee, kpiTeamEmployeeBtn.dataset.kpiTeamOpenTab || "overview");
+  if (kpiTeamAssignEmployeeId) openKpiTeamAssign(kpiTeamAssignEmployeeId);
+  if (kpiTeamEmployeeTab) setKpiTeamEmployeeTab(kpiTeamEmployeeTab);
+  if (kpiTeamEventFilter) { kpiTeamState.eventStatus = kpiTeamEventFilter; renderKpiTeamEmployeeDetail(); }
+  if (kpiTeamOpenEventBtn) runAction("", `kpiTeamEvent:${kpiTeamOpenEventBtn.dataset.kpiTeamOpenEvent}`, "Đang mở đề xuất...", () => openKpiTeamGlobalEvent(kpiTeamOpenEventBtn.dataset.kpiTeamOpenEvent, kpiTeamOpenEventBtn.dataset.employeeId));
+  if (kpiTeamRetry === "summary") runAction("kpiTeamReloadBtn", "kpiTeamSummary", "Đang tải...", () => reloadKpiTeamSummary({force:true}));
+  if (kpiTeamRetry === "proposals") runAction("", "kpiTeamProposals", "Đang tải...", () => loadKpiTeamEmployeeProposals({force:true}));
+  if (kpiTeamRetry === "queue") runAction("", "kpiTeamQueue", "Đang tải...", () => loadKpiTeamGlobalQueue({force:true}));
+  if (kpiTeamRetry === "history") runAction("", "kpiTeamHistory", "Đang tải...", () => loadKpiTeamEmployeeHistory({force:true}));
+  if (e.target.closest("[data-kpi-team-clear-filter]")) { kpiTeamState.employeeSearch=""; kpiTeamState.progressFilter="all"; kpiTeamState.pendingOnly=false; renderKpiTeamShell(); }
+  if (e.target.closest("[data-kpi-team-close-queue]")) { kpiTeamState.globalQueueOpen=false; renderKpiTeamShell(); }
+  if (kpiTeamDetailKpi) setKpiTeamEmployeeTab("kpis");
+  if (kpiTeamReviewBtn) runAction("kpiTeamReviewBtn", "kpiTeamReview", "Đang xử lý...", reviewSelectedKpi2Events);
   if (kpi2ClaimId) runAction(`kpi2Claim:${kpi2ClaimId}`, "kpi2Claim", "Đang tải candidate...", () => openKpi2Claim(kpi2ClaimId));
   if (kpi2RevisionId) openKpi2Revision(kpi2RevisionId);
   if (kpi2EvidenceEventId) runAction(`kpi2Evidence:${kpi2EvidenceEventId}`, "kpi2Evidence", "Đang tạo link ảnh...", () => viewKpi2Evidence(kpi2EvidenceEventId));
@@ -8656,6 +9356,37 @@ on("kpi1SaveDefinitionBtn", "click", () => runAction("kpi1SaveDefinitionBtn", "k
 on("kpi1CancelDefinitionBtn", "click", resetKpi1DefinitionForm);
 on("kpi1ActivatePeriodBtn", "click", () => runAction("kpi1ActivatePeriodBtn", "kpi1Activate", "Đang kích hoạt...", activateKpi1Period));
 on("kpi1ClosePeriodDetailBtn", "click", closeKpi1PeriodDetail);
+on("kpiTeamReloadBtn", "click", () => runAction("kpiTeamReloadBtn", "kpiTeamSummary", "Đang tải...", () => reloadKpiTeamSummary({force:true})));
+on("kpiTeamPeriod", "change", e => {
+  kpiTeamState.selectedPeriodId = clean(e.target.value);
+  selectedKpiFoundationPeriodId = kpiTeamState.selectedPeriodId;
+  kpiTeamState.summaryCacheKey = "";
+  kpiTeamState.assignmentProgress = [];
+  kpiTeamState.monthlyScores = [];
+  kpiTeamState.employeeEvents = [];
+  kpiTeamState.globalQueueEvents = [];
+  kpiTeamState.historyProgress = [];
+  kpiTeamState.historyPeriods = [];
+  kpiTeamState.historyScoresByPeriod = new Map();
+  closeKpiTeamEmployee();
+  renderKpiTeamShell();
+  renderKpiFoundation();
+  runAction("", "kpiTeamPeriod", "Đang tải kỳ KPI...", () => reloadKpiTeamSummary({force:true}));
+});
+on("kpiTeamSearch", "input", debounce(e => { kpiTeamState.employeeSearch = e.target.value; renderKpiTeamEmployeeList(); }, 120));
+on("kpiTeamProgressFilter", "change", e => { kpiTeamState.progressFilter = e.target.value; renderKpiTeamEmployeeList(); });
+on("kpiTeamPendingOnly", "change", e => { kpiTeamState.pendingOnly = e.target.checked; renderKpiTeamEmployeeList(); });
+on("kpiTeamPendingBtn", "click", () => {
+  if (kpiTeamState.globalQueueOpen) { kpiTeamState.globalQueueOpen = false; renderKpiTeamShell(); return; }
+  runAction("kpiTeamPendingBtn", "kpiTeamQueue", "Đang tải...", () => loadKpiTeamGlobalQueue({force:true}));
+});
+on("kpiTeamDetailCloseBtn", "click", closeKpiTeamEmployee);
+on("kpiTeamDetailBackdrop", "click", closeKpiTeamEmployee);
+on("kpiTeamAssignCloseBtn", "click", closeKpiTeamAssign);
+on("kpiTeamAssignCancelBtn", "click", closeKpiTeamAssign);
+on("kpiTeamAssignBackdrop", "click", closeKpiTeamAssign);
+on("kpiTeamAssignDefinition", "change", updateKpiTeamAssignDefinitionMeta);
+on("kpiTeamAssignSubmitBtn", "click", () => runAction("kpiTeamAssignSubmitBtn", "kpiTeamAssign", "Đang gán...", submitKpiTeamAssignment));
 on("kpi2ReloadBtn", "click", () => runAction("kpi2ReloadBtn", "kpi2Reload", "Đang tải...", reloadKpi2Data));
 on("kpi2CloseClaimBtn", "click", () => runAction("kpi2CloseClaimBtn", "kpi2CloseClaim", "Đang đóng...", closeKpi2Claim));
 on("kpi2EvidenceFiles", "change", () => runAction("", "kpi2EvidenceUpload", "Đang tải ảnh...", handleKpi2EvidenceFiles));
@@ -8668,6 +9399,11 @@ on("kpiViewBtn", "click", () => setMainView("kpi"));
 on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => goToRoute("/admin"));
 on("adminBackToCrmBtn", "click", () => goToRoute("/"));
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) closeKpiTeamAssign();
+  else if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) closeKpiTeamEmployee();
+});
 on("adminLogoutBtn", "click", async () => {
   try { await updatePresence(false); } catch {}
   await signOut(auth);
