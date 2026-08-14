@@ -75,6 +75,7 @@ exports/
 !scripts/test-phase-kpi1-integration.sql
 !scripts/test-phase-p0a-integration.sql
 !scripts/test-phase-p0b-integration.sql
+!scripts/test-kpi21e2-draft-config-delete.sql
 /supabase/.temp/
 *.dump
 *.backup

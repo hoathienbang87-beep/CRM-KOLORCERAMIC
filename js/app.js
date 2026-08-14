@@ -73,7 +73,7 @@ if (MAINTENANCE_CONFIG.enabled) {
   try {
     await ensureSupabaseLoaded();
     setLoginStatus("");
-    await import("./features/crm-app.js?v=20260814-kpi21e-cutover");
+    await import("./features/crm-app.js?v=20260814-kpi21e2-safe-delete");
   } catch (err) {
     console.error(err);
     setLoginStatus(err?.message || "Khong tai duoc app CRM.", true);

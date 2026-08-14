@@ -4229,6 +4229,23 @@ async function toggleKpi1Definition(definitionId) {
   notice(next ? "Đã bật KPI definition." : "Đã tắt KPI definition.");
 }
 
+async function deleteKpi1Definition(definitionId) {
+  if (!isManager()) return notice("Chỉ manager/admin/owner được xóa KPI definition.", true);
+  const item = kpiDefinitions.find(row => row.id === definitionId);
+  if (!item) return notice("Không tìm thấy KPI definition.", true);
+  if (kpiAssignments.some(row => clean(row.definitionId) === clean(item.id))) {
+    return notice("KPI này đang hoặc đã được dùng. Chỉ definition chưa từng được gán mới có thể xóa.", true);
+  }
+  if (!confirm(`Xóa vĩnh viễn KPI definition “${item.name || item.code}”?\n\nThao tác này chỉ được phép khi definition chưa từng được sử dụng và sẽ được ghi audit log.`)) return;
+  await callCrmRpc("crm_kpi_delete_unused_definition", {
+    p_definition_id: item.id,
+    p_expected_version: Number(item.version)
+  });
+  if (clean($("kpi1DefinitionId")?.value) === clean(item.id)) resetKpi1DefinitionForm();
+  await reloadKpiFoundationData();
+  notice("Đã xóa KPI definition chưa sử dụng.");
+}
+
 async function renameKpi1Period(periodId) {
   const period = kpiPeriods.find(item => item.id === periodId);
   if (!period || clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ kỳ DRAFT mới được đổi tên.", true);
@@ -4241,6 +4258,42 @@ async function renameKpi1Period(periodId) {
   });
   await reloadKpiFoundationData();
   notice("Đã cập nhật tên kỳ KPI.");
+}
+
+async function deleteKpi1Period(periodId) {
+  if (!isManager()) return notice("Chỉ manager/admin/owner được xóa kỳ KPI.", true);
+  const period = kpiPeriods.find(item => item.id === periodId);
+  if (!period) return notice("Không tìm thấy kỳ KPI.", true);
+  if (clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ kỳ DRAFT mới được xóa.", true);
+  const assignments = kpi1PeriodAssignments(period.id, true);
+  const message = `Xóa vĩnh viễn ${period.name || kpi1PeriodLabel(period)}?\n\n${assignments.length} assignment DRAFT sẽ bị xóa cùng kỳ. Hệ thống sẽ từ chối nếu đã có đề xuất hoặc ảnh minh chứng.`;
+  if (!confirm(message)) return;
+  await callCrmRpc("crm_kpi_delete_draft_period", {
+    p_period_id: period.id,
+    p_expected_period_version: Number(period.version)
+  });
+  if (clean(selectedKpiFoundationPeriodId) === clean(period.id)) selectedKpiFoundationPeriodId = "";
+  if (clean(kpiTeamState.selectedPeriodId) === clean(period.id)) kpiTeamState.selectedPeriodId = "";
+  await reloadKpiFoundationData();
+  notice("Đã xóa kỳ KPI DRAFT và các assignment chưa phát sinh dữ liệu.");
+}
+
+async function deleteKpi1Assignment(assignmentId) {
+  if (!isManager()) return notice("Chỉ manager/admin/owner được xóa assignment KPI.", true);
+  const assignment = kpiAssignments.find(item => item.id === assignmentId);
+  const period = assignment ? kpiPeriods.find(item => item.id === assignment.periodId) : null;
+  const employee = assignment ? kpi1EmployeeById(assignment.employeeId) : null;
+  const definition = assignment ? kpiDefinitions.find(item => item.id === assignment.definitionId) : null;
+  if (!assignment || !period) return notice("Không tìm thấy assignment hoặc kỳ KPI.", true);
+  if (clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ assignment thuộc kỳ DRAFT mới được xóa.", true);
+  if (!confirm(`Xóa assignment “${definition?.name || "KPI"}” của ${employee?.name || employee?.email || assignment.employeeId}?\n\nHệ thống sẽ từ chối nếu assignment đã có đề xuất hoặc minh chứng.`)) return;
+  await callCrmRpc("crm_kpi_delete_draft_assignment", {
+    p_assignment_id: assignment.id,
+    p_expected_assignment_version: Number(assignment.lockVersion),
+    p_expected_period_version: Number(period.version)
+  });
+  await reloadKpiFoundationData();
+  notice("Đã xóa assignment KPI DRAFT.");
 }
 
 function selectKpi1Period(periodId) {
@@ -4342,6 +4395,7 @@ function renderKpi1Matrix(period) {
         <label><input type="checkbox" data-kpi1-assigned data-employee-id="${esc(employeeId)}" ${assigned ? "checked" : ""} ${locked || !employeeActive ? "disabled" : ""}> Áp dụng</label>
         <input type="number" min="0.01" step="0.01" data-kpi1-target value="${assigned ? esc(assignment.target) : ""}" placeholder="Target" ${locked || !employeeActive ? "disabled" : ""}>
         <label><input type="checkbox" ${assigned ? `data-kpi2-score-option="${esc(assignment.id)}"` : "data-kpi1-new-score-option"} ${assigned ? (assignment.scoreEnabled !== false ? "checked" : "") : (safeScoreDefault ? "checked" : "")} ${locked || !employeeActive ? "disabled" : ""}> Tính vào điểm KPI tháng</label>
+        ${assigned && !locked ? `<button class="small danger" type="button" data-kpi1-delete-assignment="${esc(assignment.id)}">Xóa gán</button>` : ""}
         ${!assigned && !safeScoreDefault ? `<div class="muted">KPI bán hàng mặc định chỉ tham khảo.</div>` : ""}
         ${!employeeActive ? `<div class="muted">Không còn ACTIVE</div>` : ""}
       </td>`;
@@ -4368,20 +4422,23 @@ function renderKpiFoundation() {
       <td>${esc(validation.employeeCount)}</td>
       <td>${esc(validation.assignments.length)}</td>
       <td>${esc(fmtDate(period.createdAt))}</td>
-      <td><div class="actions"><button class="small primary" type="button" data-kpi1-select-period="${esc(period.id)}">Xem cấu hình</button>${clean(period.status).toUpperCase() === "DRAFT" ? `<button class="small" type="button" data-kpi1-rename-period="${esc(period.id)}">Đổi tên</button>` : ""}</div></td>
+      <td><div class="actions"><button class="small primary" type="button" data-kpi1-select-period="${esc(period.id)}">Xem cấu hình</button>${clean(period.status).toUpperCase() === "DRAFT" ? `<button class="small" type="button" data-kpi1-rename-period="${esc(period.id)}">Đổi tên</button><button class="small danger" type="button" data-kpi1-delete-period="${esc(period.id)}">Xóa kỳ</button>` : ""}</div></td>
     </tr>`;
   }).join("") : `<tr><td colspan="7" class="muted">Chưa có kỳ KPI mới.</td></tr>`;
 
   const definitionRows = $("kpi1DefinitionRows");
-  definitionRows.innerHTML = kpiDefinitions.length ? kpiDefinitions.map(item => `<tr>
+  definitionRows.innerHTML = kpiDefinitions.length ? kpiDefinitions.map(item => {
+    const used = kpiAssignments.some(row => clean(row.definitionId) === clean(item.id));
+    return `<tr>
     <td><b>${esc(item.code)}</b></td>
     <td>${esc(item.name)}<div class="muted">${esc(item.description || "")}</div></td>
     <td>${esc(item.kpiType)}<div class="muted">${esc(item.aggregationMode || "COUNT")}</div></td>
     <td>${esc(item.unit)}</td>
     <td>${item.evidenceRequired ? "Bắt buộc" : "Không"}</td>
     <td>${item.active === false ? `<span class="pill red">Đã tắt</span>` : `<span class="pill green">Đang dùng</span>`}</td>
-    <td><div class="actions"><button class="small" type="button" data-kpi1-edit-definition="${esc(item.id)}">Sửa</button><button class="small ${item.active === false ? "primary" : "danger"}" type="button" data-kpi1-toggle-definition="${esc(item.id)}">${item.active === false ? "Bật" : "Tắt"}</button></div></td>
-  </tr>`).join("") : `<tr><td colspan="7" class="muted">Chưa có KPI definition.</td></tr>`;
+    <td><div class="actions"><button class="small" type="button" data-kpi1-edit-definition="${esc(item.id)}">Sửa</button><button class="small ${item.active === false ? "primary" : "danger"}" type="button" data-kpi1-toggle-definition="${esc(item.id)}">${item.active === false ? "Bật" : "Tắt"}</button>${used ? "" : `<button class="small danger" type="button" data-kpi1-delete-definition="${esc(item.id)}">Xóa</button>`}</div></td>
+  </tr>`;
+  }).join("") : `<tr><td colspan="7" class="muted">Chưa có KPI definition.</td></tr>`;
 
   const period = kpi1SelectedPeriod();
   $("kpi1PeriodDetail").classList.toggle("hide", !period);
@@ -9286,8 +9343,11 @@ document.addEventListener("click", e => {
   const kpiOwnerDetailBtn = e.target.closest("[data-kpi-owner-detail]");
   const kpi1SelectPeriodId = e.target.closest("[data-kpi1-select-period]")?.dataset.kpi1SelectPeriod;
   const kpi1RenamePeriodId = e.target.closest("[data-kpi1-rename-period]")?.dataset.kpi1RenamePeriod;
+  const kpi1DeletePeriodId = e.target.closest("[data-kpi1-delete-period]")?.dataset.kpi1DeletePeriod;
   const kpi1EditDefinitionId = e.target.closest("[data-kpi1-edit-definition]")?.dataset.kpi1EditDefinition;
   const kpi1ToggleDefinitionId = e.target.closest("[data-kpi1-toggle-definition]")?.dataset.kpi1ToggleDefinition;
+  const kpi1DeleteDefinitionId = e.target.closest("[data-kpi1-delete-definition]")?.dataset.kpi1DeleteDefinition;
+  const kpi1DeleteAssignmentId = e.target.closest("[data-kpi1-delete-assignment]")?.dataset.kpi1DeleteAssignment;
   const kpi1SaveMatrixId = e.target.closest("[data-kpi1-save-matrix]")?.dataset.kpi1SaveMatrix;
   const kpiTeamMode = e.target.closest("[data-kpi-team-mode]")?.dataset.kpiTeamMode;
   const kpiTeamEmployeeBtn = e.target.closest("[data-kpi-team-open-employee]");
@@ -9359,8 +9419,11 @@ document.addEventListener("click", e => {
   if (kpiOwnerDetailBtn) openKpiOwnerDetail(kpiOwnerDetailBtn.dataset.kpiOwnerDetail, kpiOwnerDetailBtn.dataset.ownerKey);
   if (kpi1SelectPeriodId) selectKpi1Period(kpi1SelectPeriodId);
   if (kpi1RenamePeriodId) runAction(`kpi1Rename:${kpi1RenamePeriodId}`, "kpi1Rename", "Đang lưu...", () => renameKpi1Period(kpi1RenamePeriodId));
+  if (kpi1DeletePeriodId) runAction(`kpi1DeletePeriod:${kpi1DeletePeriodId}`, "kpi1DeletePeriod", "Đang xóa...", () => deleteKpi1Period(kpi1DeletePeriodId));
   if (kpi1EditDefinitionId) editKpi1Definition(kpi1EditDefinitionId);
   if (kpi1ToggleDefinitionId) runAction(`kpi1Toggle:${kpi1ToggleDefinitionId}`, "kpi1Toggle", "Đang cập nhật...", () => toggleKpi1Definition(kpi1ToggleDefinitionId));
+  if (kpi1DeleteDefinitionId) runAction(`kpi1DeleteDefinition:${kpi1DeleteDefinitionId}`, "kpi1DeleteDefinition", "Đang xóa...", () => deleteKpi1Definition(kpi1DeleteDefinitionId));
+  if (kpi1DeleteAssignmentId) runAction(`kpi1DeleteAssignment:${kpi1DeleteAssignmentId}`, "kpi1DeleteAssignment", "Đang xóa...", () => deleteKpi1Assignment(kpi1DeleteAssignmentId));
   if (kpi1SaveMatrixId) runAction(`kpi1Matrix:${kpi1SaveMatrixId}`, "kpi1Matrix", "Đang lưu ma trận...", () => saveKpi1MatrixRow(kpi1SaveMatrixId));
   if (kpiTeamMode) setKpiTeamMode(kpiTeamMode);
   if (kpiTeamEmployeeBtn) openKpiTeamEmployee(kpiTeamEmployeeBtn.dataset.kpiTeamOpenEmployee, kpiTeamEmployeeBtn.dataset.kpiTeamOpenTab || "overview");

@@ -202,6 +202,8 @@ Backend smoke PASS: current server PRE, exact boundary đúng, policy guard tồ
 
 ## 34. Runbook ngày 01/09
 
+Không dùng các ID cấu hình test đã ghi trong audit KPI-2.1E.1. Owner xác nhận các giá trị đó chỉ dùng để test và chúng đã được xóa an toàn ngày 14/08/2026. Trước cutover phải tạo và duyệt lại cấu hình thật qua UI.
+
 1. Xác nhận thời gian production đã >= `2026-09-01 00:00:00+07:00`.
 2. Gọi/kiểm tra cutover status và xác nhận `preCutover=false`.
 3. Xác nhận period 09/2026 tồn tại ở DRAFT và cấu hình đã được owner duyệt.
@@ -226,8 +228,8 @@ Kỳ vọng cả hai bằng 0 cho legacy new-write.
 
 ## 35. Checklist owner trước 01/09
 
-- [ ] Tạo period 09/2026 ở DRAFT.
-- [ ] Xác nhận definitions thực tế.
+- [ ] Tạo lại period 09/2026 ở DRAFT bằng cấu hình thật.
+- [ ] Xác nhận definition thực tế cuối.
 - [ ] Xác nhận target từng sale.
 - [ ] Xác nhận `score_enabled` từng assignment.
 - [ ] Hoàn tất assignments cho sale active.
