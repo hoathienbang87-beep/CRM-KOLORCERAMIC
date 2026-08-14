@@ -475,4 +475,17 @@
 .kpi1-status-draft{color:#9a5a00;background:#fff4d8}
 .kpi1-status-active{color:#076a4f;background:#dff8ef}
 .kpi1-status-closed{color:#475569;background:#e8eef5}
+.kpi2-progress-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;margin-top:12px}
+.kpi2-progress-card{border:1px solid #cbd5e1;border-left:4px solid #168876;border-radius:7px;padding:12px;background:#f8fbff}
+.kpi2-progress-card .metric{font-size:22px;font-weight:800;margin:7px 0}.kpi2-progress-meta{display:flex;gap:6px;flex-wrap:wrap}
+.kpi2-workspace{margin-top:14px;padding:14px;border:1px solid #cbd5e1;border-radius:7px;background:#fff}
+.kpi2-candidate-list{max-height:320px;overflow:auto;border:1px solid #dbe4ee;border-radius:6px}
+.kpi2-candidate-row{display:grid;grid-template-columns:28px 1fr 160px;gap:8px;padding:9px;border-bottom:1px solid #e5edf5;align-items:center}
+.kpi2-staged-evidence-list{display:grid;gap:8px;margin-top:8px}
+.kpi2-staged-evidence-item{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px;border:1px solid #d8e2ef;border-radius:6px;background:#f8fbff}
+.kpi2-staged-evidence-item img{width:48px;height:48px;object-fit:cover;border-radius:4px;background:#e8eef5}
+.kpi2-staged-evidence-item .evidence-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.kpi2-staged-evidence-item.is-pending{border-color:#f59e0b;background:#fffbeb}
+.kpi2-review-toolbar{display:grid;grid-template-columns:180px 210px minmax(220px,1fr) auto;gap:8px;margin:10px 0}.kpi2-review-limit{max-height:520px;overflow:auto}
 @media(max-width:900px){.kpi1-foundation-grid{grid-template-columns:1fr}.kpi1-summary-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}}
+@media(max-width:900px){.kpi2-review-toolbar{grid-template-columns:1fr}.kpi2-candidate-row{grid-template-columns:28px 1fr}}

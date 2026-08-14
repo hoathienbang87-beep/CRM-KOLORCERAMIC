@@ -376,7 +376,11 @@
                 <div class="field"><label>Loại</label><select id="kpi1DefinitionType"><option>MANUAL</option><option>AUTO</option><option>HYBRID</option></select></div>
                 <div class="field"><label>Đơn vị</label><input id="kpi1DefinitionUnit" placeholder="lượt"></div>
                 <div class="field"><label>Metric key tương lai</label><input id="kpi1DefinitionMetric" placeholder="Để trống nếu MANUAL"></div>
+                <div class="field"><label>Cách cộng</label><select id="kpi1DefinitionAggregation"><option>COUNT</option><option>SUM</option></select></div>
+                <div class="field"><label>Số ảnh tối đa / event</label><input id="kpi1DefinitionMaxImages" type="number" min="0" max="2" value="2"></div>
                 <label class="kpi1-check-field"><input id="kpi1DefinitionEvidence" type="checkbox"> Bắt buộc minh chứng</label>
+                <label class="kpi1-check-field"><input id="kpi1DefinitionLocation" type="checkbox"> Bắt buộc vị trí</label>
+                <label class="kpi1-check-field"><input id="kpi1DefinitionTimestamp" type="checkbox" checked> Bắt buộc thời gian</label>
               </div>
               <div class="field"><label>Diễn giải</label><textarea id="kpi1DefinitionDescription" placeholder="Điều kiện nghiệp vụ của KPI..."></textarea></div>
               <div class="actions">
@@ -423,6 +427,40 @@
                 <tbody id="kpi1MatrixRows"></tbody>
               </table>
             </div>
+          </section>
+        </div>
+
+        <div id="kpi2OperationsPanel" class="panel hide" style="margin-top:14px">
+          <div class="pro-section-title">
+            <div><h3>KPI mới · Event claim</h3><div class="muted">Tiến độ chỉ tính event đã được Manager duyệt.</div></div>
+            <button id="kpi2ReloadBtn" class="small" type="button">Tải lại</button>
+          </div>
+          <div id="kpi2ProgressRows" class="kpi2-progress-grid"><div class="muted">Chưa có KPI ACTIVE được giao.</div></div>
+          <section id="kpi2SaleClaimPanel" class="kpi2-workspace hide">
+            <div class="pro-section-title"><h3 id="kpi2ClaimTitle">Gửi event KPI</h3><button id="kpi2CloseClaimBtn" class="small" type="button">Đóng</button></div>
+            <input id="kpi2ClaimAssignmentId" type="hidden">
+            <input id="kpi2RevisionEventId" type="hidden">
+            <div id="kpi2HybridCandidateArea" class="hide"><div class="table-title">Candidate từ CRM</div><div id="kpi2CandidateRows" class="kpi2-candidate-list"></div></div>
+            <div id="kpi2ManualEventArea">
+              <div class="grid2">
+                <div class="field"><label>Tiêu đề / Nội dung</label><textarea id="kpi2ManualDescription" placeholder="Mô tả việc đã thực hiện..."></textarea></div>
+                <div class="field"><label>Ngày giờ event</label><input id="kpi2ManualEventAt" type="datetime-local"></div>
+                <div class="field"><label>Giá trị</label><input id="kpi2ManualValue" type="number" min="0.01" step="0.01" value="1"></div>
+                <div class="field"><label>Ảnh minh chứng (tối đa 2)</label><input id="kpi2EvidenceFiles" type="file" accept="image/jpeg,image/webp,image/png" multiple><div id="kpi2StagedEvidenceList" class="kpi2-staged-evidence-list"><span class="muted">Chưa chọn ảnh.</span></div></div>
+              </div><div id="kpi2LocationStatus" class="muted"></div>
+            </div>
+            <div class="field"><label>Ghi chú submission</label><textarea id="kpi2SaleNote" placeholder="Thông tin bổ sung cho Manager..."></textarea></div>
+            <button id="kpi2SubmitBtn" class="primary" type="button">Gửi để duyệt</button>
+          </section>
+          <section id="kpi2ManagerReviewPanel" class="kpi2-workspace hide">
+            <div class="pro-section-title"><h3>Hàng đợi review event</h3><span id="kpi2ReviewCount" class="pill orange">0 pending</span></div>
+            <div class="kpi2-review-toolbar">
+              <select id="kpi2ReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select>
+              <select id="kpi2ReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select>
+              <input id="kpi2ManagerNote" placeholder="Ghi chú Manager">
+              <button id="kpi2BulkReviewBtn" class="primary" type="button">Xử lý mục đã chọn</button>
+            </div>
+            <div class="table-wrap kpi2-review-limit"><table><thead><tr><th><input id="kpi2SelectAllEvents" type="checkbox" aria-label="Chọn tất cả event"></th><th>Sale / KPI</th><th>Event</th><th>Giá trị</th><th>Minh chứng</th><th>Trạng thái</th></tr></thead><tbody id="kpi2ReviewRows"></tbody></table></div>
           </section>
         </div>
 

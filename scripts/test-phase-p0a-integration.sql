@@ -4,17 +4,17 @@
 
 begin;
 
-insert into public.app_users(id, email, name, role, active, lifecycle_status)
+insert into public.app_users(id, supabase_auth_id, email, name, role, active, lifecycle_status)
 values
-  ('p0a-admin', 'p0a-admin@example.invalid', 'P0A Admin', 'admin', true, 'active'),
-  ('p0a-manager', 'p0a-manager@example.invalid', 'P0A Manager', 'manager', true, 'active'),
-  ('p0a-sale-a', 'p0a-sale-a@example.invalid', 'P0A Sale A', 'sale', true, 'active'),
-  ('p0a-sale-b', 'p0a-sale-b@example.invalid', 'P0A Sale B', 'sale', true, 'active');
+  ('p0a-admin', '00000000-0000-4000-8000-00000000a001', 'p0a-admin@example.invalid', 'P0A Admin', 'admin', true, 'active'),
+  ('p0a-manager', '00000000-0000-4000-8000-00000000a002', 'p0a-manager@example.invalid', 'P0A Manager', 'manager', true, 'active'),
+  ('p0a-sale-a', '00000000-0000-4000-8000-00000000a003', 'p0a-sale-a@example.invalid', 'P0A Sale A', 'sale', true, 'active'),
+  ('p0a-sale-b', '00000000-0000-4000-8000-00000000a004', 'p0a-sale-b@example.invalid', 'P0A Sale B', 'sale', true, 'active');
 
 -- CASE 1 + CASE 3: Sale A creates and owns the customer. The RPC also writes
 -- phone_index and audit_logs in the same PostgreSQL transaction.
 set local role authenticated;
-select set_config('request.jwt.claims', '{"email":"p0a-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a003","email":"p0a-sale-a@example.invalid","role":"authenticated"}', true);
 select public.crm_create_customer(jsonb_build_object(
   'id', 'p0a-customer', 'name', 'P0A Customer',
   'phoneRaw', '0900000001', 'phoneNormalized', '0900000001',
@@ -89,7 +89,7 @@ before insert on public.audit_logs
 for each row execute function public.p0a_force_audit_failure();
 
 set local role authenticated;
-select set_config('request.jwt.claims', '{"email":"p0a-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a003","email":"p0a-sale-a@example.invalid","role":"authenticated"}', true);
 do $$
 begin
   begin
@@ -113,7 +113,7 @@ drop function public.p0a_force_audit_failure();
 
 -- CASE 4: manager transfers A -> B atomically.
 set local role authenticated;
-select set_config('request.jwt.claims', '{"email":"p0a-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a002","email":"p0a-manager@example.invalid","role":"authenticated"}', true);
 select public.crm_transfer_customer('p0a-customer', 'p0a-sale-b@example.invalid', '{}'::jsonb);
 do $$
 begin
@@ -136,7 +136,7 @@ do $$ begin
 end $$;
 
 -- Admin also retains visibility.
-select set_config('request.jwt.claims', '{"email":"p0a-admin@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a001","email":"p0a-admin@example.invalid","role":"authenticated"}', true);
 do $$ begin
   if (select count(*) from public.customers where id = 'p0a-customer') <> 1 then
     raise exception 'CASE 4 failed: admin cannot read customer';
@@ -144,7 +144,7 @@ do $$ begin
 end $$;
 
 -- Sale A loses visibility; Sale B gains it.
-select set_config('request.jwt.claims', '{"email":"p0a-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a003","email":"p0a-sale-a@example.invalid","role":"authenticated"}', true);
 do $$ begin
   if exists(select 1 from public.customers where id = 'p0a-customer') then
     raise exception 'CASE 4 failed: Sale A retained access';
@@ -156,7 +156,7 @@ do $$ begin
     raise exception 'CASE 4 failed: Sale A retained basic purchase access';
   end if;
 end $$;
-select set_config('request.jwt.claims', '{"email":"p0a-sale-b@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000a004","email":"p0a-sale-b@example.invalid","role":"authenticated"}', true);
 do $$ begin
   if not exists(select 1 from public.customers where id = 'p0a-customer') then
     raise exception 'CASE 4 failed: Sale B lacks access';

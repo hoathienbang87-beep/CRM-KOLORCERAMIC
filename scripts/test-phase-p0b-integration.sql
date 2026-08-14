@@ -3,16 +3,16 @@
 
 begin;
 
-insert into public.app_users(id, email, name, role, active, lifecycle_status)
+insert into public.app_users(id, supabase_auth_id, email, name, role, active, lifecycle_status)
 values
-  ('p0b-admin', 'p0b-admin@example.invalid', 'P0B Admin', 'admin', true, 'active'),
-  ('p0b-manager', 'p0b-manager@example.invalid', 'P0B Manager', 'manager', true, 'active'),
-  ('p0b-sale-a', 'p0b-sale-a@example.invalid', 'P0B Sale A', 'sale', true, 'active'),
-  ('p0b-sale-b', 'p0b-sale-b@example.invalid', 'P0B Sale B', 'sale', true, 'active');
+  ('p0b-admin', '00000000-0000-4000-8000-00000000b001', 'p0b-admin@example.invalid', 'P0B Admin', 'admin', true, 'active'),
+  ('p0b-manager', '00000000-0000-4000-8000-00000000b002', 'p0b-manager@example.invalid', 'P0B Manager', 'manager', true, 'active'),
+  ('p0b-sale-a', '00000000-0000-4000-8000-00000000b003', 'p0b-sale-a@example.invalid', 'P0B Sale A', 'sale', true, 'active'),
+  ('p0b-sale-b', '00000000-0000-4000-8000-00000000b004', 'p0b-sale-b@example.invalid', 'P0B Sale B', 'sale', true, 'active');
 
 -- Sale A creates a customer. Creation, assignment and audit are atomic.
 set local role authenticated;
-select set_config('request.jwt.claims', '{"email":"p0b-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b003","email":"p0b-sale-a@example.invalid","role":"authenticated"}', true);
 select public.crm_create_customer(jsonb_build_object(
   'id', 'p0b-customer', 'name', 'P0B Customer',
   'phoneRaw', '0911000001', 'phoneNormalized', '0911000001',
@@ -52,7 +52,7 @@ reset role;
 
 -- Manager unassigns. Follow-up remains and Sale A immediately loses access.
 set local role authenticated;
-select set_config('request.jwt.claims', '{"email":"p0b-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b002","email":"p0b-manager@example.invalid","role":"authenticated"}', true);
 select public.crm_unassign_customer('p0b-customer', 'Sale A nghỉ phép');
 
 do $$
@@ -68,7 +68,7 @@ begin
   end if;
 end $$;
 
-select set_config('request.jwt.claims', '{"email":"p0b-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b003","email":"p0b-sale-a@example.invalid","role":"authenticated"}', true);
 do $$ begin
   if exists(select 1 from public.customers where id='p0b-customer') then
     raise exception 'UNASSIGN RLS failed: Sale A still sees customer';
@@ -76,7 +76,7 @@ do $$ begin
 end $$;
 
 -- Manager assigns Sale B. created_by and created_at do not change.
-select set_config('request.jwt.claims', '{"email":"p0b-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b002","email":"p0b-manager@example.invalid","role":"authenticated"}', true);
 select public.crm_assign_customer('p0b-customer', 'p0b-sale-b', 'Phân công lại sau nghỉ phép');
 
 do $$
@@ -93,7 +93,7 @@ begin
   if v_created_at is null then raise exception 'REASSIGN failed: created_at missing'; end if;
 end $$;
 
-select set_config('request.jwt.claims', '{"email":"p0b-sale-b@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b004","email":"p0b-sale-b@example.invalid","role":"authenticated"}', true);
 do $$ begin
   if not exists(select 1 from public.customers where id='p0b-customer') then
     raise exception 'REASSIGN RLS failed: Sale B cannot see customer';
@@ -101,7 +101,7 @@ do $$ begin
 end $$;
 
 -- Deactivation defaults to UNASSIGNED and preserves open follow-up/history.
-select set_config('request.jwt.claims', '{"email":"p0b-admin@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b001","email":"p0b-admin@example.invalid","role":"authenticated"}', true);
 select public.crm_deactivate_employee('p0b-sale-b', 'unassigned', null, 'Nhân viên nghỉ việc');
 
 do $$
@@ -126,7 +126,7 @@ do $$ begin
 end $$;
 
 -- Bulk assignment is all-or-nothing. A missing customer rolls back prior rows.
-select set_config('request.jwt.claims', '{"email":"p0b-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-00000000b002","email":"p0b-manager@example.invalid","role":"authenticated"}', true);
 select public.crm_create_customer(jsonb_build_object('id','p0b-bulk-1','name','Bulk One'));
 select public.crm_create_customer(jsonb_build_object('id','p0b-bulk-2','name','Bulk Two'));
 do $$

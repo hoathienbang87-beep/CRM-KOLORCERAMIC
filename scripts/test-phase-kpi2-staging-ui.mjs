@@ -1,0 +1,33 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import {pathToFileURL} from "node:url";
+
+const ref=process.env.STAGING_PROJECT_REF||"",base=(process.env.STAGING_SUPABASE_URL||"").replace(/\/$/,""),anon=process.env.STAGING_ANON_KEY||"",service=process.env.STAGING_SERVICE_ROLE_KEY||"";
+if(ref!=="ykhtpvyelpujykheycsv"||!anon||!service)throw new Error("KPI-2 UI staging guard failed.");
+const {chromium}=await import(pathToFileURL(process.env.KPI2_PLAYWRIGHT_ENTRY).href),root=path.resolve(import.meta.dirname,".."),run=crypto.randomBytes(5).toString("hex"),password=`${crypto.randomBytes(18).toString("base64url")}aA1!`;
+const users=["manager","sale"].map(role=>({role,id:`kpi2-ui-${run}-${role}`,email:`kpi2-ui-${run}-${role}@example.com`})),authIds=[];
+let browser,server,periodId,definitionId,assignmentId,eventId;
+
+async function req(p,{method="GET",token=service,key=service,body,allow=false}={}){const r=await fetch(`${base}${p}`,{method,headers:{apikey:key,Authorization:`Bearer ${token}`,...(body!==undefined?{"Content-Type":"application/json"}:{})},body:body===undefined?undefined:JSON.stringify(body)}),t=await r.text();let d=null;if(t)try{d=JSON.parse(t)}catch{d=t}if(!allow&&!r.ok)throw new Error(`${method} ${p} ${r.status}`);return{ok:r.ok,data:d}}
+const rpc=(u,n,b)=>req(`/rest/v1/rpc/${n}`,{method:"POST",token:u.token,key:anon,body:b});
+async function user(u){const a=await req("/auth/v1/admin/users",{method:"POST",body:{email:u.email,password,email_confirm:true}});u.auth=a.data.id;authIds.push(u.auth);await req("/rest/v1/app_users",{method:"POST",body:{id:u.id,supabase_auth_id:u.auth,email:u.email,name:`KPI2 UI ${u.role}`,role:u.role,active:true,lifecycle_status:"active",raw_data:{testRun:run}}});const l=await req("/auth/v1/token?grant_type=password",{method:"POST",token:anon,key:anon,body:{email:u.email,password}});u.token=l.data.access_token;}
+function serve(){server=http.createServer((q,s)=>{const u=decodeURIComponent((q.url||"/").split("?")[0]);if(u==="/js/supabase-config.js"){s.writeHead(200,{"Content-Type":"text/javascript"});return s.end(`window.CRM_SUPABASE_CONFIG=${JSON.stringify({url:base,anonKey:anon})}`)}const f=path.resolve(root,u==="/"?"index.html":u.replace(/^\//,""));if(!f.startsWith(root)||!fs.existsSync(f)){s.writeHead(404);return s.end()}s.writeHead(200,{"Content-Type":f.endsWith(".js")?"text/javascript":f.endsWith(".css")?"text/css":"text/html","Cache-Control":"no-store"});fs.createReadStream(f).pipe(s)});return new Promise(r=>server.listen(0,"127.0.0.1",()=>r(server.address().port)))}
+async function login(page,u){await page.goto(`http://127.0.0.1:${server.address().port}/`,{waitUntil:"networkidle"});await page.locator("#loginEmail").fill(u.email);await page.locator("#loginPassword").fill(password);await page.locator("#loginBtn").click();await page.locator("#appView").waitFor({state:"visible",timeout:30000});await page.locator("#kpiViewBtn").click();await page.locator("#kpi2OperationsPanel").waitFor({state:"visible"});}
+async function cleanup(){if(eventId)await req(`/rest/v1/kpi_submission_events?id=eq.${eventId}`,{method:"DELETE",allow:true});if(assignmentId)await req(`/rest/v1/kpi_submissions?assignment_id=eq.${assignmentId}`,{method:"DELETE",allow:true});await req(`/rest/v1/kpi_action_requests?actor_user_id=like.kpi2-ui-${run}-*`,{method:"DELETE",allow:true});if(assignmentId)await req(`/rest/v1/kpi_assignments?id=eq.${assignmentId}`,{method:"DELETE",allow:true});if(definitionId)await req(`/rest/v1/kpi_definitions?id=eq.${definitionId}`,{method:"DELETE",allow:true});if(periodId)await req(`/rest/v1/kpi_periods?id=eq.${periodId}`,{method:"DELETE",allow:true});await req(`/rest/v1/audit_logs?email=like.kpi2-ui-${run}-*`,{method:"DELETE",allow:true});await req(`/rest/v1/app_users?id=like.kpi2-ui-${run}-*`,{method:"DELETE",allow:true});for(const id of authIds.reverse())await req(`/auth/v1/admin/users/${id}`,{method:"DELETE",allow:true});}
+
+try{
+  for(const u of users)await user(u);const m=users[0],sale=users[1];
+  const used=(await req("/rest/v1/kpi_periods?select=period_month")).data.map(x=>x.period_month);
+  const month=["2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01"].find(x=>!used.includes(x));
+  if(!month)throw new Error("No unused historical period for KPI-2 UI fixture.");
+  const period=(await rpc(m,"crm_kpi_create_period",{p_period_month:month,p_name:`KPI2 UI ${run}`,p_timezone:"Asia/Ho_Chi_Minh"})).data;periodId=period.id;
+  const def=(await rpc(m,"crm_kpi_create_definition_v2",{p_code:`KPI2_UI_${run}`.toUpperCase(),p_name:"KPI2 UI manual",p_description:"fixture",p_kpi_type:"MANUAL",p_source_metric_key:null,p_unit:"luot",p_submission_mode:"EVENT_CLAIM",p_evidence_required:false,p_aggregation_mode:"COUNT",p_max_images_per_event:2,p_location_required:false,p_timestamp_required:true})).data;definitionId=def.id;
+  const a=(await rpc(m,"crm_kpi_assign_employee",{p_period_id:period.id,p_definition_id:def.id,p_employee_id:sale.id,p_target:1,p_expected_period_version:period.version})).data;assignmentId=a.id;
+  await rpc(m,"crm_kpi_activate_period",{p_period_id:period.id,p_expected_version:a.periodVersion});await serve();browser=await chromium.launch({executablePath:process.env.KPI2_BROWSER_PATH,headless:true});
+  const salePage=await browser.newPage();await login(salePage,sale);await salePage.locator("[data-kpi2-open-claim]").click();await salePage.locator("#kpi2ManualDescription").fill("UI event staging");await salePage.locator("#kpi2ManualEventAt").fill(`${month.slice(0,7)}-15T10:00`);await salePage.locator("#kpi2SubmitBtn").click();await salePage.waitForTimeout(2500);
+  const events=(await req(`/rest/v1/kpi_submission_events?assignment_id=eq.${assignmentId}&select=id`)).data;if(!events.length)throw new Error(`Sale UI did not create event: ${await salePage.locator("#notice").textContent()}`);eventId=events[0].id;
+  const managerPage=await browser.newPage();await login(managerPage,m);await managerPage.locator(`[data-kpi2-review-event="${eventId}"]`).check();managerPage.once("dialog",d=>d.accept());await managerPage.locator("#kpi2BulkReviewBtn").click();await managerPage.waitForTimeout(2000);const reviewed=(await req(`/rest/v1/kpi_submission_events?id=eq.${eventId}&select=status`)).data[0];if(reviewed.status!=="APPROVED")throw new Error(`Manager UI review failed: ${await managerPage.locator("#notice").textContent()}`);
+  console.log("KPI-2 staging UI: PASS (sale submit, manager queue/review UI)");
+}finally{if(browser)await browser.close().catch(()=>{});if(server)await new Promise(r=>server.close(r));await cleanup()}

@@ -37,6 +37,9 @@ const tableMap = {
   kpiPeriods: "kpi_periods",
   kpiDefinitions: "kpi_definitions",
   kpiAssignments: "kpi_assignments",
+  kpiSubmissions: "kpi_submissions",
+  kpiSubmissionEvents: "kpi_submission_events",
+  kpiEvidence: "kpi_evidence",
   phoneIndex: "phone_index",
   auditLogs: "audit_logs",
   userSessions: "user_sessions"
@@ -485,17 +488,9 @@ async function selectRows(target) {
 async function fetchRef(ref) {
   const table = tableName(ref.collection);
   const idField = ref.collection === "phoneIndex" ? "phone" : "id";
-  let { data, error } = await supabase.from(table).select("*").eq(idField, ref.id).maybeSingle();
+  const lookupField = ref.collection === "users" ? "supabase_auth_id" : idField;
+  const { data, error } = await supabase.from(table).select("*").eq(lookupField, ref.id).maybeSingle();
   if (error) throw error;
-  if (!data && ref.collection === "users") {
-    const { data: authData } = await supabase.auth.getUser();
-    const email = authData?.user?.email;
-    if (email) {
-      const fallback = await supabase.from(table).select("*").eq("email", email).maybeSingle();
-      if (fallback.error) throw fallback.error;
-      data = fallback.data;
-    }
-  }
   return data;
 }
 

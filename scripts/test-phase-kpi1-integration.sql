@@ -4,19 +4,19 @@
 
 begin;
 
-insert into public.app_users(id, email, name, role, active, lifecycle_status)
+insert into public.app_users(id, supabase_auth_id, email, name, role, active, lifecycle_status)
 values
-  ('kpi1-owner', 'kpi1-owner@example.invalid', 'KPI1 Owner', 'owner', true, 'active'),
-  ('kpi1-admin', 'kpi1-admin@example.invalid', 'KPI1 Admin', 'admin', true, 'active'),
-  ('kpi1-manager', 'kpi1-manager@example.invalid', 'KPI1 Manager', 'manager', true, 'active'),
-  ('kpi1-sale-a', 'kpi1-sale-a@example.invalid', 'KPI1 Sale A', 'sale', true, 'active'),
-  ('kpi1-sale-b', 'kpi1-sale-b@example.invalid', 'KPI1 Sale B', 'sale', true, 'active'),
-  ('kpi1-sale-c', 'kpi1-sale-c@example.invalid', 'KPI1 Sale C', 'sale', true, 'active'),
-  ('kpi1-sale-inactive', 'kpi1-inactive@example.invalid', 'KPI1 Inactive', 'sale', false, 'inactive');
+  ('kpi1-owner', '00000000-0000-4000-8000-000000001001', 'kpi1-owner@example.invalid', 'KPI1 Owner', 'owner', true, 'active'),
+  ('kpi1-admin', '00000000-0000-4000-8000-000000001002', 'kpi1-admin@example.invalid', 'KPI1 Admin', 'admin', true, 'active'),
+  ('kpi1-manager', '00000000-0000-4000-8000-000000001003', 'kpi1-manager@example.invalid', 'KPI1 Manager', 'manager', true, 'active'),
+  ('kpi1-sale-a', '00000000-0000-4000-8000-000000001004', 'kpi1-sale-a@example.invalid', 'KPI1 Sale A', 'sale', true, 'active'),
+  ('kpi1-sale-b', '00000000-0000-4000-8000-000000001005', 'kpi1-sale-b@example.invalid', 'KPI1 Sale B', 'sale', true, 'active'),
+  ('kpi1-sale-c', '00000000-0000-4000-8000-000000001006', 'kpi1-sale-c@example.invalid', 'KPI1 Sale C', 'sale', true, 'active'),
+  ('kpi1-sale-inactive', '00000000-0000-4000-8000-000000001007', 'kpi1-inactive@example.invalid', 'KPI1 Inactive', 'sale', false, 'inactive');
 
 -- Sale cannot create business configuration.
 set local role authenticated;
-select set_config('request.jwt.claims', '{"email":"kpi1-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001004","email":"kpi1-sale-a@example.invalid","role":"authenticated"}', true);
 do $$
 begin
   begin
@@ -27,7 +27,7 @@ begin
 end $$;
 
 -- Manager creates a normalized DRAFT period and definitions.
-select set_config('request.jwt.claims', '{"email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001003","email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
 select public.crm_kpi_create_period('2098-08-18', 'KPI tháng 08/2098');
 
 do $$
@@ -148,7 +148,7 @@ select public.crm_kpi_bulk_assign(
 );
 
 -- DRAFT configuration is invisible to sale at data layer.
-select set_config('request.jwt.claims', '{"email":"kpi1-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001004","email":"kpi1-sale-a@example.invalid","role":"authenticated"}', true);
 do $$
 begin
   if exists(select 1 from public.kpi_periods where period_month='2098-08-01') then
@@ -163,7 +163,7 @@ begin
 end $$;
 
 -- Activate atomically. Stale activation/update will be blocked.
-select set_config('request.jwt.claims', '{"email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001003","email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
 select public.crm_kpi_activate_period(
   (select id from public.kpi_periods where period_month='2098-08-01'),
   (select version from public.kpi_periods where period_month='2098-08-01')
@@ -192,7 +192,7 @@ begin
 end $$;
 
 -- Sale sees only own assignments and the ACTIVE period, not the catalog.
-select set_config('request.jwt.claims', '{"email":"kpi1-sale-a@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001004","email":"kpi1-sale-a@example.invalid","role":"authenticated"}', true);
 do $$
 begin
   if (select count(*) from public.kpi_periods where period_month='2098-08-01') <> 1 then
@@ -210,7 +210,7 @@ begin
 end $$;
 
 -- Editing the template after activation does not mutate the August snapshot.
-select set_config('request.jwt.claims', '{"email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001003","email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
 select public.crm_kpi_update_definition(
   (select id from public.kpi_definitions where code='KPI1_CUSTOMER'),
   (select version from public.kpi_definitions where code='KPI1_CUSTOMER'),
@@ -264,7 +264,7 @@ begin
 end $$;
 
 -- Draft KPI config blocks deactivation; no race can commit an invalid DRAFT assignment.
-select set_config('request.jwt.claims', '{"email":"kpi1-admin@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001002","email":"kpi1-admin@example.invalid","role":"authenticated"}', true);
 do $$
 begin
   begin
@@ -275,7 +275,7 @@ begin
 end $$;
 
 -- Foundation close is fail-closed but audit-visible.
-select set_config('request.jwt.claims', '{"email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001003","email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
 do $$
 declare v_result jsonb;
 begin
@@ -301,7 +301,7 @@ set status='CLOSED', closed_by_user_id='kpi1-admin', closed_at=now(), version=ve
 where period_month='2098-08-01';
 
 set local role authenticated;
-select set_config('request.jwt.claims', '{"email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001003","email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
 do $$
 begin
   begin
@@ -314,7 +314,7 @@ begin
   end;
 end $$;
 
-select set_config('request.jwt.claims', '{"email":"kpi1-admin@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001002","email":"kpi1-admin@example.invalid","role":"authenticated"}', true);
 select public.crm_kpi_reopen_period(
   (select id from public.kpi_periods where period_month='2098-08-01'),
   (select version from public.kpi_periods where period_month='2098-08-01'),
@@ -322,7 +322,7 @@ select public.crm_kpi_reopen_period(
 );
 
 -- Direct authenticated writes and anonymous execution are forbidden.
-select set_config('request.jwt.claims', '{"email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000001003","email":"kpi1-manager@example.invalid","role":"authenticated"}', true);
 do $$
 begin
   begin
