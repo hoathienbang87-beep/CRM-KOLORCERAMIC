@@ -110,13 +110,15 @@ Co `roles.sql`, `schema.sql`, `data.sql`, `SHA256.txt`, inventory production va 
 
 Migration duoc ap dung bang Supabase Management API sau khi doi chieu hash. Khong co DML nghiep vu trong migration install.
 
+Frontend release commit: `151529ff99b9a63743931bd0f7937d14d8da9364`. GitHub/Vercel deployment status: success.
+
 ## 24. Production inventory
 
 Sau migration: September period DRAFT version 3; 8 definitions; 2 assignments; 0 submissions; 0 events; 0 evidence. Legacy giu nguyen 8 rules va 102 proposals.
 
 ## 25. UI smoke
 
-Can xac nhan sau khi Vercel deploy: manager/admin thay control moi; sale khong thay; go/sua tren mot fixture DRAFT sach; definition va nhan vien van con; ACTIVE/CLOSED va definition da dung bi chan.
+Production asset read-back PASS: file deploy co RPC moi, nhan `Go KPI`, `Ngung su dung` va action sua assignment. Anonymous RPC smoke bi chan dung. Con can nguoi dung that xac nhan: manager/admin thay control moi; sale khong thay; go/sua tren mot fixture DRAFT sach; definition va nhan vien van con; ACTIVE/CLOSED va definition da dung bi chan.
 
 ## 26. Gioi han
 
