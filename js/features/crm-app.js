@@ -506,6 +506,9 @@ function resetPagingAndRender(keys, renderFn) {
 function authMessage(err) {
   const code = String(err?.code || "");
   const message = String(err?.message || "");
+  // EMPLOYEE-ONBOARDING-R1 (GAP-1): lỗi onboarding identity KHÔNG được map vào
+  // thông báo RLS chung. Trả đúng thông báo nghiệp vụ đã xác định phía server.
+  if (err?.onboardingCode) return err.message;
   if (code.includes("unauthorized-domain")) return "Domain này chưa được cho phép trong Supabase Authentication. Hãy kiểm tra Site URL/Redirect URLs trong Supabase.";
   if (code.includes("invalid-credential") || code.includes("wrong-password")) return "Email hoặc mật khẩu chưa đúng.";
   if (code.includes("user-not-found")) return "Chưa có tài khoản này trong Supabase Authentication.";
@@ -776,22 +779,54 @@ function applySettings(rawSettings = {}) {
   settings.careDueDays = Math.max(0, Number(settings.careDueDays ?? DEFAULT_SETTINGS.careDueDays) || DEFAULT_SETTINGS.careDueDays);
 }
 
+// EMPLOYEE-ONBOARDING-R1: thông báo nghiệp vụ cho từng trạng thái onboarding.
+// Không lộ chi tiết DB/RLS cho người dùng thường.
+const ONBOARDING_MESSAGES = {
+  NO_EMPLOYEE_PROFILE: "Email này chưa được cấp quyền sử dụng CRM. Vui lòng liên hệ quản lý.",
+  IDENTITY_NOT_LINKED: "Tài khoản của bạn chưa hoàn tất liên kết đăng nhập. Vui lòng liên hệ quản lý để hoàn tất.",
+  RETURNING_EMPLOYEE_RELINK_REQUIRED: "Tài khoản nhân viên cũ cần được xác nhận lại trước khi sử dụng CRM. Vui lòng liên hệ quản lý.",
+  PRIVILEGED_ROLE_MANUAL_LINK_REQUIRED: "Tài khoản quản trị cần được owner liên kết thủ công. Vui lòng liên hệ quản lý.",
+  EMPLOYEE_NOT_ELIGIBLE: "Hồ sơ nhân viên đang không hoạt động. Vui lòng liên hệ quản lý để mở lại tài khoản.",
+  EMAIL_MISMATCH: "Email đăng nhập không trùng với email nhân viên đã được đăng ký.",
+  IDENTITY_DISCOVERY_AMBIGUOUS: "Thông tin nhân viên đang bị trùng lặp nên chưa thể liên kết tài khoản. Vui lòng liên hệ quản lý.",
+  AUTH_NOT_USABLE: "Tài khoản Google chưa xác thực email hoặc đang bị khóa. Vui lòng kiểm tra lại tài khoản Google.",
+  AUTH_ALREADY_MAPPED: "Tài khoản Google này đã được liên kết với một nhân viên khác. Vui lòng liên hệ quản lý.",
+  NOT_AUTHENTICATED: "Phiên đăng nhập chưa hợp lệ. Vui lòng đăng nhập lại."
+};
+
+class OnboardingIdentityError extends Error {
+  constructor(code) {
+    const key = clean(code).toUpperCase();
+    super(ONBOARDING_MESSAGES[key] || ONBOARDING_MESSAGES.IDENTITY_NOT_LINKED);
+    this.name = "OnboardingIdentityError";
+    this.onboardingCode = key || "IDENTITY_NOT_LINKED";
+  }
+}
+
+// EMPLOYEE-ONBOARDING-R1:
+// Bỏ hoàn toàn self-create shell insert. Một tài khoản đã đăng nhập nhưng chưa có
+// canonical identity KHÔNG được tự tạo row app_users. Thay vào đó gọi onboarding
+// resolver phía server; server tự quyết định dựa trên auth.uid() và auth.users.
 async function loadAppUser(user) {
   const ref = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
   if (snap.exists()) return {uid:user.uid, ...snap.data()};
 
-  const data = {
-    email: user.email || "",
-    name: user.displayName || user.email || "Người dùng",
-    role: "sale",
-    active: false,
-    canExport: false,
-    team: "",
-    createdAt: serverTimestamp()
-  };
-  await setDoc(ref, data);
-  throw new Error("Chưa được cấp quyền CRM. Admin cần vào Supabase > app_users và bật active=true cho tài khoản này.");
+  let result;
+  try {
+    result = await callCrmRpc("crm_claim_employee_identity_on_first_login", {});
+  } catch (err) {
+    console.warn("Onboarding resolver không chạy được.", err);
+    throw new OnboardingIdentityError("IDENTITY_NOT_LINKED");
+  }
+
+  const status = clean(result?.status).toUpperCase();
+  if (status === "LINKED" || status === "ALREADY_LINKED") {
+    const linked = await getDoc(ref);
+    if (linked.exists()) return {uid:user.uid, ...linked.data()};
+    throw new OnboardingIdentityError("IDENTITY_NOT_LINKED");
+  }
+  throw new OnboardingIdentityError(status);
 }
 
 async function loadSettings() {
@@ -6344,6 +6379,65 @@ async function exportOperationalSnapshot() {
   }
 }
 
+// EMPLOYEE-ONBOARDING-R1 (mục 20/22): trạng thái liên kết đăng nhập của nhân viên.
+// Frontend không đọc được auth.users nên phải lấy qua RPC read-only dành cho admin.
+const IDENTITY_STATUS_LABEL = {
+  AWAITING_FIRST_LOGIN: {text:"Chờ đăng nhập lần đầu", cls:"orange"},
+  READY_TO_LINK:        {text:"Chờ liên kết đăng nhập", cls:"orange"},
+  LINKED:               {text:"Đã liên kết đăng nhập", cls:"green"},
+  RELINK_REQUIRED:      {text:"Cần liên kết lại", cls:"red"},
+  MAPPING_MISMATCH:     {text:"Sai liên kết đăng nhập", cls:"red"},
+  AMBIGUOUS:            {text:"Trùng email — cần kiểm tra", cls:"red"}
+};
+
+let employeeIdentityStatus = new Map();
+
+async function refreshEmployeeIdentityStatus({render = true} = {}) {
+  if (!canAccessAdminPanel()) return;
+  try {
+    const rows = await callCrmRpc("crm_employee_identity_status", {});
+    employeeIdentityStatus = new Map((rows || []).map(row => [row.app_user_id, row]));
+  } catch (err) {
+    console.warn("Không đọc được trạng thái liên kết tài khoản nhân viên.", err);
+    employeeIdentityStatus = new Map();
+  }
+  if (render) renderUserAdmin();
+}
+
+function identityStatusBadge(uid) {
+  const row = employeeIdentityStatus.get(uid);
+  if (!row) return "";
+  const label = IDENTITY_STATUS_LABEL[clean(row.identity_status).toUpperCase()];
+  if (!label) return "";
+  return `<span class="pill ${label.cls}">${esc(label.text)}</span>`;
+}
+
+async function relinkReturningEmployee(uid) {
+  const row = employeeIdentityStatus.get(uid);
+  const user = users.find(u => u.uid === uid);
+  if (!row || !user) return notice("Không tìm thấy trạng thái liên kết của nhân viên.", true);
+  if (clean(row.identity_status).toUpperCase() !== "RELINK_REQUIRED") {
+    return notice("Nhân viên này không ở trạng thái cần liên kết lại.", true);
+  }
+  if (!row.candidate_auth_user_id) {
+    return notice("Chưa có tài khoản đăng nhập mới cho email này. Nhân viên cần đăng nhập Google lại trước.", true);
+  }
+  if (clean(user.lifecycleStatus).toLowerCase() !== "active") {
+    return notice("Hãy mở lại hồ sơ nhân viên (Reactivate) trước khi liên kết lại đăng nhập.", true);
+  }
+  const reason = window.prompt(`Lý do liên kết lại tài khoản cho ${user.email || uid}:`, "Nhân viên quay lại làm việc, tài khoản Auth cũ đã bị xóa.");
+  if (!clean(reason)) return;
+  await callCrmRpc("crm_relink_returning_employee_identity", {
+    p_app_user_id: uid,
+    p_auth_user_id: row.candidate_auth_user_id,
+    p_expected_current_auth_id: row.supabase_auth_id,
+    p_reason: clean(reason),
+    p_request_id: crypto.randomUUID()
+  });
+  notice("Đã liên kết lại tài khoản đăng nhập cho nhân viên.");
+  await refreshEmployeeIdentityStatus();
+}
+
 function renderUserAdmin() {
   if (!canAccessAdminPanel() || !$("userRows")) return;
   $("userRows").innerHTML = users.length ? users.map(u => {
@@ -6359,6 +6453,7 @@ function renderUserAdmin() {
         <div class="admin-badge-row">
           <span class="pill ${role === "admin" || role === "owner" ? "red" : role === "manager" ? "orange" : "green"}">${esc(role)}</span>
           <span class="pill ${active ? "green" : lifecycle === "inactive" ? "orange" : "red"}">${esc(lifecycle.toUpperCase())}</span>
+          ${identityStatusBadge(u.uid)}
         </div>
       </td>
       <td><select data-user-role="${esc(u.uid)}">
@@ -6372,6 +6467,8 @@ function renderUserAdmin() {
           <button class="small primary" data-save-user="${esc(u.uid)}">Lưu</button>
           ${lifecycle === "active" ? `<button class="small" data-toggle-user="${esc(u.uid)}">Ngừng hoạt động</button>` : ""}
           ${lifecycle === "inactive" ? `<button class="small" data-toggle-user="${esc(u.uid)}">Mở lại</button><button class="small danger" data-delete-user="${esc(u.uid)}">Lưu trữ</button>` : ""}
+          ${clean(employeeIdentityStatus.get(u.uid)?.identity_status).toUpperCase() === "RELINK_REQUIRED"
+            ? `<button class="small" data-relink-user="${esc(u.uid)}">Liên kết lại đăng nhập</button>` : ""}
           ${lifecycle === "archived" ? `<span class="muted">Chỉ tra cứu lịch sử</span>` : ""}
         </div>
       </td>
@@ -6532,7 +6629,8 @@ async function addUserAdmin() {
     clearNewUserForm();
     hydrateOwnerDependentFilters();
     renderUserAdmin();
-    notice("Đã thêm nhân viên. Nhân viên có thể đăng nhập Google bằng email này.");
+    refreshEmployeeIdentityStatus();
+    notice("Đã thêm nhân viên. Nhân viên cần đăng nhập Google bằng đúng email này; hệ thống sẽ tự hoàn tất liên kết tài khoản trong lần đăng nhập đầu tiên.");
   } catch (err) {
     notice("Không thêm được nhân viên: " + authMessage(err), true);
   }
@@ -9315,7 +9413,10 @@ function renderAdminShell() {
   if (title) title.textContent = meta.title;
   if (subtitle) subtitle.textContent = meta.subtitle;
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
-  if (meta.key === "users") renderUserAdmin();
+  if (meta.key === "users") {
+    renderUserAdmin();
+    refreshEmployeeIdentityStatus();
+  }
   if (meta.key === "categories") renderAdminCategorySettingsForm();
   if (meta.key === "settings") renderCompanySettingsForm();
   if (meta.key === "audit-logs") renderAdminAuditPage();
@@ -9462,6 +9563,7 @@ document.addEventListener("click", e => {
   const saveUserId = e.target.closest("[data-save-user]")?.dataset.saveUser;
   const toggleUserId = e.target.closest("[data-toggle-user]")?.dataset.toggleUser;
   const deleteUserId = e.target.closest("[data-delete-user]")?.dataset.deleteUser;
+  const relinkUserId = e.target.closest("[data-relink-user]")?.dataset.relinkUser;
   const confirmDeactivateEmployeeId = e.target.closest("[data-confirm-deactivate-employee]")?.dataset.confirmDeactivateEmployee;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
@@ -9544,6 +9646,7 @@ document.addEventListener("click", e => {
   if (saveUserId) runAction(`saveUser:${saveUserId}`, "saveUser", "Đang lưu...", () => saveUserAdmin(saveUserId));
   if (toggleUserId) runAction(`toggleUser:${toggleUserId}`, "toggleUser", "Đang cập nhật...", () => toggleUserAdmin(toggleUserId));
   if (deleteUserId) runAction(`deleteUser:${deleteUserId}`, "deleteUser", "Đang xóa...", () => deleteUserAdmin(deleteUserId));
+  if (relinkUserId) runAction(`relinkUser:${relinkUserId}`, "relinkUser", "Đang liên kết...", () => relinkReturningEmployee(relinkUserId));
   if (confirmDeactivateEmployeeId) confirmDeactivateEmployee(confirmDeactivateEmployeeId);
   if (e.target.closest("[data-remove-deal-item]")) {
     e.target.closest("[data-deal-item]")?.remove();

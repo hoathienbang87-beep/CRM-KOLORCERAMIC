@@ -76,6 +76,11 @@ exports/
 !scripts/test-phase-p0a-integration.sql
 !scripts/test-phase-p0b-integration.sql
 !scripts/test-kpi21e2-draft-config-delete.sql
+!harness-prod-baseline.sql
+!scripts/capture-pre-change-references.sql
+!scripts/test-hotfix-r1-0-fail-closed.sql
+!scripts/test-phase-employee-onboarding-r1-integration.sql
+!scripts/test-security-regression-after-rollout.sql
 /supabase/.temp/
 *.dump
 *.backup
