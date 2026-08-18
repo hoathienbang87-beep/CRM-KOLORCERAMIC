@@ -402,7 +402,8 @@ const viewDependencies = {
   customers: ["customers", "customerAssignments", "careLogs", "deals", "settings", "users"],
   kpi: ["customers", "kpiRules", "kpiProposals", "kpiPeriods", "kpiDefinitions", "kpiAssignments", "settings", "users"],
   reports: ["customers", "careLogs", "deals", "kpiProposals", "auditLogs", "settings", "users"],
-  admin: ["customers", "customerAssignments", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "kpiRules", "kpiProposals"]
+  admin: ["customers", "customerAssignments", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings", "kpiRules", "kpiProposals"],
+  products: ["products"]
 };
 const scheduleRenderAll = debounce(() => {
   if (document.hidden) {
@@ -426,7 +427,7 @@ function markDirty(...names) {
 }
 
 function activeViewKey() {
-  return ["customers","kpi","reports","admin"].includes(activeMainView) ? activeMainView : "crm";
+  return ["customers","kpi","reports","admin","products"].includes(activeMainView) ? activeMainView : "crm";
 }
 
 function activeViewNeedsRender() {
@@ -1580,96 +1581,140 @@ async function softDeleteInventoryMovement(id) {
   notice("Đã xóa mềm phiếu kho.");
 }
 
+// CRM-PRODUCTS-R1: catalog nhẹ + giá + tồn kho tham khảo. Không badge tồn
+// kho, không ERP. Mọi thay đổi đi qua crm_update_product/crm_create_product
+// (server ghi updated_at/updated_by_user_id, client không tự gửi được).
+let productDrawerEditingId = null;
+
+function productUpdatedByLabel(p) {
+  const who = clean(p?.updatedByName) || clean(p?.updatedByEmail);
+  const when = p?.updatedAt ? toDate(p.updatedAt) : null;
+  const whenText = when && !Number.isNaN(when.getTime()) ? when.toLocaleString("vi-VN") : "";
+  if (!whenText && !who) return "Chưa có thông tin người cập nhật.";
+  if (!who) return `Cập nhật cuối: ${whenText}`;
+  if (!whenText) return `Cập nhật cuối bởi ${who}`;
+  return `Cập nhật cuối: ${whenText} · bởi ${who}`;
+}
+
+function productStockText(p) {
+  return p?.stockQuantity === null || p?.stockQuantity === undefined ? "—" : String(p.stockQuantity);
+}
+
 function renderProducts() {
   if (!$("productsPanel")) return;
-  $("importProductsBtn")?.classList.toggle("hide", !isManager());
+  $("addProductBtn")?.classList.toggle("hide", !isManager());
   hydrateProductFilters();
   renderProductOptions();
-  renderInventory();
   const rows = visibleProducts();
   const page = pageRows("products", rows);
-  $("productRows").innerHTML = page.length ? page.map(p => {
-    const readonly = isManager() ? "" : "disabled";
-    const stock = productInventoryQty(p);
-    const stockClass = stock < 0 ? "red" : stock === 0 ? "orange" : "green";
-    const action = isManager()
-      ? `<div class="actions"><button class="small primary" type="button" data-save-product="${esc(p.id)}">Lưu</button><button class="small" type="button" data-inventory-product="${esc(p.id)}">Nhập/Xuất</button>${isAdmin() ? `<button class="small danger" type="button" data-delete-product="${esc(p.id)}">Xóa</button>` : ""}</div>`
-      : `<span class="muted">Chỉ xem</span>`;
-    return `
-      <tr>
-        <td><input data-product-code="${esc(p.id)}" value="${esc(p.code || "")}" ${readonly}></td>
-        <td><input data-product-name="${esc(p.id)}" value="${esc(p.name || "")}" ${readonly}></td>
-        <td><input data-product-size="${esc(p.id)}" value="${esc(p.size || "")}" ${readonly}></td>
-        <td><input data-product-surface="${esc(p.id)}" value="${esc(p.surface || "")}" ${readonly}></td>
-        <td><input data-product-origin="${esc(p.id)}" value="${esc(p.origin || "")}" ${readonly}></td>
-        <td><input data-product-color="${esc(p.id)}" value="${esc(p.color || "")}" ${readonly}></td>
-        <td><input data-product-price="${esc(p.id)}" value="${esc(p.priceText || (p.price ? money(p.price) : ""))}" ${readonly}></td>
-        <td><span class="pill ${stockClass}">${esc(stock)}</span></td>
-        <td><input data-product-description="${esc(p.id)}" value="${esc(p.description || "")}" ${readonly}></td>
-        <td>${action}</td>
+  const empty = `<div class="muted" style="padding:14px">Chưa có sản phẩm phù hợp.</div>`;
+
+  $("productRows").innerHTML = page.length ? page.map(p => `
+      <tr data-open-product="${esc(p.id)}" style="cursor:pointer">
+        <td>${esc(productSku(p) || "—")}</td>
+        <td>${esc(p.name || "—")}</td>
+        <td>${esc(p.size || "—")}</td>
+        <td>${esc(p.surface || "—")}</td>
+        <td>${esc(p.origin || "—")}</td>
+        <td><b>${esc(money(p.price || 0))}</b></td>
+        <td>${esc(productStockText(p))}</td>
+        <td>${esc(p.updatedAt ? fmtDate(p.updatedAt) : "—")}</td>
+        <td>${esc(clean(p.updatedByName) || clean(p.updatedByEmail) || "—")}</td>
       </tr>
-    `;
-  }).join("") : `<tr><td colspan="10" class="muted">Chưa có sản phẩm phù hợp. Manager/admin có thể import CSV từ Google Sheet PRODUCTS.</td></tr>`;
+    `).join("") : `<tr><td colspan="9">${empty}</td></tr>`;
+
+  $("productCardList").innerHTML = page.length ? page.map(p => `
+      <div class="product-card" data-open-product="${esc(p.id)}">
+        <div class="product-card-main">
+          <div><b>${esc(p.name || productSku(p) || "Sản phẩm")}</b><div class="muted">${esc(productSku(p) || "Chưa có mã")}</div></div>
+          <div class="product-card-price"><b>${esc(money(p.price || 0))}</b><div class="muted">Tồn: ${esc(productStockText(p))}</div></div>
+        </div>
+      </div>
+    `).join("") : empty;
+
   renderPager("productPager", "products", rows.length, "sản phẩm");
 }
 
-function productInputValue(row, field) {
-  return clean(row.querySelector(`[data-product-${field}]`)?.value);
+function openProductDrawer(id) {
+  const p = id ? products.find(x => x.id === id) : null;
+  if (id && !p) return;
+  productDrawerEditingId = id || null;
+  $("productDrawerTitle").textContent = p ? (p.name || productSku(p) || "Sản phẩm") : "Thêm sản phẩm";
+  $("productDrawerMeta").textContent = p ? productUpdatedByLabel(p) : "Sản phẩm mới";
+  $("productCodeInput").value = p ? (productSku(p) || "") : "";
+  $("productNameInput").value = p ? (p.name || "") : "";
+  $("productSizeInput").value = p ? (p.size || "") : "";
+  $("productSurfaceInput").value = p ? (p.surface || "") : "";
+  $("productOriginInput").value = p ? (p.origin || "") : "";
+  $("productPriceInput").value = p && p.price ? money(p.price) : "";
+  $("productStockInput").value = p && p.stockQuantity !== null && p.stockQuantity !== undefined ? String(p.stockQuantity) : "";
+  $("productDrawerBackdrop")?.classList.remove("hide");
+  $("productDrawer")?.classList.remove("hide");
 }
 
-async function saveProduct(productId) {
-  if (!isManager()) return notice("Chỉ admin/manager được sửa sản phẩm.", true);
-  const row = document.querySelector(`[data-product-name="${CSS.escape(productId)}"]`)?.closest("tr");
-  if (!row) return;
-  const priceData = parseProductPrice(productInputValue(row, "price"));
-  const data = {
-    code: productInputValue(row, "code"),
-    name: productInputValue(row, "name"),
-    size: productInputValue(row, "size"),
-    surface: productInputValue(row, "surface"),
-    origin: productInputValue(row, "origin"),
-    color: productInputValue(row, "color"),
-    price: priceData.price,
-    priceText: priceData.priceText,
-    description: productInputValue(row, "description"),
-    isDeleted: false,
-    updatedByEmail: currentUser?.email || "",
-    updatedAt: serverTimestamp()
+function closeProductDrawer() {
+  $("productDrawerBackdrop")?.classList.add("hide");
+  $("productDrawer")?.classList.add("hide");
+  productDrawerEditingId = null;
+}
+
+function patchLocalProduct(id, r) {
+  const idx = products.findIndex(x => x.id === id);
+  if (idx < 0 || !r) return;
+  products[idx] = {
+    ...products[idx],
+    sku: r.code || null, code: r.code || "",
+    name: r.name || "", size: r.size || "", surface: r.surface || "", origin: r.origin || "",
+    price: r.price, stockQuantity: r.stock_quantity,
+    updatedAt: r.updated_at, updatedByUserId: r.updated_by_user_id,
+    updatedByName: appUser?.name || clean(products[idx]?.updatedByName),
+    updatedByEmail: currentUser?.email || products[idx]?.updatedByEmail
   };
-  if (!data.name && !data.code) return notice("Sản phẩm cần có tên hoặc code.", true);
-  data.searchText = productSearchText(data);
+}
+
+function productFromRpcResult(r) {
+  return {
+    id: r.id, sku: r.code || null, code: r.code || "", name: r.name || "",
+    size: r.size || "", surface: r.surface || "", origin: r.origin || "",
+    price: r.price, stockQuantity: r.stock_quantity, isDeleted: false, active: true,
+    updatedAt: r.updated_at, updatedByUserId: r.updated_by_user_id,
+    updatedByName: appUser?.name || "", updatedByEmail: currentUser?.email || "",
+    createdAt: r.updated_at
+  };
+}
+
+async function saveProductDrawer() {
+  const code = clean($("productCodeInput")?.value);
+  const name = clean($("productNameInput")?.value);
+  const size = clean($("productSizeInput")?.value);
+  const surface = clean($("productSurfaceInput")?.value);
+  const origin = clean($("productOriginInput")?.value);
+  const priceRawText = clean($("productPriceInput")?.value);
+  const stockRaw = clean($("productStockInput")?.value);
+  if (!name && !code) return notice("Sản phẩm cần có mã SP hoặc tên.", true);
+  if (!priceRawText) return notice("Vui lòng nhập giá.", true);
+  const priceData = parseProductPrice(priceRawText);
+  if (priceData.price < 0) return notice("Giá sản phẩm không hợp lệ.", true);
+  const changes = {
+    code, name, size, surface, origin,
+    price: String(priceData.price),
+    stock_quantity: stockRaw
+  };
   try {
-    await setDoc(doc(db, "products", productId), data, {merge:true});
-    await setDoc(doc(collection(db, "auditLogs")), {
-      action: "updateProduct", entity: "products", entityId: productId,
-      email: currentUser?.email || "", payloadJson: JSON.stringify(data), createdAt: serverTimestamp()
-    });
-    notice("Đã lưu sản phẩm.");
+    if (productDrawerEditingId) {
+      const result = await callCrmRpc("crm_update_product", {p_product_id: productDrawerEditingId, p_changes: changes});
+      patchLocalProduct(productDrawerEditingId, result);
+      notice("Đã lưu sản phẩm.");
+    } else {
+      if (!isManager()) return notice("Chỉ manager/admin được tạo sản phẩm mới.", true);
+      const result = await callCrmRpc("crm_create_product", {p_product: changes});
+      if (result?.id) products.unshift(productFromRpcResult(result));
+      notice("Đã thêm sản phẩm.");
+    }
+    closeProductDrawer();
+    renderProducts();
   } catch (err) {
     notice("Không lưu được sản phẩm: " + authMessage(err), true);
-  }
-}
-
-async function deleteProduct(productId) {
-  if (!isAdmin()) return notice("Chỉ admin được ẩn sản phẩm.", true);
-  const p = products.find(x => x.id === productId);
-  if (!p) return;
-  if (!confirm(`Ẩn sản phẩm "${p.name || p.code}" khỏi danh mục?`)) return;
-  try {
-    await setDoc(doc(db, "products", productId), {
-      isDeleted: true,
-      deletedAt: serverTimestamp(),
-      deletedByEmail: currentUser?.email || "",
-      updatedAt: serverTimestamp(),
-      updatedByEmail: currentUser?.email || ""
-    }, {merge:true});
-    await setDoc(doc(collection(db, "auditLogs")), {
-      action: "deleteProduct", entity: "products", entityId: productId,
-      email: currentUser?.email || "", payloadJson: JSON.stringify({name:p.name, code:p.code}), createdAt: serverTimestamp()
-    });
-    notice("Đã ẩn sản phẩm.");
-  } catch (err) {
-    notice("Không xóa được sản phẩm: " + authMessage(err), true);
   }
 }
 
@@ -2275,6 +2320,8 @@ function watchData() {
     markDirty("kpiRules");
   }, err => notice("Lỗi tải KPI: " + authMessage(err), true)));
 
+  unsubscribers.push(onSnapshot(collection(db, "products"), snap => applySnap("products", snap, true), err => notice("Lỗi tải sản phẩm: " + authMessage(err), true)));
+
   if (isManager()) {
     unsubscribers.push(onSnapshot(collection(db, "kpiPeriods"), snap => applySnap("kpiPeriods", snap), err => notice("Lỗi tải kỳ KPI mới: " + authMessage(err), true)));
     unsubscribers.push(onSnapshot(collection(db, "kpiDefinitions"), snap => applySnap("kpiDefinitions", snap), err => notice("Lỗi tải KPI definition: " + authMessage(err), true)));
@@ -2522,6 +2569,7 @@ const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPane
 const customerViewIds = ["customerSearchPanel"];
 const kpiViewIds = ["kpiCutoverStatus","kpiTeamPanel","kpiSummaryPanel","kpiFoundationPanel","kpi2OperationsPanel","kpiRulePanel","kpiApprovalPanel"];
 const reportsViewIds = ["reportsPanel"];
+const productsViewIds = ["productsPanel"];
 
 function renderCrmView() {
   renderKpis();
@@ -2532,17 +2580,19 @@ function renderCrmView() {
 }
 
 function setMainView(view) {
-  activeMainView = ["customers","kpi","reports","admin"].includes(view) ? view : "crm";
+  activeMainView = ["customers","kpi","reports","admin","products"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
   const isCustomerView = activeMainView === "customers";
   const isKpiView = activeMainView === "kpi";
   const isReportsView = activeMainView === "reports";
   const isAdminView = activeMainView === "admin";
+  const isProductsView = activeMainView === "products";
+  const isOtherView = isCustomerView || isKpiView || isReportsView || isAdminView || isProductsView;
   crmViewIds.forEach(id => {
-    if (isCustomerView || isKpiView || isReportsView || isAdminView) $(id)?.classList.add("hide");
+    if (isOtherView) $(id)?.classList.add("hide");
   });
-  if (!isCustomerView && !isKpiView && !isReportsView && !isAdminView) {
+  if (!isOtherView) {
     $("needCarePanel")?.classList.remove("hide");
     $("executiveDashboard")?.classList.toggle("hide", !isManager());
     $("pipelinePanel")?.classList.toggle("hide", !isManager());
@@ -2558,7 +2608,8 @@ function setMainView(view) {
     $("trashPanel")?.classList.toggle("hide", !canAccessAdminPanel());
   }
   customerViewIds.forEach(id => $(id)?.classList.toggle("hide", !isCustomerView));
-  document.querySelector(".chart-grid")?.classList.toggle("hide", isCustomerView || isKpiView || isReportsView || isAdminView);
+  productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
+  document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
   $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpiSummaryPanel")?.classList.toggle("hide", !isKpiView || isManager());
   $("kpiCutoverStatus")?.classList.toggle("hide", !isKpiView);
@@ -2569,13 +2620,15 @@ function setMainView(view) {
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
   $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
-  $("crmViewBtn")?.classList.toggle("primary", !isCustomerView && !isKpiView && !isReportsView && !isAdminView);
+  $("crmViewBtn")?.classList.toggle("primary", !isOtherView);
   $("customersViewBtn")?.classList.toggle("primary", isCustomerView);
   $("kpiViewBtn")?.classList.toggle("primary", isKpiView);
+  $("productsViewBtn")?.classList.toggle("primary", isProductsView);
   $("reportsViewBtn")?.classList.toggle("primary", isReportsView);
   $("adminViewBtn")?.classList.toggle("primary", isAdminView);
-  if (!isCustomerView && !isKpiView && !isReportsView && !isAdminView) renderCrmView();
+  if (!isOtherView) renderCrmView();
   if (isCustomerView) renderCustomers();
+  if (isProductsView) renderProducts();
   if (isKpiView) {
     renderKpiCutoverStatus();
     if (isManager()) {
@@ -9564,6 +9617,7 @@ document.addEventListener("click", e => {
   const toggleUserId = e.target.closest("[data-toggle-user]")?.dataset.toggleUser;
   const deleteUserId = e.target.closest("[data-delete-user]")?.dataset.deleteUser;
   const relinkUserId = e.target.closest("[data-relink-user]")?.dataset.relinkUser;
+  const openProductId = e.target.closest("[data-open-product]")?.dataset.openProduct;
   const confirmDeactivateEmployeeId = e.target.closest("[data-confirm-deactivate-employee]")?.dataset.confirmDeactivateEmployee;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
@@ -9647,6 +9701,7 @@ document.addEventListener("click", e => {
   if (toggleUserId) runAction(`toggleUser:${toggleUserId}`, "toggleUser", "Đang cập nhật...", () => toggleUserAdmin(toggleUserId));
   if (deleteUserId) runAction(`deleteUser:${deleteUserId}`, "deleteUser", "Đang xóa...", () => deleteUserAdmin(deleteUserId));
   if (relinkUserId) runAction(`relinkUser:${relinkUserId}`, "relinkUser", "Đang liên kết...", () => relinkReturningEmployee(relinkUserId));
+  if (openProductId) openProductDrawer(openProductId);
   if (confirmDeactivateEmployeeId) confirmDeactivateEmployee(confirmDeactivateEmployeeId);
   if (e.target.closest("[data-remove-deal-item]")) {
     e.target.closest("[data-deal-item]")?.remove();
@@ -9782,8 +9837,19 @@ on("kpi2SelectAllEvents", "change", e => document.querySelectorAll("[data-kpi2-r
 on("crmViewBtn", "click", () => setMainView("crm"));
 on("customersViewBtn", "click", () => setMainView("customers"));
 on("kpiViewBtn", "click", () => setMainView("kpi"));
+on("productsViewBtn", "click", () => setMainView("products"));
 on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => goToRoute("/admin"));
+on("addProductBtn", "click", () => openProductDrawer(null));
+on("saveProductBtn", "click", () => runAction("saveProductBtn", "saveProduct", "Đang lưu...", saveProductDrawer));
+on("closeProductDrawerBtn", "click", closeProductDrawer);
+on("productDrawerBackdrop", "click", closeProductDrawer);
+on("resetProductFilterBtn", "click", () => {
+  ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => { if ($(id)) $(id).value = ""; });
+  resetPagingAndRender("products", renderProducts);
+});
+["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id =>
+  on(id, "input", debounce(() => resetPagingAndRender("products", renderProducts))));
 on("adminBackToCrmBtn", "click", () => goToRoute("/"));
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;

@@ -148,6 +148,32 @@
           </div>
         </div>
 
+        <div id="productsPanel" class="panel hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Sản phẩm</h3>
+            <button id="addProductBtn" class="small primary hide" type="button">Thêm sản phẩm</button>
+          </div>
+          <div class="toolbar product-toolbar">
+            <div class="toolbar-search"><label>Tìm sản phẩm</label><input id="productSearchBox" placeholder="Mã SP, tên sản phẩm..."></div>
+            <div><label>Kích thước</label><select id="productFilterSize"></select></div>
+            <div><label>Bề mặt</label><select id="productFilterSurface"></select></div>
+            <div><label>Xuất xứ</label><select id="productFilterOrigin"></select></div>
+            <div class="toolbar-actions"><button id="resetProductFilterBtn" type="button">Xóa lọc</button></div>
+          </div>
+          <div class="table-wrap product-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Mã SP</th><th>Tên SP</th><th>Kích thước</th><th>Bề mặt</th><th>Xuất xứ</th><th>Giá</th><th>Tồn kho</th><th>Cập nhật cuối</th><th>Người cập nhật</th>
+                </tr>
+              </thead>
+              <tbody id="productRows"></tbody>
+            </table>
+          </div>
+          <div id="productCardList" class="product-card-list"></div>
+          <div id="productPager" class="list-pager"></div>
+        </div>
+
         <div class="chart-grid">
           <div class="panel">
             <h3>Tăng trưởng khách hàng</h3>
@@ -955,6 +981,32 @@
     <div class="field"><label>Link minh chứng bổ sung</label><textarea id="proposalEvidenceUrl" placeholder="Có thể dán thêm link nếu cần, mỗi dòng một link..."></textarea></div>
     <div class="actions">
       <button id="submitKpiProposalBtn" class="primary" type="button">Gửi đề xuất</button>
+    </div>
+  </aside>
+
+  <div id="productDrawerBackdrop" class="drawer-backdrop hide"></div>
+  <aside id="productDrawer" class="drawer hide" role="dialog" aria-modal="true" aria-labelledby="productDrawerTitle">
+    <div class="drawer-head">
+      <div>
+        <h2 id="productDrawerTitle" style="margin:0">Sản phẩm</h2>
+        <div id="productDrawerMeta" class="muted"></div>
+      </div>
+      <button id="closeProductDrawerBtn" class="small" type="button" aria-label="Đóng">Đóng</button>
+    </div>
+    <div class="section">
+      <div class="grid2">
+        <div class="field"><label>Mã SP</label><input id="productCodeInput" placeholder="VD: STP90-MN98105"></div>
+        <div class="field"><label>Tên SP</label><input id="productNameInput" placeholder="Tên sản phẩm"></div>
+        <div class="field"><label>Kích thước</label><input id="productSizeInput" placeholder="VD: 900x900"></div>
+        <div class="field"><label>Bề mặt</label><input id="productSurfaceInput" placeholder="VD: POLISH, MATT..."></div>
+        <div class="field"><label>Xuất xứ</label><input id="productOriginInput" placeholder="VD: SPAIN, INDONESIA..."></div>
+        <div class="field"><label>Giá</label><input id="productPriceInput" placeholder="0"></div>
+        <div class="field"><label>Tồn kho</label><input id="productStockInput" type="number" step="any" min="0" placeholder="0"></div>
+      </div>
+      <div class="muted">Tồn kho là số lượng tham khảo do nhân viên tự cập nhật, không tự động trừ theo đơn hàng.</div>
+    </div>
+    <div class="actions">
+      <button id="saveProductBtn" class="primary" type="button">Lưu</button>
     </div>
   </aside>
 

@@ -154,6 +154,14 @@
     .order-actions button{width:100%;min-height:34px}
     .product-table-wrap{max-height:700px}
     .product-toolbar{grid-template-columns:2fr repeat(3,minmax(150px,1fr))}
+    .product-card-list{display:none}
+    .product-card{display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-bottom:8px;cursor:pointer}
+    .product-card-main{display:flex;justify-content:space-between;align-items:center;width:100%;gap:10px}
+    .product-card-price{text-align:right}
+    @media(max-width:760px){
+      .product-table-wrap{display:none}
+      .product-card-list{display:block}
+    }
     table{width:100%;border-collapse:separate;border-spacing:0;min-width:1180px}
     th,td{padding:12px;border-bottom:1px solid #e9eef6;text-align:left;vertical-align:top}
     th{background:linear-gradient(180deg,#eef7ff,#edf4f9);font-size:13px;position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #d8e1ee}
