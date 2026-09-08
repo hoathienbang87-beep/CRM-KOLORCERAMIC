@@ -63,8 +63,7 @@ node_modules/
 .yarn-integrity
 
 # dotenv environment variables file
-.env
-.env.*
+.env*
 !.env.example
 
 # Operational backups and data exports
@@ -93,3 +92,4 @@ exports/
 
 # dataconnect generated files
 .dataconnect
+.vercel
