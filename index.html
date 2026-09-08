@@ -1000,12 +1000,13 @@
         <div class="field"><label>Kích thước</label><input id="productSizeInput" placeholder="VD: 900x900"></div>
         <div class="field"><label>Bề mặt</label><input id="productSurfaceInput" placeholder="VD: POLISH, MATT..."></div>
         <div class="field"><label>Xuất xứ</label><input id="productOriginInput" placeholder="VD: SPAIN, INDONESIA..."></div>
-        <div class="field"><label>Giá</label><input id="productPriceInput" placeholder="0"></div>
-        <div class="field"><label>Tồn kho</label><input id="productStockInput" type="number" step="any" min="0" placeholder="0"></div>
+        <div class="field"><label>Giá</label><input id="productPriceInput" inputmode="decimal" placeholder="325000.50"><small>Nhập số, dùng dấu chấm cho phần thập phân.</small></div>
+        <div class="field"><label>Tồn kho</label><input id="productStockInput" inputmode="decimal" placeholder="Chưa cập nhật"><small>Để trống nếu chưa cập nhật tồn kho.</small></div>
       </div>
       <div class="muted">Tồn kho là số lượng tham khảo do nhân viên tự cập nhật, không tự động trừ theo đơn hàng.</div>
     </div>
     <div class="actions">
+      <button id="editProductBtn" class="primary" type="button">Chỉnh sửa</button>
       <button id="saveProductBtn" class="primary" type="button">Lưu</button>
     </div>
   </aside>

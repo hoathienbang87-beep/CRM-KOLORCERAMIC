@@ -1,4 +1,5 @@
-﻿import {
+﻿import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
+import {
   auth,
   db,
   signInWithEmailAndPassword,
@@ -1315,83 +1316,9 @@ function productSearchText(p) {
   return normalizeKey([p.code, p.name, p.size, p.surface, p.origin, p.color, p.description, p.priceText || p.price].join(" "));
 }
 
-function parseProductPrice(value) {
-  const raw = clean(value);
-  const normalized = raw.replace(/[^\d]/g, "");
-  return {
-    price: Number(normalized || 0),
-    priceText: raw
-  };
-}
-
-function productFromRow(row) {
-  const priceData = parseProductPrice(rowValue(row, ["PRICE", "Giá", "Đơn giá", "price"]));
-  const product = {
-    code: rowValue(row, ["CODE", "Mã", "Mã SP", "SKU", "code"]),
-    name: rowValue(row, ["NAME", "Tên", "Tên sản phẩm", "Sản phẩm", "name"]),
-    size: rowValue(row, ["SIZE", "Kích thước", "size"]),
-    surface: rowValue(row, ["SURFACE", "Bề mặt", "surface"]),
-    origin: rowValue(row, ["ORIGIN", "Xuất xứ", "origin"]),
-    color: rowValue(row, ["COLOR", "Màu", "color"]),
-    price: priceData.price,
-    priceText: priceData.priceText,
-    description: rowValue(row, ["DESCRIPTION", "Mô tả", "Loại", "description"]),
-    isDeleted: false,
-    updatedByEmail: currentUser?.email || "",
-    updatedAt: serverTimestamp()
-  };
-  product.searchText = productSearchText(product);
-  return product;
-}
-
-function productKey(p) {
-  return normalizeKey(p.code) || normalizeKey([p.name, p.size, p.surface, p.origin].join("|"));
-}
-
-async function importProductRows(rows) {
-  if (!isManager()) return notice("Chỉ admin/manager được import sản phẩm.", true);
-  const existing = new Map(products.map(p => [productKey(p), p]));
-  const pending = new Map();
-  rows.map(productFromRow).filter(p => p.name || p.code).forEach(p => pending.set(productKey(p), p));
-  const items = [...pending.values()];
-  if (!items.length) return notice("File CSV không có sản phẩm hợp lệ.", true);
-  let imported = 0;
-  for (let i = 0; i < items.length; i += 420) {
-    const batch = writeBatch(db);
-    items.slice(i, i + 420).forEach(p => {
-      const old = existing.get(productKey(p));
-      const ref = old?.id ? doc(db, "products", old.id) : doc(collection(db, "products"));
-      batch.set(ref, {
-        ...p,
-        createdByEmail: old?.createdByEmail || currentUser?.email || "",
-        createdAt: old?.createdAt || serverTimestamp()
-      }, {merge:true});
-      imported++;
-    });
-    batch.set(doc(collection(db, "auditLogs")), {
-      action: "importProductsCsv", entity: "products", entityId: "bulk",
-      email: currentUser?.email || "", payloadJson: JSON.stringify({count:items.slice(i, i + 420).length}), createdAt: serverTimestamp()
-    });
-    await batch.commit();
-  }
-  notice(`Đã import/cập nhật ${imported} sản phẩm.`);
-}
-
-async function handleImportProductsFile(event) {
-  if (!isManager()) return notice("Chỉ admin/manager được import sản phẩm.", true);
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-  const rows = parseCsv(await file.text());
-  if (!rows.length) return notice("File CSV không có dữ liệu.", true);
-  const ok = confirm(`Import ${rows.length} dòng sản phẩm từ file "${file.name}"? Dòng trùng CODE sẽ được cập nhật.`);
-  if (!ok) return;
-  await importProductRows(rows);
-}
-
 function hydrateProductFilters() {
   if (!$("productFilterSize")) return;
-  fillSelect("productFilterSize", uniq(products.map(p => p.size)).sort(), "", "Tất cả size");
+  fillSelect("productFilterSize", uniq(products.map(p => p.size)).sort(), "", "Tất cả kích thước");
   fillSelect("productFilterSurface", uniq(products.map(p => p.surface)).sort(), "", "Tất cả bề mặt");
   fillSelect("productFilterOrigin", uniq(products.map(p => p.origin)).sort(), "", "Tất cả xuất xứ");
 }
@@ -1585,19 +1512,39 @@ async function softDeleteInventoryMovement(id) {
 // kho, không ERP. Mọi thay đổi đi qua crm_update_product/crm_create_product
 // (server ghi updated_at/updated_by_user_id, client không tự gửi được).
 let productDrawerEditingId = null;
+let productDrawerOriginal = null;
+let productsLoading = true;
+let productsLoadError = false;
+let productsReadGeneration = 0;
+async function reloadProducts() {
+  const generation = ++productsReadGeneration;
+  try {
+    const rows = await callCrmRpc("crm_list_products", {});
+    if (generation !== productsReadGeneration) return;
+    products = rows.map(productFromCanonical);
+    productsLoadError = false;
+  } catch {
+    if (generation !== productsReadGeneration) return;
+    productsLoadError = true;
+  }
+  if (generation === productsReadGeneration) {
+    productsLoading = false;
+    renderProducts();
+  }
+}
 
 function productUpdatedByLabel(p) {
-  const who = clean(p?.updatedByName) || clean(p?.updatedByEmail);
+  const who = p?.updatedByUserId ? clean(p?.updatedByName) : "";
   const when = p?.updatedAt ? toDate(p.updatedAt) : null;
   const whenText = when && !Number.isNaN(when.getTime()) ? when.toLocaleString("vi-VN") : "";
   if (!whenText && !who) return "Chưa có thông tin người cập nhật.";
-  if (!who) return `Cập nhật cuối: ${whenText}`;
+  if (!who) return `Cập nhật cuối: ${whenText} · Chưa có thông tin người cập nhật`;
   if (!whenText) return `Cập nhật cuối bởi ${who}`;
   return `Cập nhật cuối: ${whenText} · bởi ${who}`;
 }
 
 function productStockText(p) {
-  return p?.stockQuantity === null || p?.stockQuantity === undefined ? "—" : String(p.stockQuantity);
+  return productQuantity(p?.stockQuantity);
 }
 
 function renderProducts() {
@@ -1606,8 +1553,9 @@ function renderProducts() {
   hydrateProductFilters();
   renderProductOptions();
   const rows = visibleProducts();
-  const page = pageRows("products", rows);
-  const empty = `<div class="muted" style="padding:14px">Chưa có sản phẩm phù hợp.</div>`;
+  const page = productsLoading || productsLoadError ? [] : pageRows("products", rows);
+  const message = productsLoading ? "Đang tải sản phẩm..." : productsLoadError ? "Không tải được danh sách sản phẩm." : products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm.";
+  const empty = `<div class="muted" role="status" style="padding:14px">${message}</div>`;
 
   $("productRows").innerHTML = page.length ? page.map(p => `
       <tr data-open-product="${esc(p.id)}" style="cursor:pointer">
@@ -1616,10 +1564,10 @@ function renderProducts() {
         <td>${esc(p.size || "—")}</td>
         <td>${esc(p.surface || "—")}</td>
         <td>${esc(p.origin || "—")}</td>
-        <td><b>${esc(money(p.price || 0))}</b></td>
+        <td><b>${esc(productMoney(p.price))}</b></td>
         <td>${esc(productStockText(p))}</td>
-        <td>${esc(p.updatedAt ? fmtDate(p.updatedAt) : "—")}</td>
-        <td>${esc(clean(p.updatedByName) || clean(p.updatedByEmail) || "—")}</td>
+        <td>${esc(p.updatedAt ? toDate(p.updatedAt).toLocaleString("vi-VN") : "—")}</td>
+        <td>${esc((p.updatedByUserId && clean(p.updatedByName)) || "Chưa có thông tin người cập nhật")}</td>
       </tr>
     `).join("") : `<tr><td colspan="9">${empty}</td></tr>`;
 
@@ -1627,7 +1575,7 @@ function renderProducts() {
       <div class="product-card" data-open-product="${esc(p.id)}">
         <div class="product-card-main">
           <div><b>${esc(p.name || productSku(p) || "Sản phẩm")}</b><div class="muted">${esc(productSku(p) || "Chưa có mã")}</div></div>
-          <div class="product-card-price"><b>${esc(money(p.price || 0))}</b><div class="muted">Tồn: ${esc(productStockText(p))}</div></div>
+          <div class="product-card-price"><b>${esc(productMoney(p.price))}</b><div class="muted">Tồn: ${esc(productStockText(p))}</div></div>
         </div>
       </div>
     `).join("") : empty;
@@ -1637,7 +1585,9 @@ function renderProducts() {
 
 function openProductDrawer(id) {
   const p = id ? products.find(x => x.id === id) : null;
-  if (id && !p) return;
+  if (id && !p) return notice("Không tìm thấy sản phẩm.", true);
+  if (!id && !isManager()) return notice("Bạn không có quyền tạo sản phẩm.", true);
+  productDrawerOriginal = p ? { ...p } : null;
   productDrawerEditingId = id || null;
   $("productDrawerTitle").textContent = p ? (p.name || productSku(p) || "Sản phẩm") : "Thêm sản phẩm";
   $("productDrawerMeta").textContent = p ? productUpdatedByLabel(p) : "Sản phẩm mới";
@@ -1646,8 +1596,12 @@ function openProductDrawer(id) {
   $("productSizeInput").value = p ? (p.size || "") : "";
   $("productSurfaceInput").value = p ? (p.surface || "") : "";
   $("productOriginInput").value = p ? (p.origin || "") : "";
-  $("productPriceInput").value = p && p.price ? money(p.price) : "";
+  $("productPriceInput").value = p?.price ?? "";
   $("productStockInput").value = p && p.stockQuantity !== null && p.stockQuantity !== undefined ? String(p.stockQuantity) : "";
+  const editing = !p;
+  $("productDrawer").querySelectorAll("input").forEach(input => input.disabled = !editing);
+  $("editProductBtn").classList.toggle("hide", editing);
+  $("saveProductBtn").classList.toggle("hide", !editing);
   $("productDrawerBackdrop")?.classList.remove("hide");
   $("productDrawer")?.classList.remove("hide");
 }
@@ -1658,64 +1612,31 @@ function closeProductDrawer() {
   productDrawerEditingId = null;
 }
 
-function patchLocalProduct(id, r) {
-  const idx = products.findIndex(x => x.id === id);
-  if (idx < 0 || !r) return;
-  products[idx] = {
-    ...products[idx],
-    sku: r.code || null, code: r.code || "",
-    name: r.name || "", size: r.size || "", surface: r.surface || "", origin: r.origin || "",
-    price: r.price, stockQuantity: r.stock_quantity,
-    updatedAt: r.updated_at, updatedByUserId: r.updated_by_user_id,
-    updatedByName: appUser?.name || clean(products[idx]?.updatedByName),
-    updatedByEmail: currentUser?.email || products[idx]?.updatedByEmail
-  };
-}
-
-function productFromRpcResult(r) {
-  return {
-    id: r.id, sku: r.code || null, code: r.code || "", name: r.name || "",
-    size: r.size || "", surface: r.surface || "", origin: r.origin || "",
-    price: r.price, stockQuantity: r.stock_quantity, isDeleted: false, active: true,
-    updatedAt: r.updated_at, updatedByUserId: r.updated_by_user_id,
-    updatedByName: appUser?.name || "", updatedByEmail: currentUser?.email || "",
-    createdAt: r.updated_at
-  };
-}
-
 async function saveProductDrawer() {
-  const code = clean($("productCodeInput")?.value);
-  const name = clean($("productNameInput")?.value);
-  const size = clean($("productSizeInput")?.value);
-  const surface = clean($("productSurfaceInput")?.value);
-  const origin = clean($("productOriginInput")?.value);
-  const priceRawText = clean($("productPriceInput")?.value);
-  const stockRaw = clean($("productStockInput")?.value);
-  if (!name && !code) return notice("Sản phẩm cần có mã SP hoặc tên.", true);
-  if (!priceRawText) return notice("Vui lòng nhập giá.", true);
-  const priceData = parseProductPrice(priceRawText);
-  if (priceData.price < 0) return notice("Giá sản phẩm không hợp lệ.", true);
-  const changes = {
-    code, name, size, surface, origin,
-    price: String(priceData.price),
-    stock_quantity: stockRaw
-  };
+  let changes;
   try {
-    if (productDrawerEditingId) {
-      const result = await callCrmRpc("crm_update_product", {p_product_id: productDrawerEditingId, p_changes: changes});
-      patchLocalProduct(productDrawerEditingId, result);
-      notice("Đã lưu sản phẩm.");
-    } else {
-      if (!isManager()) return notice("Chỉ manager/admin được tạo sản phẩm mới.", true);
-      const result = await callCrmRpc("crm_create_product", {p_product: changes});
-      if (result?.id) products.unshift(productFromRpcResult(result));
-      notice("Đã thêm sản phẩm.");
-    }
-    closeProductDrawer();
+    changes = productChanges({
+      code: $("productCodeInput").value, name: $("productNameInput").value,
+      size: $("productSizeInput").value, surface: $("productSurfaceInput").value,
+      origin: $("productOriginInput").value, price: $("productPriceInput").value,
+      stock_quantity: $("productStockInput").value
+    }, productDrawerOriginal);
+  } catch (error) { return notice(error.message, true); }
+  if (!clean($("productNameInput").value) && !clean($("productCodeInput").value)) return notice("Sản phẩm cần có mã hoặc tên.", true);
+  try {
+    const id = productDrawerEditingId;
+    if (!id && !isManager()) return notice("Bạn không có quyền tạo sản phẩm.", true);
+    const result = id
+      ? await callCrmRpc("crm_update_product", {p_product_id: id, p_changes: changes})
+      : await callCrmRpc("crm_create_product", {p_product: changes});
+    const saved = productFromCanonical(result);
+    productsReadGeneration++;
+    const idx = products.findIndex(p => p.id === saved.id);
+    if (idx >= 0) products[idx] = saved; else products.unshift(saved);
     renderProducts();
-  } catch (err) {
-    notice("Không lưu được sản phẩm: " + authMessage(err), true);
-  }
+    openProductDrawer(saved.id);
+    notice("Đã lưu sản phẩm.");
+  } catch (error) { notice(productError(error), true); }
 }
 
 const quoteStatusOptions = [
@@ -2168,6 +2089,7 @@ function applyProductToDealInput(input) {
 }
 
 function stopWatchers() {
+  productsReadGeneration++;
   unsubscribers.forEach(fn => { try { fn(); } catch {} });
   unsubscribers = [];
   scopedSnapshots = {customers:{}, careLogs:{}, deals:{}, kpiProposals:{}};
@@ -2320,7 +2242,9 @@ function watchData() {
     markDirty("kpiRules");
   }, err => notice("Lỗi tải KPI: " + authMessage(err), true)));
 
-  unsubscribers.push(onSnapshot(collection(db, "products"), snap => applySnap("products", snap, true), err => notice("Lỗi tải sản phẩm: " + authMessage(err), true)));
+  productsLoading = true;
+  productsLoadError = false;
+  unsubscribers.push(onSnapshot(collection(db, "products"), () => reloadProducts(), () => { productsLoading = false; productsLoadError = true; renderProducts(); }));
 
   if (isManager()) {
     unsubscribers.push(onSnapshot(collection(db, "kpiPeriods"), snap => applySnap("kpiPeriods", snap), err => notice("Lỗi tải kỳ KPI mới: " + authMessage(err), true)));
@@ -9842,6 +9766,11 @@ on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => goToRoute("/admin"));
 on("addProductBtn", "click", () => openProductDrawer(null));
 on("saveProductBtn", "click", () => runAction("saveProductBtn", "saveProduct", "Đang lưu...", saveProductDrawer));
+on("editProductBtn", "click", () => {
+  $("productDrawer").querySelectorAll("input").forEach(input => input.disabled = false);
+  $("editProductBtn").classList.add("hide");
+  $("saveProductBtn").classList.remove("hide");
+});
 on("closeProductDrawerBtn", "click", closeProductDrawer);
 on("productDrawerBackdrop", "click", closeProductDrawer);
 on("resetProductFilterBtn", "click", () => {
@@ -9853,6 +9782,7 @@ on("resetProductFilterBtn", "click", () => {
 on("adminBackToCrmBtn", "click", () => goToRoute("/"));
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
+  if (!$("productDrawer")?.classList.contains("hide")) return closeProductDrawer();
   if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) closeKpiTeamAssign();
   else if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) closeKpiTeamEmployee();
 });

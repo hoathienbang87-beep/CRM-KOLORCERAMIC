@@ -161,6 +161,11 @@
     @media(max-width:760px){
       .product-table-wrap{display:none}
       .product-card-list{display:block}
+      #productsPanel .product-toolbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+      .product-toolbar .toolbar-search{grid-column:1/-1}
+      .product-card-main>div{min-width:0;overflow-wrap:anywhere}
+      .product-card-price{flex-shrink:0;max-width:50%}
+      #productDrawer .grid2{grid-template-columns:minmax(0,1fr)}
     }
     table{width:100%;border-collapse:separate;border-spacing:0;min-width:1180px}
     th,td{padding:12px;border-bottom:1px solid #e9eef6;text-align:left;vertical-align:top}

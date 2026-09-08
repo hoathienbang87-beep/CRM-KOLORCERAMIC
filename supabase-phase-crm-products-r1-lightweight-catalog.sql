@@ -1,6 +1,6 @@
 -- =====================================================================
 -- CRM-PRODUCTS-R1 — Lightweight Product Catalog + Price + Stock
--- Repository : D:\SUPABASE\CRM-KOLORCERAMIC
+-- Repository : D:\DU AN CUA TOI\CRM-KOLORCERAMIC
 -- Target     : PRODUCTION jjeeazwlqcwynzquimeo
 -- Scope      : Chỉ catalog sản phẩm nội bộ + giá + tồn kho tham khảo.
 --              KHÔNG đụng inventory_movements/product_inventory_balance/
@@ -49,6 +49,20 @@ comment on column public.products.updated_by_user_id is
 
 create index if not exists products_updated_by_user_id_idx on public.products (updated_by_user_id);
 
+-- Từ chối schema bất ngờ thay vì tự ép kiểu/default dữ liệu hiện hữu.
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema='public'
+    and table_name='products' and column_name='stock_quantity' and data_type='numeric'
+    and is_nullable='YES' and column_default is null) then
+    raise exception 'PRECONDITION_FAIL: stock_quantity phải là nullable numeric, không default.';
+  end if;
+  if exists (select 1 from public.products where jsonb_typeof(raw_data) <> 'object') then
+    raise exception 'PRECONDITION_FAIL: raw_data không đồng nhất object.';
+  end if;
+end;
+$$;
+
 -- ---------------------------------------------------------------------
 -- 2. Grants — fail closed, dọn quyền thừa của anon
 -- ---------------------------------------------------------------------
@@ -64,11 +78,15 @@ grant select on public.products to authenticated;
 -- ---------------------------------------------------------------------
 drop policy if exists "legacy products owner admin read archive" on public.products;
 
+drop policy if exists "products active employee read" on public.products;
+alter table public.products enable row level security;
 create policy "products active employee read"
   on public.products
   for select
   to authenticated
-  using (coalesce(public.crm_is_active_user(), false));
+  using (auth.uid() is not null and coalesce(public.crm_is_active_user(), false)
+    and coalesce(public.crm_current_user_role() in ('sale','manager','admin','owner'), false)
+    and not coalesce(is_deleted, false));
 
 -- ---------------------------------------------------------------------
 -- 4. crm_update_product — Sale/Manager/Admin/Owner đang active được sửa.
@@ -96,13 +114,34 @@ declare
   v_stock numeric;
   v_raw jsonb;
 begin
-  if not coalesce(public.crm_is_active_user(), false) then
+  if auth.uid() is null or not coalesce(public.crm_is_active_user(), false)
+    or not coalesce(public.crm_current_user_role() in ('sale','manager','admin','owner'), false) then
     raise exception using errcode = '42501',
       message = 'Chỉ nhân viên đang hoạt động mới được sửa sản phẩm.';
   end if;
   if v_actor_id is null then
     raise exception using errcode = '42501',
       message = 'Không xác định được nhân viên hiện tại.';
+  end if;
+  if p_changes is null or jsonb_typeof(p_changes) <> 'object' then
+    raise exception using errcode='22023', message='Dữ liệu sản phẩm không hợp lệ.';
+  end if;
+  if exists (select 1 from jsonb_object_keys(p_changes) k where k not in
+    ('code','name','size','surface','origin','price','stock_quantity')) then
+    raise exception using errcode='22023', message='Trường sản phẩm không được phép.';
+  end if;
+  if exists (select 1 from jsonb_each(p_changes) e where e.key in ('code','name','size','surface','origin')
+    and jsonb_typeof(e.value) not in ('string','null')) then
+    raise exception using errcode='22023', message='Thông tin sản phẩm phải là văn bản.';
+  end if;
+  if p_changes ? 'price' and (jsonb_typeof(p_changes->'price') not in ('number','string')
+    or coalesce(p_changes->>'price','') !~ '^[0-9]+([.][0-9]+)?$') then
+    raise exception using errcode='22023', message='Dữ liệu giá không hợp lệ.';
+  end if;
+  if p_changes ? 'stock_quantity' and p_changes->'stock_quantity' <> 'null'::jsonb
+    and (jsonb_typeof(p_changes->'stock_quantity') not in ('number','string')
+    or coalesce(p_changes->>'stock_quantity','') !~ '^[0-9]+([.][0-9]+)?$') then
+    raise exception using errcode='22023', message='Dữ liệu tồn kho không hợp lệ.';
   end if;
   if p_product_id is null or nullif(btrim(p_product_id), '') is null then
     raise exception using errcode = '22023', message = 'Thiếu mã định danh sản phẩm.';
@@ -111,6 +150,13 @@ begin
   select * into v_old from public.products where id = p_product_id for update;
   if v_old.id is null then
     raise exception using errcode = 'P0002', message = 'Không tìm thấy sản phẩm.';
+  end if;
+
+  if coalesce(v_old.is_deleted, false) then
+    raise exception using errcode='P0002', message='Không tìm thấy sản phẩm.';
+  end if;
+  if jsonb_typeof(v_old.raw_data) <> 'object' then
+    raise exception using errcode='22023', message='Dữ liệu sản phẩm cần được kiểm tra.';
   end if;
 
   v_code    := case when p_changes ? 'code'    then nullif(btrim(p_changes->>'code'), '')    else nullif(btrim(v_old.sku), '') end;
@@ -152,6 +198,9 @@ begin
     v_stock := v_old.stock_quantity;
   end if;
 
+  if p_changes ? 'name' and v_name is null then
+    raise exception using errcode='22023', message='Tên sản phẩm không được để trống.';
+  end if;
   if v_name is null and v_code is null then
     raise exception using errcode = '22023', message = 'Sản phẩm cần có tên hoặc mã SP.';
   end if;
@@ -165,14 +214,14 @@ begin
       message = 'Mã sản phẩm này đã được dùng cho sản phẩm khác.';
   end if;
 
-  v_raw := coalesce(v_old.raw_data, '{}'::jsonb) || jsonb_build_object(
+  v_raw := v_old.raw_data || (select coalesce(jsonb_object_agg(e.key,e.value), '{}'::jsonb)
+    from jsonb_each(jsonb_build_object(
     'code', coalesce(v_code, ''),
     'name', coalesce(v_name, ''),
     'size', coalesce(v_size, ''),
     'surface', coalesce(v_surface, ''),
     'origin', coalesce(v_origin, ''),
-    'price', v_price,
-    'updatedByEmail', public.crm_current_email(),
+    'price', v_price)) e where p_changes ? e.key) || jsonb_build_object(
     'updatedByName', coalesce((select u.name from public.app_users u where u.id = v_actor_id), ''),
     'updatedAt', now()
   );
@@ -195,8 +244,9 @@ begin
   return jsonb_build_object(
     'id', p_product_id,
     'code', v_code, 'name', v_name, 'size', v_size, 'surface', v_surface, 'origin', v_origin,
-    'price', v_price, 'stock_quantity', v_stock,
-    'updated_at', now(), 'updated_by_user_id', v_actor_id
+    'price', v_price::text, 'stock_quantity', v_stock::text,
+    'updated_at', now(), 'updated_by_user_id', v_actor_id,
+    'updated_by_name', (select u.name from public.app_users u where u.id=v_actor_id)
   );
 end;
 $$;
@@ -227,7 +277,8 @@ declare
   v_stock numeric;
   v_raw jsonb;
 begin
-  if not coalesce(public.crm_is_manager(), false) then
+  if auth.uid() is null or not coalesce(public.crm_is_active_user(), false)
+    or not coalesce(public.crm_current_user_role() in ('manager','admin','owner'), false) then
     raise exception using errcode = '42501',
       message = 'Chỉ manager/admin/owner được tạo sản phẩm mới.';
   end if;
@@ -235,10 +286,31 @@ begin
     raise exception using errcode = '42501',
       message = 'Không xác định được nhân viên hiện tại.';
   end if;
+  if p_product is null or jsonb_typeof(p_product) <> 'object' then
+    raise exception using errcode='22023', message='Dữ liệu sản phẩm không hợp lệ.';
+  end if;
+  if exists (select 1 from jsonb_object_keys(p_product) k where k not in
+    ('code','name','size','surface','origin','price','stock_quantity')) then
+    raise exception using errcode='22023', message='Trường sản phẩm không được phép.';
+  end if;
+  if exists (select 1 from jsonb_each(p_product) e where e.key in ('code','name','size','surface','origin')
+    and jsonb_typeof(e.value) not in ('string','null')) then
+    raise exception using errcode='22023', message='Thông tin sản phẩm phải là văn bản.';
+  end if;
+  if p_product ? 'price' and (jsonb_typeof(p_product->'price') not in ('number','string')
+    or coalesce(p_product->>'price','') !~ '^[0-9]+([.][0-9]+)?$') then
+    raise exception using errcode='22023', message='Dữ liệu giá không hợp lệ.';
+  end if;
+  if p_product ? 'stock_quantity' and p_product->'stock_quantity' <> 'null'::jsonb
+    and (jsonb_typeof(p_product->'stock_quantity') not in ('number','string')
+    or coalesce(p_product->>'stock_quantity','') !~ '^[0-9]+([.][0-9]+)?$') then
+    raise exception using errcode='22023', message='Dữ liệu tồn kho không hợp lệ.';
+  end if;
   if v_name is null and v_code is null then
     raise exception using errcode = '22023', message = 'Sản phẩm cần có tên hoặc mã SP.';
   end if;
 
+  v_name := coalesce(v_name, v_code);
   if nullif(btrim(coalesce(p_product->>'price', '')), '') is null then
     raise exception using errcode = '22023', message = 'Giá sản phẩm không được để trống.';
   end if;
@@ -272,7 +344,6 @@ begin
   v_raw := jsonb_build_object(
     'code', coalesce(v_code, ''), 'name', coalesce(v_name, ''), 'size', coalesce(v_size, ''),
     'surface', coalesce(v_surface, ''), 'origin', coalesce(v_origin, ''), 'price', v_price,
-    'createdByEmail', public.crm_current_email(), 'updatedByEmail', public.crm_current_email(),
     'createdByName', coalesce((select u.name from public.app_users u where u.id = v_actor_id), ''),
     'updatedByName', coalesce((select u.name from public.app_users u where u.id = v_actor_id), ''),
     'createdAt', now(), 'updatedAt', now()
@@ -291,8 +362,9 @@ begin
 
   return jsonb_build_object(
     'id', v_id, 'code', v_code, 'name', v_name, 'size', v_size, 'surface', v_surface, 'origin', v_origin,
-    'price', v_price, 'stock_quantity', v_stock,
-    'updated_at', now(), 'updated_by_user_id', v_actor_id
+    'price', v_price::text, 'stock_quantity', v_stock::text,
+    'updated_at', now(), 'updated_by_user_id', v_actor_id,
+    'updated_by_name', (select u.name from public.app_users u where u.id=v_actor_id)
   );
 end;
 $$;
@@ -336,6 +408,29 @@ begin
   raise notice 'PRODUCTS_R1_VERIFY_PASS: schema + RPC đã sẵn sàng, dữ liệu cũ còn nguyên (% dòng).', v_count;
 end;
 $$;
+
+
+-- Đọc catalog: chỉ tên updater, không mở quyền đọc toàn bộ app_users.
+create or replace function public.crm_list_products()
+returns jsonb language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if auth.uid() is null or public.crm_current_app_user_id() is null
+    or not coalesce(public.crm_current_user_role() in ('sale','manager','admin','owner'), false) then
+    raise exception using errcode='42501', message='Bạn không có quyền đọc sản phẩm.';
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object(
+    'id',p.id,'code',p.sku,'name',p.name,
+    'size',p.raw_data->>'size','surface',p.raw_data->>'surface','origin',p.raw_data->>'origin',
+    'price',p.price::text,'stock_quantity',p.stock_quantity::text,
+    'updated_at',p.updated_at,'updated_by_user_id',p.updated_by_user_id,'updated_by_name',u.name
+  ) order by p.sku,p.id) from public.products p
+    left join public.app_users u on u.id=p.updated_by_user_id
+    where not coalesce(p.is_deleted,false)), '[]'::jsonb);
+end;
+$$;
+revoke all on function public.crm_list_products() from public, anon;
+grant execute on function public.crm_list_products() to authenticated;
 
 commit;
 
