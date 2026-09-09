@@ -44,6 +44,7 @@ check(/revoke insert,update,delete[^;]+public\.kpi_proposals/.test(sql), "Legacy
 check(!/drop table|delete from public\.kpi_(rules|proposals)/i.test(sql), "Không được xóa dữ liệu legacy.");
 
 check(!/kpi-cutover\.js|crm_legacy_kpi_cutover_status|crm_(submit|review|archive)_kpi_proposal|collection\(db, ["']kpi(Proposals|Rules)["']\)/.test(app), "Runtime không được dùng legacy KPI.");
+check(!/hydrateProposalKpiOptions|\$\(["']kpiRuleMonth["']\)|\$\(["']kpi(?:Rule|Approval)Panel["']\)/.test(app), "Runtime không được giữ lời gọi hoặc DOM ref legacy KPI đã bị gỡ.");
 check(!/KPI cũ|kpiProposalModal|kpiApprovalPanel|kpiSummaryPanel|kpiRulePanel/.test(html), "DOM legacy phải được gỡ.");
 check(/crm_kpi_assign_employee_r3/.test(app), "UI phải dùng RPC gán R3.");
 check(/crm_kpi_update_assignment_target_r3/.test(app) && /crm_kpi_update_assignment_options_r3/.test(app), "UI phải dùng RPC sửa ACTIVE R3.");

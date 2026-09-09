@@ -584,12 +584,10 @@ function hydrateSelects() {
   fillSelect("filterSource", settings.sources, "", "Tất cả nguồn");
   hydrateFilterChannelOptions();
   fillSelect("filterCustomerType", settings.customerTypes, "", "Tất cả phân loại");
-  hydrateProposalKpiOptions();
   renderDropdownSettingsForm();
   // Không tự lọc theo tháng hiện tại. Bộ lọc Tháng/Tuần để trống thì hiển thị tất cả dữ liệu.
   $("filterWeek").value ||= "";
   $("filterMonth").value ||= "";
-  $("kpiRuleMonth").value ||= currentMonth();
   if (!$("potentialLevel").value) $("potentialLevel").value = "Bình thường";
   $("careDueDays").value = careDueDays();
   togglePartnerFields();
@@ -605,8 +603,6 @@ function hydrateSelects() {
     $("syncPhoneBtn").classList.add("hide");
     $("syncOwnerBtn").classList.add("hide");
     $("importBtn").classList.add("hide");
-    $("kpiRulePanel").classList.add("hide");
-    $("kpiApprovalPanel").classList.add("hide");
     $("careSettingsPanel").classList.add("hide");
     $("dropdownSettingsPanel").classList.add("hide");
     $("userAdminPanel").classList.add("hide");
@@ -625,8 +621,6 @@ function hydrateSelects() {
     $("syncPhoneBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("syncOwnerBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("importBtn").classList.toggle("hide", !canAccessAdminPanel());
-    $("kpiRulePanel").classList.remove("hide");
-    $("kpiApprovalPanel").classList.remove("hide");
     $("careSettingsPanel").classList.toggle("hide", !canAccessAdminPanel());
     $("dropdownSettingsPanel").classList.toggle("hide", !canAccessAdminPanel());
     $("proHealthPanel").classList.toggle("hide", !canAccessAdminPanel());
@@ -8284,7 +8278,6 @@ function showApp() {
   // Trình duyệt đôi khi tự khôi phục input type=month sau khi deploy. Chủ động xoá để mặc định là xem tất cả.
   $("filterWeek").value = "";
   $("filterMonth").value = "";
-  $("kpiRuleMonth").value ||= currentMonth();
   hydrateSelects();
   renderAll();
 }
