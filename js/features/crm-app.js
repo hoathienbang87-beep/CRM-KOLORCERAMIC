@@ -3927,7 +3927,19 @@ async function deleteKpi1Definition(definitionId) {
   if (kpiAssignments.some(row => clean(row.definitionId) === clean(item.id))) {
     return notice("KPI này đang hoặc đã được dùng. Chỉ definition chưa từng được gán mới có thể xóa.", true);
   }
-  if (!confirm(`Xóa KPI “${item.name || item.code}” khỏi Bộ KPI?\n\nKPI này phải chưa từng được sử dụng và chưa có dữ liệu lịch sử. Thao tác sẽ được ghi audit log.`)) return;
+  const button = document.querySelector(`[data-kpi1-delete-definition="${definitionId}"]`);
+  if (button?.dataset.confirmDelete !== "true") {
+    if (button) {
+      button.dataset.confirmDelete = "true";
+      button.textContent = "Bấm lần nữa để xác nhận xóa";
+      setTimeout(() => {
+        if (!button.isConnected || button.dataset.confirmDelete !== "true") return;
+        delete button.dataset.confirmDelete;
+        button.textContent = "Xóa KPI";
+      }, 8000);
+    }
+    return notice(`Bấm “Xóa KPI” lần nữa trong 8 giây để xác nhận xóa ${item.name || item.code}.`);
+  }
   await callCrmRpc("crm_kpi_delete_unused_definition", {
     p_definition_id: item.id,
     p_expected_version: Number(item.version)

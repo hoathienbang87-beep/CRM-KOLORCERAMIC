@@ -56,6 +56,7 @@ check(/id="kpi1DefinitionReason"[^>]+maxlength="500"/.test(html) && /kpi1Definit
 check(/Thay đổi mục tiêu hoặc cách tính điểm sẽ làm thay đổi tỷ lệ hoàn thành/.test(app), "UI phải cảnh báo tác động điểm.");
 check(/Ngừng KPI/.test(app) && /Gỡ KPI/.test(app), "UI phải phân biệt gỡ và ngừng.");
 check(/id="kpiTeamRemoveSubmitBtn"/.test(html) && /confirmKpiTeamRemoveAssignment/.test(app) && !/prompt\("Lý do thay đổi \(bắt buộc\):/.test(app), "Gỡ/ngừng ACTIVE phải dùng reason inline, không dùng prompt.");
+check(/data-kpi1-delete-definition=[\s\S]+dataset\.confirmDelete[\s\S]+Bấm lần nữa để xác nhận xóa/.test(app) && !/confirm\(`Xóa KPI/.test(app), "Xóa definition phải xác nhận inline, không dùng confirm của trình duyệt.");
 check(/historicalEmployees = \[\.\.\.new Map\(kpiTeamRawAssignments\(period\?\.id\)[\s\S]+employees: \[\.\.\.eligibleEmployees, \.\.\.historicalEmployees\]/.test(app), "KPI Team phải giữ assignment lịch sử hiển thị khi nhân viên đổi role.");
 check(/historicalEmployees = \[\.\.\.new Map\([\s\S]+\.map\(user => \[kpi1EmployeeId\(user\), user\]\)\)\.values\(\)\]/.test(app), "Nhân viên có nhiều assignment lịch sử chỉ được hiển thị một lần.");
 check(/crm_kpi_get_config_history_r3/.test(app), "History phải tải audit ACTIVE.");
