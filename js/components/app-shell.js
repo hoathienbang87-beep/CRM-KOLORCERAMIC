@@ -1,25 +1,57 @@
-const LABELS = {
-  customers: "\u004b\u0068\u00e1\u0063\u0068\u0020\u0068\u00e0\u006e\u0067",
-  reports: "\u0042\u00e1\u006f\u0020\u0063\u00e1\u006f",
-  admin: "\u0051\u0075\u1ea3\u006e\u0020\u0074\u0072\u1ecb",
-  products: "Sản phẩm",
-};
+export const CRM_NAV_ITEMS = Object.freeze([
+  { id: "overview", label: "Tổng quan", hash: "#/overview", mainView: "crm", capability: "crm" },
+  { id: "customers", label: "Khách hàng", hash: "#/customers", mainView: "customers", capability: "crm" },
+  { id: "kpi", label: "KPI", hash: "#/kpi", mainView: "kpi", capability: "crm" },
+  { id: "products", label: "Sản phẩm", hash: "#/products", mainView: "products", capability: "crm" },
+  { id: "reports", label: "Báo cáo", hash: "#/reports", mainView: "reports", capability: "manager" },
+  { id: "admin", label: "Quản trị", path: "/admin", capability: "admin" }
+]);
 
-export function renderViewTabs() {
+export const CRM_HASH_ROUTES = Object.freeze(
+  Object.fromEntries(CRM_NAV_ITEMS.filter(item => item.hash).map(item => [item.hash, item]))
+);
+
+export function normalizeWorkspaceHash(hash = "") {
+  const raw = String(hash || "").trim().toLowerCase();
+  if (!raw || raw === "#/" || raw === "#") return "#/overview";
+  const normalized = raw.startsWith("#") ? raw : `#${raw.startsWith("/") ? "" : "/"}${raw}`;
+  return normalized.replace(/\/+$/, "") || "#/overview";
+}
+
+export function workspaceForHash(hash = "") {
+  return CRM_HASH_ROUTES[normalizeWorkspaceHash(hash)] || CRM_HASH_ROUTES["#/overview"];
+}
+
+function navMarkup(className) {
+  return CRM_NAV_ITEMS.map(item => `
+    <button class="${className}" type="button" data-workspace-nav="${item.id}"
+      data-nav-capability="${item.capability}"${item.hash ? ` data-nav-hash="${item.hash}"` : ` data-nav-path="${item.path}"`}>
+      <span>${item.label}</span>
+    </button>`).join("");
+}
+
+export function renderNavigation() {
+  const desktop = document.getElementById("desktopNavItems");
+  const mobile = document.getElementById("mobileNavItems");
+  if (desktop) desktop.innerHTML = navMarkup("crm-nav-item");
+  if (mobile) mobile.innerHTML = navMarkup("crm-nav-item crm-mobile-nav-item");
+}
+
+// Scaffolding tương thích cho các handler hiện hữu; không còn là navigation.
+export function renderLegacyViewTabs() {
   const slot = document.getElementById("viewTabsSlot");
   if (!slot) return;
   slot.innerHTML = `
-    <div class="view-tabs">
-      <button id="crmViewBtn" class="primary" type="button">CRM</button>
-      <button id="customersViewBtn" type="button">${LABELS.customers}</button>
-      <button id="kpiViewBtn" type="button">KPI</button>
-      <button id="productsViewBtn" type="button">${LABELS.products}</button>
-      <button id="reportsViewBtn" class="hide" type="button">${LABELS.reports}</button>
-      <button id="adminViewBtn" class="hide" type="button">${LABELS.admin}</button>
-    </div>
+    <button id="crmViewBtn" type="button" tabindex="-1" aria-hidden="true">Tổng quan</button>
+    <button id="customersViewBtn" type="button" tabindex="-1" aria-hidden="true">Khách hàng</button>
+    <button id="kpiViewBtn" type="button" tabindex="-1" aria-hidden="true">KPI</button>
+    <button id="productsViewBtn" type="button" tabindex="-1" aria-hidden="true">Sản phẩm</button>
+    <button id="reportsViewBtn" type="button" tabindex="-1" aria-hidden="true">Báo cáo</button>
+    <button id="adminViewBtn" type="button" tabindex="-1" aria-hidden="true">Quản trị</button>
   `;
 }
 
 export function renderAppShell() {
-  renderViewTabs();
+  renderNavigation();
+  renderLegacyViewTabs();
 }

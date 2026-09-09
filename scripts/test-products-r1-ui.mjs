@@ -21,7 +21,7 @@ try {
   const slice=(a,b)=>app.slice(app.indexOf(a),app.indexOf(b));
   const harness=`
     ${read('js/features/product-catalog.js').replaceAll('export function','function')}
-    ${read('js/components/app-shell.js').replaceAll('export function','function')}
+    ${read('js/components/app-shell.js').replaceAll('export function','function').replaceAll('export const','const')}
     const $=id=>document.getElementById(id),clean=x=>String(x??'').trim();
     const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const normalizeKey=x=>clean(x).normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/đ/g,'d').toLowerCase();

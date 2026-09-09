@@ -39,6 +39,29 @@
     .panel h2,.panel h3{margin:0 0 14px;line-height:1.25;letter-spacing:0}
     .view-tabs{display:flex;gap:8px;margin-bottom:14px;position:sticky;top:70px;z-index:4;background:linear-gradient(90deg,rgba(245,247,251,.96),rgba(239,250,246,.96));padding:8px;border:1px solid #e2edf7;border-radius:8px}
     .view-tabs button{min-width:96px}
+    .legacy-view-tabs{display:none!important;pointer-events:none!important}
+    .crm-shell{min-height:100vh;display:grid;grid-template-columns:240px minmax(0,1fr);background:var(--bg)}
+    .crm-shell-main{min-width:0}
+    .crm-sidebar{position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;gap:18px;padding:20px 16px;background:#071d3d;color:#fff;z-index:10}
+    .crm-sidebar-brand{display:grid;gap:3px;padding:4px 8px 16px;border-bottom:1px solid rgba(255,255,255,.14)}
+    .crm-sidebar-brand b{font-size:18px;letter-spacing:.02em}
+    .crm-sidebar-brand span,.crm-sidebar-account span{font-size:12px;color:#bad2e8;font-weight:700}
+    .crm-nav-list{display:grid;gap:7px}
+    .crm-nav-item{width:100%;min-height:44px;text-align:left;background:transparent;border:1px solid transparent;color:#eaf3ff;box-shadow:none;padding:10px 12px}
+    .crm-nav-item:hover,.crm-nav-item:focus-visible{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.18);outline:2px solid #7dd3fc;outline-offset:2px}
+    .crm-nav-item.active,.crm-nav-item[aria-current="page"]{background:#0d9488;border-color:#5eead4;color:#fff}
+    .crm-sidebar-account{margin-top:auto;display:grid;gap:7px;padding:14px 8px 2px;border-top:1px solid rgba(255,255,255,.14);overflow-wrap:anywhere}
+    .crm-sidebar-account b{font-size:13px}
+    .crm-sidebar-account button{margin-top:4px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff}
+    .crm-mobile-heading{display:flex;align-items:center;gap:10px}
+    .crm-mobile-menu-button,.crm-mobile-workspace-title{display:none}
+    .crm-mobile-nav-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.48);z-index:15}
+    .crm-mobile-nav-drawer{position:fixed;inset:0 auto 0 0;width:min(320px,86vw);background:#071d3d;color:#fff;z-index:16;padding:18px;box-shadow:20px 0 50px rgba(2,6,23,.3);overflow-y:auto}
+    .crm-mobile-nav-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:15px;margin-bottom:15px;border-bottom:1px solid rgba(255,255,255,.14)}
+    .crm-mobile-nav-head>div{display:grid;gap:3px}
+    .crm-mobile-nav-head span{color:#bad2e8;font-size:12px}
+    .crm-mobile-nav-head button{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff}
+    body.mobile-nav-open{overflow:hidden}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
     .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
@@ -159,6 +182,10 @@
     .product-card-main{display:flex;justify-content:space-between;align-items:center;width:100%;gap:10px}
     .product-card-price{text-align:right}
     @media(max-width:760px){
+      .crm-shell{display:block}
+      .crm-sidebar{display:none}
+      .crm-mobile-menu-button{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;font-size:21px}
+      .crm-mobile-workspace-title{display:block;color:var(--muted);font-size:12px;font-weight:800;margin-top:2px}
       .product-table-wrap{display:none}
       .product-card-list{display:block}
       #productsPanel .product-toolbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}

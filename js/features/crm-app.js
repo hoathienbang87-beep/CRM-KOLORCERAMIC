@@ -1,4 +1,5 @@
 import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
+import { CRM_NAV_ITEMS, CRM_HASH_ROUTES, normalizeWorkspaceHash } from "../components/app-shell.js";
 import {
   auth,
   db,
@@ -417,6 +418,81 @@ function goToRoute(path) {
   if (window.location.pathname === path) return showApp();
   window.history.pushState({}, "", path);
   showApp();
+}
+
+const workspaceByMainView = view => CRM_NAV_ITEMS.find(item => item.mainView === view);
+const canUseNavItem = item => item?.capability === "crm"
+  || (item?.capability === "manager" && isManager())
+  || (item?.capability === "admin" && canAccessAdminPanel());
+
+function setMobileNavigationOpen(open, {restoreFocus = true} = {}) {
+  const drawer = $("mobileNavDrawer");
+  const backdrop = $("mobileNavBackdrop");
+  const trigger = $("mobileNavOpenBtn");
+  if (!drawer || !backdrop || !trigger) return;
+  drawer.classList.toggle("hide", !open);
+  backdrop.classList.toggle("hide", !open);
+  drawer.setAttribute("aria-hidden", String(!open));
+  trigger.setAttribute("aria-expanded", String(open));
+  document.body.classList.toggle("mobile-nav-open", open);
+  if (open) {
+    requestAnimationFrame(() => drawer.querySelector('button:not(.hide):not([disabled])')?.focus());
+  } else if (restoreFocus && document.activeElement && drawer.contains(document.activeElement)) {
+    trigger.focus();
+  }
+}
+
+function updateNavigationUi(item) {
+  document.querySelectorAll("[data-workspace-nav]").forEach(button => {
+    const config = CRM_NAV_ITEMS.find(entry => entry.id === button.dataset.workspaceNav);
+    const allowed = canUseNavItem(config);
+    button.classList.toggle("hide", !allowed);
+    button.disabled = !allowed;
+    const active = item?.id === config?.id;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  if ($("mobileWorkspaceTitle")) $("mobileWorkspaceTitle").textContent = item?.label || "Tổng quan";
+  if ($("sidebarRoleText")) $("sidebarRoleText").textContent = `Vai trò: ${appUser?.role || "sale"}`;
+  if ($("sidebarUserText")) $("sidebarUserText").textContent = currentUser?.email || currentUser?.displayName || "";
+}
+
+function resolveWorkspaceRoute({replaceInvalid = true} = {}) {
+  const normalized = normalizeWorkspaceHash(window.location.hash);
+  const exactItem = CRM_HASH_ROUTES[normalized];
+  const item = exactItem && canUseNavItem(exactItem) ? exactItem : CRM_HASH_ROUTES["#/overview"];
+  if (replaceInvalid && window.location.hash !== item.hash) {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
+  }
+  setMainView(item.mainView, {syncHash:false});
+  updateNavigationUi(item);
+  return item;
+}
+
+function navigateToWorkspace(target, {replace = false} = {}) {
+  const normalized = typeof target === "string" ? normalizeWorkspaceHash(target) : "";
+  const item = typeof target === "string"
+    ? CRM_NAV_ITEMS.find(entry => entry.id === target || entry.mainView === target || entry.hash === normalized)
+    : target;
+  if (!item || !canUseNavItem(item)) {
+    const fallback = CRM_HASH_ROUTES["#/overview"];
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${fallback.hash}`);
+    setMobileNavigationOpen(false);
+    return resolveWorkspaceRoute();
+  }
+  if (item.path) {
+    setMobileNavigationOpen(false, {restoreFocus:false});
+    return goToRoute(item.path);
+  }
+  if (window.location.hash !== item.hash) {
+    const method = replace ? "replaceState" : "pushState";
+    window.history[method]({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
+  }
+  setMainView(item.mainView, {syncHash:false});
+  updateNavigationUi(item);
+  setMobileNavigationOpen(false);
+  return item;
 }
 
 function loadMorePage(key) {
@@ -2421,7 +2497,7 @@ function renderCrmView() {
   renderNeedCare();
 }
 
-function setMainView(view) {
+function setMainView(view, {syncHash = true} = {}) {
   activeMainView = ["customers","kpi","reports","admin","products"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
@@ -2487,6 +2563,11 @@ function setMainView(view) {
     renderTrash();
     renderAuditTrail();
   }
+  const workspace = workspaceByMainView(activeMainView) || CRM_HASH_ROUTES["#/overview"];
+  if (syncHash && canUseNavItem(workspace) && !isAdminRoute() && window.location.hash !== workspace.hash) {
+    window.history.pushState({}, "", `${window.location.pathname}${window.location.search}${workspace.hash}`);
+  }
+  updateNavigationUi(workspace);
 }
 
 function renderKpis() {
@@ -8395,6 +8476,7 @@ function renderAdminShell() {
 function showLogin() {
   stopPresence();
   stopWatchers();
+  setMobileNavigationOpen(false, {restoreFocus:false});
   setViewHidden("loginView", false);
   setViewHidden("appView", true);
   setViewHidden("adminAppView", true);
@@ -8428,6 +8510,7 @@ function showApp() {
   $("filterMonth").value = "";
   hydrateSelects();
   renderAll();
+  resolveWorkspaceRoute();
 }
 
 async function loginEmailPassword() {
@@ -8757,12 +8840,40 @@ on("resetProductFilterBtn", "click", () => {
 });
 ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id =>
   on(id, "input", debounce(() => resetPagingAndRender("products", renderProducts))));
-on("adminBackToCrmBtn", "click", () => goToRoute("/"));
+on("adminBackToCrmBtn", "click", () => {
+  window.history.pushState({}, "", "/#/overview");
+  showApp();
+});
+document.querySelectorAll("[data-workspace-nav]").forEach(button => {
+  button.addEventListener("click", () => navigateToWorkspace(button.dataset.workspaceNav));
+});
+on("mobileNavOpenBtn", "click", () => setMobileNavigationOpen(true));
+on("mobileNavCloseBtn", "click", () => setMobileNavigationOpen(false));
+on("mobileNavBackdrop", "click", () => setMobileNavigationOpen(false));
+on("sidebarLogoutBtn", "click", async () => {
+  try { await updatePresence(false); } catch {}
+  await signOut(auth);
+});
 document.addEventListener("keydown", event => {
-  if (event.key !== "Escape") return;
-  if (!$("productDrawer")?.classList.contains("hide")) return closeProductDrawer();
-  if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) closeKpiTeamAssign();
-  else if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) closeKpiTeamEmployee();
+  if (event.key === "Escape") {
+    if (!$("productDrawer")?.classList.contains("hide")) return closeProductDrawer();
+    if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) return closeKpiTeamAssign();
+    if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) return closeKpiTeamEmployee();
+    if (!$("mobileNavDrawer")?.classList.contains("hide")) return setMobileNavigationOpen(false);
+    return;
+  }
+  if (event.key !== "Tab" || $("mobileNavDrawer")?.classList.contains("hide")) return;
+  const focusable = [...$("mobileNavDrawer").querySelectorAll('button:not(.hide):not([disabled])')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 on("adminLogoutBtn", "click", async () => {
   try { await updatePresence(false); } catch {}
@@ -8840,10 +8951,21 @@ document.addEventListener("visibilitychange", () => {
   renderAll();
   scheduleRenderChart();
 });
-window.addEventListener("popstate", () => {
-  if (currentUser && appUser) showApp();
-  else showLogin();
-});
+let routeResolutionQueued = false;
+function scheduleRouteResolution() {
+  if (routeResolutionQueued) return;
+  routeResolutionQueued = true;
+  queueMicrotask(() => {
+    routeResolutionQueued = false;
+    if (!currentUser || !appUser) return showLogin();
+    if (isAdminRoute()) return showApp();
+    setViewHidden("appView", false);
+    setViewHidden("adminAppView", true);
+    resolveWorkspaceRoute();
+  });
+}
+window.addEventListener("popstate", scheduleRouteResolution);
+window.addEventListener("hashchange", scheduleRouteResolution);
 on("channelReportRange", "change", () => {
   updateChannelReportCustomControls();
   scheduleRenderChart();

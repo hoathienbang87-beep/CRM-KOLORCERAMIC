@@ -10,6 +10,7 @@ try {
   const html=fs.readFileSync('index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
   await page.setContent(html);
   await page.addStyleTag({content:fs.readFileSync('css/styles.css','utf8')});
+  await page.addScriptTag({content:fs.readFileSync('js/components/app-shell.js','utf8').replaceAll('export function','function').replaceAll('export const','const')+';renderAppShell();'});
   await page.evaluate(()=>{
     document.querySelector('#loginView').classList.add('hide');
     document.querySelector('#maintenanceView').classList.add('hide');
@@ -22,6 +23,13 @@ try {
     if(width<=1180){
       const boxes=await page.locator('.layout').evaluate(el=>[...el.children].map(x=>{const r=x.getBoundingClientRect();return {top:r.top,bottom:r.bottom};}));
       assert.ok(boxes[1].top>=boxes[0].bottom,'hai vùng không chồng nhau');
+    }
+    assert.equal(await page.locator('#viewTabsSlot').isVisible(),false,'tab ngang cũ phải ẩn');
+    assert.equal(await page.locator('#desktopSidebar').isVisible(),width>760,`Sidebar desktop tại ${width}px`);
+    assert.equal(await page.locator('#mobileNavOpenBtn').isVisible(),width<=760,`Hamburger tại ${width}px`);
+    if(width>760){
+      const sidebarWidth=await page.locator('#desktopSidebar').evaluate(el=>el.getBoundingClientRect().width);
+      assert.equal(sidebarWidth,240,'Sidebar desktop rộng 240px');
     }
   }
   console.log('PASS full shell layout: 390/761/1131/1180/1280px');
