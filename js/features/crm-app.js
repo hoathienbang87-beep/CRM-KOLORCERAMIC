@@ -4247,10 +4247,11 @@ function kpiTeamSummaries() {
   const period = ensureKpiTeamPeriod();
   const eligibleEmployees = eligibleKpiEmployees(users);
   const eligibleIds = new Set(eligibleEmployees.map(kpi1EmployeeId));
-  const historicalEmployees = kpiTeamRawAssignments(period?.id)
+  const historicalEmployees = [...new Map(kpiTeamRawAssignments(period?.id)
     .map(item => kpi1EmployeeById(item.employeeId))
     .filter(Boolean)
-    .filter(user => !eligibleIds.has(kpi1EmployeeId(user)));
+    .filter(user => !eligibleIds.has(kpi1EmployeeId(user)))
+    .map(user => [kpi1EmployeeId(user), user])).values()];
   return buildKpiEmployeeSummaries({
     // Keep assigned employees visible after a role/lifecycle change so a
     // manager can audit, cancel, or remove the now-ineligible assignment.
