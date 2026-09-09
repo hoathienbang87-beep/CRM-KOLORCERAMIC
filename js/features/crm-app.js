@@ -3995,7 +3995,7 @@ async function removeKpi1Assignment(assignmentId) {
   notice("Đã gỡ KPI khỏi nhân viên. KPI vẫn còn trong Bộ KPI.");
 }
 
-async function removeOrCancelKpiR3Assignment(assignmentId) {
+function openKpiTeamRemoveAssignment(assignmentId) {
   if (!isManager()) return notice("Bạn không có quyền gỡ/ngừng KPI.", true);
   const assignment = kpiAssignments.find(item => clean(item.id) === clean(assignmentId));
   const period = assignment ? kpiPeriods.find(item => clean(item.id) === clean(assignment.periodId)) : null;
@@ -4006,11 +4006,27 @@ async function removeOrCancelKpiR3Assignment(assignmentId) {
   const progress = kpiTeamState.assignmentProgress.find(row => kpiTeamAssignmentId(row) === assignment.id);
   const metric = assignmentProgressMetrics(progress || assignment);
   const appearsUsed = metric.pendingCount + metric.revisionCount + metric.rejectedCount + Number(metric.actual || 0) > 0;
-  const message = appearsUsed
+  openKpiTeamEditAssignment(assignmentId);
+  $("kpiTeamAssignDrawer").dataset.mode = "remove";
+  $("kpiTeamAssignTitle").textContent = appearsUsed ? "Ngừng KPI đang có dữ liệu" : "Gỡ KPI chưa có dữ liệu";
+  $("kpiTeamAssignDefinitionMeta").textContent = appearsUsed
     ? "KPI đã có dữ liệu. KPI sẽ ngừng áp dụng nhưng lịch sử và bằng chứng vẫn được giữ lại."
     : "KPI chưa có dữ liệu thực hiện và sẽ được gỡ khỏi nhân viên. Máy chủ sẽ kiểm tra lại dependency trong transaction.";
-  if (!confirm(message)) return;
-  const reason = clean(prompt("Lý do thay đổi (bắt buộc):", appearsUsed ? "KPI không còn áp dụng cho nhiệm vụ hiện tại" : "Giao nhầm KPI") ?? "");
+  $("kpiTeamAssignTarget").disabled = true;
+  $("kpiTeamAssignScoreEnabled").disabled = true;
+  $("kpiTeamAssignReasonField").classList.remove("hide");
+  $("kpiTeamAssignSubmitBtn").classList.add("hide");
+  $("kpiTeamRemoveSubmitBtn").classList.remove("hide");
+  $("kpiTeamRemoveSubmitBtn").textContent = appearsUsed ? "Xác nhận ngừng KPI" : "Xác nhận gỡ KPI";
+  $("kpiTeamAssignReason").focus();
+}
+
+async function confirmKpiTeamRemoveAssignment() {
+  const assignmentId = clean($("kpiTeamAssignDrawer")?.dataset.assignmentId);
+  const assignment = kpiAssignments.find(item => clean(item.id) === assignmentId);
+  const period = assignment ? kpiPeriods.find(item => clean(item.id) === clean(assignment.periodId)) : null;
+  if (!assignment || !period || clean(period.status).toUpperCase() !== "ACTIVE") return notice("Assignment không còn ở kỳ ACTIVE. Hãy tải lại.", true);
+  const reason = clean($("kpiTeamAssignReason")?.value);
   if (!reason) return notice("Hãy nhập lý do gỡ/ngừng KPI.", true);
   const result = await callCrmRpc("crm_kpi_remove_or_cancel_assignment_r3", {
     p_assignment_id: assignment.id,
@@ -4018,6 +4034,7 @@ async function removeOrCancelKpiR3Assignment(assignmentId) {
     p_expected_period_version: Number(period.version),
     p_reason: reason
   });
+  closeKpiTeamAssign();
   kpiTeamState.summaryCacheKey = "";
   await reloadKpiFoundationData();
   await reloadKpiTeamSummary({force:true});
@@ -4760,7 +4777,12 @@ function openKpiTeamAssign(employeeId) {
   $("kpiTeamAssignSubmitBtn").disabled = !definitions.length;
   $("kpiTeamAssignDrawer").dataset.employeeId = summary.id;
   delete $("kpiTeamAssignDrawer").dataset.assignmentId;
+  delete $("kpiTeamAssignDrawer").dataset.mode;
   $("kpiTeamAssignDefinition").disabled = false;
+  $("kpiTeamAssignTarget").disabled = false;
+  $("kpiTeamAssignScoreEnabled").disabled = false;
+  $("kpiTeamAssignSubmitBtn").classList.remove("hide");
+  $("kpiTeamRemoveSubmitBtn").classList.add("hide");
   $("kpiTeamAssignBackdrop").classList.remove("hide");
   $("kpiTeamAssignDrawer").classList.remove("hide");
   $("kpiTeamAssignDefinition").focus();
@@ -4794,6 +4816,11 @@ function openKpiTeamEditAssignment(assignmentId) {
   $("kpiTeamAssignSubmitBtn").textContent = "Lưu thay đổi";
   $("kpiTeamAssignDrawer").dataset.employeeId = assignment.employeeId;
   $("kpiTeamAssignDrawer").dataset.assignmentId = assignment.id;
+  delete $("kpiTeamAssignDrawer").dataset.mode;
+  $("kpiTeamAssignTarget").disabled = false;
+  $("kpiTeamAssignScoreEnabled").disabled = false;
+  $("kpiTeamAssignSubmitBtn").classList.remove("hide");
+  $("kpiTeamRemoveSubmitBtn").classList.add("hide");
   $("kpiTeamAssignBackdrop").classList.remove("hide");
   $("kpiTeamAssignDrawer").classList.remove("hide");
   $("kpiTeamAssignTarget").focus();
@@ -4805,11 +4832,16 @@ function closeKpiTeamAssign() {
   if ($("kpiTeamAssignDrawer")) {
     delete $("kpiTeamAssignDrawer").dataset.employeeId;
     delete $("kpiTeamAssignDrawer").dataset.assignmentId;
+    delete $("kpiTeamAssignDrawer").dataset.mode;
   }
   if ($("kpiTeamAssignDefinition")) $("kpiTeamAssignDefinition").disabled = false;
+  if ($("kpiTeamAssignTarget")) $("kpiTeamAssignTarget").disabled = false;
+  if ($("kpiTeamAssignScoreEnabled")) $("kpiTeamAssignScoreEnabled").disabled = false;
   $("kpiTeamAssignReasonField")?.classList.add("hide");
   if ($("kpiTeamAssignReason")) $("kpiTeamAssignReason").value = "";
   if ($("kpiTeamAssignSubmitBtn")) $("kpiTeamAssignSubmitBtn").textContent = "Gán KPI";
+  $("kpiTeamAssignSubmitBtn")?.classList.remove("hide");
+  $("kpiTeamRemoveSubmitBtn")?.classList.add("hide");
 }
 
 function updateKpiTeamAssignDefinitionMeta() {
@@ -8435,7 +8467,7 @@ document.addEventListener("click", e => {
   if (kpiTeamEmployeeBtn) openKpiTeamEmployee(kpiTeamEmployeeBtn.dataset.kpiTeamOpenEmployee, kpiTeamEmployeeBtn.dataset.kpiTeamOpenTab || "overview");
   if (kpiTeamAssignEmployeeId) openKpiTeamAssign(kpiTeamAssignEmployeeId);
   if (kpiTeamEditAssignmentId) openKpiTeamEditAssignment(kpiTeamEditAssignmentId);
-  if (kpiR3RemoveAssignmentId) runAction(`kpiR3Remove:${kpiR3RemoveAssignmentId}`, "kpiR3Remove", "Đang xử lý...", () => removeOrCancelKpiR3Assignment(kpiR3RemoveAssignmentId));
+  if (kpiR3RemoveAssignmentId) openKpiTeamRemoveAssignment(kpiR3RemoveAssignmentId);
   if (kpiTeamEmployeeTab) setKpiTeamEmployeeTab(kpiTeamEmployeeTab);
   if (kpiTeamEventFilter) { kpiTeamState.eventStatus = kpiTeamEventFilter; renderKpiTeamEmployeeDetail(); }
   if (kpiTeamOpenEventBtn) runAction("", `kpiTeamEvent:${kpiTeamOpenEventBtn.dataset.kpiTeamOpenEvent}`, "Đang mở đề xuất...", () => openKpiTeamGlobalEvent(kpiTeamOpenEventBtn.dataset.kpiTeamOpenEvent, kpiTeamOpenEventBtn.dataset.employeeId));
@@ -8580,6 +8612,7 @@ on("kpiTeamAssignCancelBtn", "click", closeKpiTeamAssign);
 on("kpiTeamAssignBackdrop", "click", closeKpiTeamAssign);
 on("kpiTeamAssignDefinition", "change", updateKpiTeamAssignDefinitionMeta);
 on("kpiTeamAssignSubmitBtn", "click", () => runAction("kpiTeamAssignSubmitBtn", "kpiTeamAssign", "Đang gán...", submitKpiTeamAssignment));
+on("kpiTeamRemoveSubmitBtn", "click", () => runAction("kpiTeamRemoveSubmitBtn", "kpiTeamRemove", "Đang xử lý...", confirmKpiTeamRemoveAssignment));
 on("kpi2ReloadBtn", "click", () => runAction("kpi2ReloadBtn", "kpi2Reload", "Đang tải...", reloadKpi2Data));
 on("kpi2CloseClaimBtn", "click", () => runAction("kpi2CloseClaimBtn", "kpi2CloseClaim", "Đang đóng...", closeKpi2Claim));
 on("kpi2EvidenceFiles", "change", () => runAction("", "kpi2EvidenceUpload", "Đang tải ảnh...", handleKpi2EvidenceFiles));
