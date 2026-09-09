@@ -51,6 +51,7 @@ check(/crm_kpi_update_assignment_target_r3/.test(app) && /crm_kpi_update_assignm
 check(/crm_kpi_remove_or_cancel_assignment_r3/.test(app), "UI phải dùng RPC gỡ/ngừng R3.");
 check(/Kỳ CLOSED không thể/.test(app), "UI phải thể hiện CLOSED immutable.");
 check(/Lý do thay đổi/.test(html) && /maxlength="500"/.test(html), "UI phải yêu cầu reason có giới hạn.");
+check(/id="kpi1DefinitionReason"[^>]+maxlength="500"/.test(html) && /kpi1DefinitionReason/.test(app) && !/prompt\("Lý do tạo KPI mới trong kỳ ACTIVE/.test(app), "Tạo definition ACTIVE phải dùng ô reason ổn định trong form.");
 check(/Thay đổi mục tiêu hoặc cách tính điểm sẽ làm thay đổi tỷ lệ hoàn thành/.test(app), "UI phải cảnh báo tác động điểm.");
 check(/Ngừng KPI/.test(app) && /Gỡ KPI/.test(app), "UI phải phân biệt gỡ và ngừng.");
 check(/crm_kpi_get_config_history_r3/.test(app), "History phải tải audit ACTIVE.");

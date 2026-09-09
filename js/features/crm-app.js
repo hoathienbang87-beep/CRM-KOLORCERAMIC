@@ -3804,6 +3804,7 @@ function resetKpi1DefinitionForm() {
   $("kpi1DefinitionLocation").checked = false;
   $("kpi1DefinitionTimestamp").checked = true;
   $("kpi1DefinitionDescription").value = "";
+  $("kpi1DefinitionReason").value = "";
   $("kpi1SaveDefinitionBtn").textContent = "Tạo definition";
   $("kpi1CancelDefinitionBtn").classList.add("hide");
 }
@@ -3856,7 +3857,7 @@ async function saveKpi1Definition() {
     });
   } else {
     const rpcName = activeStatus ? "crm_kpi_create_definition_active_r3" : "crm_kpi_create_definition_v2";
-    const reason = activeStatus ? clean(prompt("Lý do tạo KPI mới trong kỳ ACTIVE:", "Bổ sung KPI bị thiếu khi tạo kỳ") ?? "") : "";
+    const reason = activeStatus ? clean($("kpi1DefinitionReason")?.value) : "";
     if (activeStatus && !reason) return notice("Hãy nhập lý do tạo KPI trong kỳ ACTIVE.", true);
     await callCrmRpc(rpcName, {
       ...(activeStatus ? {p_period_id:activePeriod.id,p_expected_period_version:Number(activePeriod.version),p_reason:reason} : {}),
@@ -4169,6 +4170,7 @@ function renderKpiFoundation() {
   }).join("") : `<tr><td colspan="7" class="muted">Chưa có KPI definition.</td></tr>`;
 
   const period = kpi1SelectedPeriod();
+  $("kpi1DefinitionReasonField")?.classList.toggle("hide", clean(period?.status).toUpperCase() !== "ACTIVE");
   $("kpi1PeriodDetail").classList.toggle("hide", !period);
   if (!period) return;
   const validation = kpi1PeriodValidation(period);
