@@ -33,6 +33,7 @@ for (const id of ["name", "saveCustomerBtn", "customerSearchPanel", "drawer", "p
 assert.match(appSource, /function navigateToWorkspace/);
 assert.match(appSource, /CRM_HASH_ROUTES\[normalized\]/, "Hash chỉ được resolve qua whitelist");
 assert.match(appSource, /window\.addEventListener\("hashchange", scheduleRouteResolution\)/);
+assert.match(appSource, /activeMainView = workspace\.mainView;[\s\S]{0,160}renderAll\(\)/, "Refresh phải khôi phục route trước renderAll");
 assert.match(appSource, /aria-current/);
 assert.match(appSource, /canAccessAdminPanel\(\)/);
 assert.match(css, /grid-template-columns:240px minmax\(0,1fr\)/);

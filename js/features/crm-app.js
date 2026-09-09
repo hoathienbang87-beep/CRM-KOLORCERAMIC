@@ -458,10 +458,15 @@ function updateNavigationUi(item) {
   if ($("sidebarUserText")) $("sidebarUserText").textContent = currentUser?.email || currentUser?.displayName || "";
 }
 
+function authorizedWorkspaceForHash(hash = window.location.hash) {
+  const normalized = normalizeWorkspaceHash(hash);
+  const exactItem = CRM_HASH_ROUTES[normalized];
+  return exactItem && canUseNavItem(exactItem) ? exactItem : CRM_HASH_ROUTES["#/overview"];
+}
+
 function resolveWorkspaceRoute({replaceInvalid = true} = {}) {
   const normalized = normalizeWorkspaceHash(window.location.hash);
-  const exactItem = CRM_HASH_ROUTES[normalized];
-  const item = exactItem && canUseNavItem(exactItem) ? exactItem : CRM_HASH_ROUTES["#/overview"];
+  const item = authorizedWorkspaceForHash(normalized);
   if (replaceInvalid && window.location.hash !== item.hash) {
     window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
   }
@@ -8508,9 +8513,14 @@ function showApp() {
   // Trình duyệt đôi khi tự khôi phục input type=month sau khi deploy. Chủ động xoá để mặc định là xem tất cả.
   $("filterWeek").value = "";
   $("filterMonth").value = "";
+  const workspace = authorizedWorkspaceForHash();
+  if (window.location.hash !== workspace.hash) {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${workspace.hash}`);
+  }
+  activeMainView = workspace.mainView;
   hydrateSelects();
   renderAll();
-  resolveWorkspaceRoute();
+  updateNavigationUi(workspace);
 }
 
 async function loginEmailPassword() {
