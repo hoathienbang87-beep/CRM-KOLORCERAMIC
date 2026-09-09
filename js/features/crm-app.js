@@ -4079,11 +4079,12 @@ function closeKpiPeriodLifecycle() {
 
 function openKpiPeriodLifecycle(action) {
   const period = kpi1SelectedPeriod();
-  if (!period || !["revert", "delete", "cancel"].includes(action)) return;
+  if (!period || !["activate", "revert", "delete", "cancel"].includes(action)) return;
   const counts = kpiTeamState.periodDependencies.get(clean(period.id));
   if (!counts) return loadKpiPeriodDependencies(period.id).then(() => openKpiPeriodLifecycle(action));
   const runtimeTotal = Number(counts.runtimeTotal || 0);
   const status = clean(period.status).toUpperCase();
+  if (action === "activate" && (status !== "DRAFT" || !kpi1PeriodValidation(period).canActivate)) return notice("Kỳ KPI chưa hợp lệ để kích hoạt.", true);
   if (action === "revert" && (status !== "ACTIVE" || runtimeTotal !== 0)) return notice("Chỉ kỳ ACTIVE chưa có dữ liệu thực hiện mới được đưa về DRAFT.", true);
   if (action === "delete" && (status !== "DRAFT" || runtimeTotal !== 0)) return notice("Chỉ kỳ DRAFT chưa có dữ liệu thực hiện mới được xóa.", true);
   if (action === "cancel" && (status !== "ACTIVE" || runtimeTotal === 0 || !(isOwner() || isAdmin()))) return notice("Chỉ Owner/Admin được hủy kỳ ACTIVE đã có dữ liệu.", true);
@@ -4091,7 +4092,10 @@ function openKpiPeriodLifecycle(action) {
   drawer.dataset.action = action;
   drawer.dataset.periodId = period.id;
   drawer.dataset.periodVersion = String(period.version);
-  const config = action === "revert" ? {
+  const config = action === "activate" ? {
+    title:"Kích hoạt kỳ KPI", submit:"Xác nhận kích hoạt",
+    warning:`Kỳ sẽ chuyển sang ACTIVE với ${kpi1PeriodValidation(period).assignments.length} assignment. Sau khi kích hoạt, mọi thay đổi cấu hình phải đi qua luồng có audit.`
+  } : action === "revert" ? {
     title:"Đưa kỳ ACTIVE về DRAFT", submit:"Xác nhận đưa về DRAFT",
     warning:"Kỳ chưa có dữ liệu thực hiện. Definitions, assignments, targets và tùy chọn sẽ được giữ nguyên để tiếp tục cấu hình."
   } : action === "delete" ? {
@@ -4106,9 +4110,10 @@ function openKpiPeriodLifecycle(action) {
   $("kpiPeriodLifecycleWarning").textContent = config.warning;
   $("kpiPeriodLifecycleCounts").textContent = kpiPeriodDependencyText(counts);
   $("kpiPeriodLifecycleSubmitBtn").textContent = config.submit;
+  $("kpiPeriodLifecycleReason")?.closest(".field")?.classList.toggle("hide", action === "activate");
   $("kpiPeriodLifecycleBackdrop").classList.remove("hide");
   drawer.classList.remove("hide");
-  $("kpiPeriodLifecycleReason").focus();
+  (action === "activate" ? $("kpiPeriodLifecycleSubmitBtn") : $("kpiPeriodLifecycleReason"))?.focus();
 }
 
 async function confirmKpiPeriodLifecycle() {
@@ -4117,6 +4122,13 @@ async function confirmKpiPeriodLifecycle() {
   const periodId = clean(drawer?.dataset.periodId);
   const expectedVersion = Number(drawer?.dataset.periodVersion || 0);
   const reason = clean($("kpiPeriodLifecycleReason")?.value);
+  if (action === "activate") {
+    await activateKpi1Period();
+    closeKpiPeriodLifecycle();
+    kpiTeamState.periodDependencies.delete(periodId);
+    await loadKpiPeriodDependencies(periodId);
+    return;
+  }
   if (!reason) return notice("Hãy nhập lý do nghiệp vụ.", true);
   const rpc = action === "revert" ? "crm_kpi_revert_active_period_to_draft"
     : action === "delete" ? "crm_kpi_delete_draft_period" : "crm_kpi_cancel_active_period";
@@ -4184,8 +4196,6 @@ async function activateKpi1Period() {
   if (!period) return notice("Chưa chọn kỳ KPI.", true);
   const validation = kpi1PeriodValidation(period);
   if (!validation.canActivate) return notice("Kỳ KPI chưa hợp lệ: cần assignment, target > 0, definition active và sale ACTIVE.", true);
-  const message = `Kích hoạt ${period.name || kpi1PeriodLabel(period)}?\n\n${validation.kpiCount} KPI · ${validation.employeeCount} nhân viên · ${validation.assignments.length} assignment.\nSau khi ACTIVE, target và assignment sẽ bị khóa.`;
-  if (!confirm(message)) return;
   await callCrmRpc("crm_kpi_activate_period", {
     p_period_id: period.id,
     p_expected_version: Number(period.version)
@@ -8679,7 +8689,7 @@ on("kpi1ReloadBtn", "click", () => runAction("kpi1ReloadBtn", "kpi1Reload", "Đa
 on("kpi1CreatePeriodBtn", "click", () => runAction("kpi1CreatePeriodBtn", "kpi1CreatePeriod", "Đang tạo...", createKpi1Period));
 on("kpi1SaveDefinitionBtn", "click", () => runAction("kpi1SaveDefinitionBtn", "kpi1SaveDefinition", "Đang lưu...", saveKpi1Definition));
 on("kpi1CancelDefinitionBtn", "click", resetKpi1DefinitionForm);
-on("kpi1ActivatePeriodBtn", "click", () => runAction("kpi1ActivatePeriodBtn", "kpi1Activate", "Đang kích hoạt...", activateKpi1Period));
+on("kpi1ActivatePeriodBtn", "click", () => openKpiPeriodLifecycle("activate"));
 on("kpi1RevertPeriodBtn", "click", () => openKpiPeriodLifecycle("revert"));
 on("kpi1DeletePeriodR31Btn", "click", () => openKpiPeriodLifecycle("delete"));
 on("kpi1CancelPeriodBtn", "click", () => openKpiPeriodLifecycle("cancel"));
