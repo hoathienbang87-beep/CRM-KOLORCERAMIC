@@ -1,4 +1,4 @@
-﻿import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
+import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
 import {
   auth,
   db,
@@ -126,6 +126,7 @@ const kpiTeamState = {
   historyProgress: [],
   historyPeriods: [],
   historyScoresByPeriod: new Map(),
+  periodDependencies: new Map(),
   configHistory: [],
   summaryCacheKey: "",
   summaryInFlightKey: "",
@@ -3746,8 +3747,15 @@ function kpi1PeriodAssignments(periodId, includeCancelled = false) {
 
 function kpi1StatusHtml(status) {
   const value = clean(status || "DRAFT").toUpperCase();
-  const cls = value === "ACTIVE" ? "kpi1-status-active" : value === "CLOSED" ? "kpi1-status-closed" : "kpi1-status-draft";
-  return `<span class="pill ${cls}">${esc(value)}</span>`;
+  const cls = value === "ACTIVE" ? "kpi1-status-active" : value === "CLOSED" ? "kpi1-status-closed" : value === "CANCELLED" ? "red" : "kpi1-status-draft";
+  return `<span class="pill ${cls}">${esc(value === "CANCELLED" ? "ĐÃ HỦY" : value)}</span>`;
+}
+
+function kpiPeriodHistoryStatusText(period) {
+  const status = clean(period?.status).toUpperCase();
+  if (status !== "CANCELLED") return status;
+  const actor = users.find(user => kpi1EmployeeId(user) === clean(period.cancelledByUserId));
+  return `ĐÃ HỦY${clean(period.cancelReason) ? ` · ${clean(period.cancelReason)}` : ""}${period.cancelledAt ? ` · ${fmtDate(period.cancelledAt)}` : ""}${actor ? ` · ${actor.name || actor.email}` : ""}`;
 }
 
 function kpi1SelectedPeriod() {
@@ -3963,24 +3971,6 @@ async function renameKpi1Period(periodId) {
   notice("Đã cập nhật tên kỳ KPI.");
 }
 
-async function deleteKpi1Period(periodId) {
-  if (!isManager()) return notice("Chỉ manager/admin/owner được xóa kỳ KPI.", true);
-  const period = kpiPeriods.find(item => item.id === periodId);
-  if (!period) return notice("Không tìm thấy kỳ KPI.", true);
-  if (clean(period.status).toUpperCase() !== "DRAFT") return notice("Chỉ kỳ DRAFT mới được xóa.", true);
-  const assignments = kpi1PeriodAssignments(period.id, true);
-  const message = `Xóa vĩnh viễn ${period.name || kpi1PeriodLabel(period)}?\n\n${assignments.length} assignment DRAFT sẽ bị xóa cùng kỳ. Hệ thống sẽ từ chối nếu đã có đề xuất hoặc ảnh minh chứng.`;
-  if (!confirm(message)) return;
-  await callCrmRpc("crm_kpi_delete_draft_period", {
-    p_period_id: period.id,
-    p_expected_period_version: Number(period.version)
-  });
-  if (clean(selectedKpiFoundationPeriodId) === clean(period.id)) selectedKpiFoundationPeriodId = "";
-  if (clean(kpiTeamState.selectedPeriodId) === clean(period.id)) kpiTeamState.selectedPeriodId = "";
-  await reloadKpiFoundationData();
-  notice("Đã xóa kỳ KPI DRAFT và các assignment chưa phát sinh dữ liệu.");
-}
-
 async function removeKpi1Assignment(assignmentId) {
   if (!isManager()) return notice("Bạn không có quyền gỡ KPI khỏi nhân viên.", true);
   const assignment = kpiAssignments.find(item => item.id === assignmentId);
@@ -4059,12 +4049,89 @@ async function confirmKpiTeamRemoveAssignment() {
 function selectKpi1Period(periodId) {
   selectedKpiFoundationPeriodId = periodId;
   renderKpiFoundation();
+  loadKpiPeriodDependencies(periodId).catch(error => notice(authMessage(error), true));
   $("kpi1PeriodDetail")?.scrollIntoView({behavior:"smooth", block:"start"});
 }
 
 function closeKpi1PeriodDetail() {
   selectedKpiFoundationPeriodId = "";
   renderKpiFoundation();
+}
+
+function kpiPeriodDependencyText(counts) {
+  if (!counts) return "Đang kiểm tra dữ liệu thực hiện trên máy chủ...";
+  return `Submission: ${Number(counts.submissions || 0)} · Events: ${Number(counts.events || 0)} · Evidence: ${Number(counts.evidence || 0)} · Reviews: ${Number(counts.reviews || 0)} · Action requests: ${Number(counts.actionRequests || 0)} · Duplicate matches: ${Number(counts.duplicateMatches || 0)}`;
+}
+
+async function loadKpiPeriodDependencies(periodId) {
+  if (!isManager() || !clean(periodId)) return;
+  const counts = await callCrmRpc("crm_kpi_period_runtime_dependencies", {p_period_id:periodId});
+  kpiTeamState.periodDependencies.set(clean(periodId), counts || {});
+  if (clean(selectedKpiFoundationPeriodId) === clean(periodId)) renderKpiFoundation();
+}
+
+function closeKpiPeriodLifecycle() {
+  $("kpiPeriodLifecycleBackdrop")?.classList.add("hide");
+  $("kpiPeriodLifecycleDrawer")?.classList.add("hide");
+  if ($("kpiPeriodLifecycleReason")) $("kpiPeriodLifecycleReason").value = "";
+  if ($("kpiPeriodLifecycleDrawer")) $("kpiPeriodLifecycleDrawer").dataset.action = "";
+}
+
+function openKpiPeriodLifecycle(action) {
+  const period = kpi1SelectedPeriod();
+  if (!period || !["revert", "delete", "cancel"].includes(action)) return;
+  const counts = kpiTeamState.periodDependencies.get(clean(period.id));
+  if (!counts) return loadKpiPeriodDependencies(period.id).then(() => openKpiPeriodLifecycle(action));
+  const runtimeTotal = Number(counts.runtimeTotal || 0);
+  const status = clean(period.status).toUpperCase();
+  if (action === "revert" && (status !== "ACTIVE" || runtimeTotal !== 0)) return notice("Chỉ kỳ ACTIVE chưa có dữ liệu thực hiện mới được đưa về DRAFT.", true);
+  if (action === "delete" && (status !== "DRAFT" || runtimeTotal !== 0)) return notice("Chỉ kỳ DRAFT chưa có dữ liệu thực hiện mới được xóa.", true);
+  if (action === "cancel" && (status !== "ACTIVE" || runtimeTotal === 0 || !(isOwner() || isAdmin()))) return notice("Chỉ Owner/Admin được hủy kỳ ACTIVE đã có dữ liệu.", true);
+  const drawer = $("kpiPeriodLifecycleDrawer");
+  drawer.dataset.action = action;
+  drawer.dataset.periodId = period.id;
+  drawer.dataset.periodVersion = String(period.version);
+  const config = action === "revert" ? {
+    title:"Đưa kỳ ACTIVE về DRAFT", submit:"Xác nhận đưa về DRAFT",
+    warning:"Kỳ chưa có dữ liệu thực hiện. Definitions, assignments, targets và tùy chọn sẽ được giữ nguyên để tiếp tục cấu hình."
+  } : action === "delete" ? {
+    title:"Xóa kỳ DRAFT", submit:"Xác nhận xóa kỳ",
+    warning:"Kỳ này chưa có dữ liệu thực hiện. Xóa kỳ sẽ loại bỏ cấu hình kỳ và assignment liên quan. Definitions dùng chung không bị xóa."
+  } : {
+    title:"Hủy kỳ KPI", submit:"Xác nhận hủy kỳ KPI",
+    warning:"Kỳ KPI này đã có dữ liệu thực hiện. Hủy kỳ sẽ ngừng toàn bộ KPI của kỳ này và loại kỳ khỏi kết quả KPI hiện hành. Submission, sự kiện, bằng chứng và lịch sử đã phát sinh vẫn được giữ lại."
+  };
+  $("kpiPeriodLifecycleTitle").textContent = config.title;
+  $("kpiPeriodLifecycleSubtitle").textContent = `${period.name || kpi1PeriodLabel(period)} · ${status}`;
+  $("kpiPeriodLifecycleWarning").textContent = config.warning;
+  $("kpiPeriodLifecycleCounts").textContent = kpiPeriodDependencyText(counts);
+  $("kpiPeriodLifecycleSubmitBtn").textContent = config.submit;
+  $("kpiPeriodLifecycleBackdrop").classList.remove("hide");
+  drawer.classList.remove("hide");
+  $("kpiPeriodLifecycleReason").focus();
+}
+
+async function confirmKpiPeriodLifecycle() {
+  const drawer = $("kpiPeriodLifecycleDrawer");
+  const action = clean(drawer?.dataset.action);
+  const periodId = clean(drawer?.dataset.periodId);
+  const expectedVersion = Number(drawer?.dataset.periodVersion || 0);
+  const reason = clean($("kpiPeriodLifecycleReason")?.value);
+  if (!reason) return notice("Hãy nhập lý do nghiệp vụ.", true);
+  const rpc = action === "revert" ? "crm_kpi_revert_active_period_to_draft"
+    : action === "delete" ? "crm_kpi_delete_draft_period" : "crm_kpi_cancel_active_period";
+  const args = action === "delete"
+    ? {p_period_id:periodId, p_expected_period_version:expectedVersion, p_reason:reason}
+    : {p_period_id:periodId, p_expected_version:expectedVersion, p_reason:reason};
+  await callCrmRpc(rpc, args);
+  closeKpiPeriodLifecycle();
+  kpiTeamState.periodDependencies.delete(periodId);
+  if (action === "delete") selectedKpiFoundationPeriodId = "";
+  await reloadKpiFoundationData();
+  if (action !== "delete") await loadKpiPeriodDependencies(periodId);
+  notice(action === "revert" ? "Đã đưa kỳ KPI về DRAFT; cấu hình được giữ nguyên."
+    : action === "delete" ? "Đã xóa kỳ DRAFT và assignment liên quan."
+    : "Đã hủy kỳ KPI; dữ liệu lịch sử được giữ nguyên và kỳ không còn tính điểm hiện hành.");
 }
 
 async function saveKpi1MatrixRow(definitionId) {
@@ -4182,7 +4249,7 @@ function renderKpiFoundation() {
       <td>${esc(validation.employeeCount)}</td>
       <td>${esc(validation.assignments.length)}</td>
       <td>${esc(fmtDate(period.createdAt))}</td>
-      <td><div class="actions"><button class="small primary" type="button" data-kpi1-select-period="${esc(period.id)}">Xem cấu hình</button>${clean(period.status).toUpperCase() === "DRAFT" ? `<button class="small" type="button" data-kpi1-rename-period="${esc(period.id)}">Đổi tên</button><button class="small danger" type="button" data-kpi1-delete-period="${esc(period.id)}">Xóa kỳ</button>` : ""}</div></td>
+      <td><div class="actions"><button class="small primary" type="button" data-kpi1-select-period="${esc(period.id)}">Xem cấu hình</button>${clean(period.status).toUpperCase() === "DRAFT" ? `<button class="small" type="button" data-kpi1-rename-period="${esc(period.id)}">Đổi tên</button>` : ""}</div></td>
     </tr>`;
   }).join("") : `<tr><td colspan="7" class="muted">Chưa có kỳ KPI mới.</td></tr>`;
 
@@ -4205,7 +4272,10 @@ function renderKpiFoundation() {
   $("kpi1PeriodDetail").classList.toggle("hide", !period);
   if (!period) return;
   const validation = kpi1PeriodValidation(period);
-  const locked = clean(period.status).toUpperCase() !== "DRAFT";
+  const periodStatus = clean(period.status).toUpperCase();
+  const locked = periodStatus !== "DRAFT";
+  const dependencies = kpiTeamState.periodDependencies.get(clean(period.id));
+  const runtimeTotal = dependencies ? Number(dependencies.runtimeTotal || 0) : null;
   $("kpi1SelectedPeriodTitle").textContent = `${period.name || "Kỳ KPI"} · ${kpi1PeriodLabel(period)}`;
   $("kpi1SelectedPeriodMeta").innerHTML = `${kpi1StatusHtml(period.status)} <span>Version ${esc(period.version)}</span>`;
   $("kpi1ActivationSummary").innerHTML = [
@@ -4217,6 +4287,15 @@ function renderKpiFoundation() {
   $("kpi1LockedNotice").classList.toggle("hide", !locked);
   $("kpi1ActivatePeriodBtn").classList.toggle("hide", locked);
   $("kpi1ActivatePeriodBtn").disabled = !validation.canActivate;
+  $("kpi1LifecycleInfo").textContent = periodStatus === "CANCELLED"
+    ? `${kpiPeriodHistoryStatusText(period)}. ${kpiPeriodDependencyText(dependencies)}`
+    : kpiPeriodDependencyText(dependencies);
+  $("kpi1RevertPeriodBtn").classList.toggle("hide", !(periodStatus === "ACTIVE" && runtimeTotal === 0));
+  $("kpi1DeletePeriodR31Btn").classList.toggle("hide", !(periodStatus === "DRAFT" && runtimeTotal === 0));
+  $("kpi1CancelPeriodBtn").classList.toggle("hide", !(periodStatus === "ACTIVE" && runtimeTotal > 0 && (isOwner() || isAdmin())));
+  if (periodStatus === "ACTIVE" && runtimeTotal > 0 && !(isOwner() || isAdmin())) {
+    $("kpi1LifecycleInfo").textContent += " · Kỳ đã có dữ liệu thực hiện. Chỉ Owner có thể hủy toàn bộ kỳ.";
+  }
   renderKpi1Matrix(period);
 }
 
@@ -4236,9 +4315,10 @@ function kpiTeamPeriod() {
 
 function ensureKpiTeamPeriod() {
   if (kpiTeamPeriod()) return kpiTeamPeriod();
-  const current = kpiPeriods.find(period => clean(period.periodMonth).slice(0, 7) === currentMonth());
   const active = kpiPeriods.find(period => clean(period.status).toUpperCase() === "ACTIVE");
-  const selected = current || active || kpiPeriods[0] || null;
+  const current = kpiPeriods.find(period => clean(period.periodMonth).slice(0, 7) === currentMonth()
+    && ["DRAFT", "ACTIVE"].includes(clean(period.status).toUpperCase()));
+  const selected = active || current || kpiPeriods.find(period => clean(period.status).toUpperCase() !== "CANCELLED") || kpiPeriods[0] || null;
   kpiTeamState.selectedPeriodId = selected?.id || "";
   return selected;
 }
@@ -4517,7 +4597,7 @@ function renderKpiTeamEmployeeDetail() {
   $("kpiTeamDetailSubtitle").textContent = `${summary.email || "Sale"} · Kỳ ${kpi1PeriodLabel(period)} · ${clean(period.status).toUpperCase()}`;
   const periodStatus = clean(period.status).toUpperCase();
   const canAssign = ["DRAFT", "ACTIVE"].includes(periodStatus);
-  $("kpiTeamDetailSummary").innerHTML = `<div class="kpi-team-detail-score"><span>Tổng KPI</span><b>${esc(kpiTeamScoreText(summary))}</b><div class="kpi-team-progress"><span style="width:${esc(kpiTeamProgressWidth(summary))}%"></span></div></div><div><span>KPI được giao</span><b>${esc(summary.assignedCount)}</b></div><div><span>Chờ duyệt</span><b>${esc(summary.pendingCount)}</b></div><div class="kpi-team-detail-action"><button class="small primary" type="button" data-kpi-team-assign-employee="${esc(summary.id)}" ${canAssign ? "" : "disabled"}>+ Gán KPI</button><span class="muted">${canAssign ? `Kỳ ${esc(periodStatus)} · thay đổi có audit` : "Kỳ CLOSED không thể thay đổi"}</span></div>`;
+  $("kpiTeamDetailSummary").innerHTML = `<div class="kpi-team-detail-score"><span>Tổng KPI</span><b>${esc(kpiTeamScoreText(summary))}</b><div class="kpi-team-progress"><span style="width:${esc(kpiTeamProgressWidth(summary))}%"></span></div></div><div><span>KPI được giao</span><b>${esc(summary.assignedCount)}</b></div><div><span>Chờ duyệt</span><b>${esc(summary.pendingCount)}</b></div><div class="kpi-team-detail-action"><button class="small primary" type="button" data-kpi-team-assign-employee="${esc(summary.id)}" ${canAssign ? "" : "disabled"}>+ Gán KPI</button><span class="muted">${canAssign ? `Kỳ ${esc(periodStatus)} · thay đổi có audit` : `Kỳ ${esc(periodStatus === "CANCELLED" ? "ĐÃ HỦY" : periodStatus)} chỉ đọc`}</span></div>`;
   document.querySelectorAll("[data-kpi-employee-tab]").forEach(button => {
     const active = button.dataset.kpiEmployeeTab === kpiTeamState.activeEmployeeTab;
     button.classList.toggle("primary", active);
@@ -4638,15 +4718,16 @@ function renderKpiTeamProposalTab(summary) {
   }
   const events = filterKpiEvents(kpiTeamState.employeeEvents, kpiTeamState.eventStatus);
   const pendingCount = kpiTeamState.employeeEvents.filter(row => clean(row.status).toUpperCase() === "PENDING").length;
+  const periodFrozen = ["CANCELLED", "CLOSED"].includes(clean(kpiTeamPeriod()?.status).toUpperCase());
   const evidenceCounts = groupEvidenceCount(kpiTeamState.employeeEvidence);
   $("kpiTeamDetailStatus").textContent = `${kpiTeamState.employeeEvents.length} đề xuất · ${pendingCount} chờ duyệt`;
-  target.innerHTML = `<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
+  target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "CLOSED"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
     const assignment = kpiTeamEventAssignment(event);
     const snapshot = event.event_snapshot || {};
     const evidenceCount = evidenceCounts.get(clean(event.id)) || 0;
     const duplicateCount = kpiTeamState.duplicateDetails.filter(row => clean(kpiTeamValue(row, "eventId", "event_id")) === clean(event.id)).length;
     const focused = clean(kpiTeamState.focusedEventId) === clean(event.id);
-    return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}"><div class="kpi-team-event-head"><div>${clean(event.status).toUpperCase()==="PENDING"?`<input type="checkbox" data-kpi2-review-event="${esc(event.id)}" data-version="${esc(event.lock_version)}" aria-label="Chọn đề xuất ${esc(snapshot.title || kpiTeamDefinitionName(assignment))}">`:""}<b>${esc(kpiTeamDefinitionName(assignment))}</b></div><span class="pill ${kpiTeamStatusClass(event.status)}">${esc(kpiTeamStatusLabel(event.status))}</span></div><div class="kpi-team-event-body"><b>${esc(snapshot.title || snapshot.description || snapshot.customer_name || event.source_type || "Đề xuất KPI")}</b><span>${esc(fmtDate(event.event_at))} · Giá trị ${esc(kpiTeamNumber(event.claimed_value, 2))}</span><span>${evidenceCount} ảnh minh chứng${event.location ? " · Có vị trí" : ""}${event.event_at ? " · Có thời gian" : ""}</span>${event.possible_duplicate ? `<span class="pill orange">Có thể trùng${duplicateCount ? ` · ${esc(duplicateCount)} kết quả` : ""}</span>` : ""}${event.manager_note ? `<div class="detail-note">${esc(event.manager_note)}</div>` : ""}</div><div class="actions">${evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${esc(event.id)}">Xem ${esc(evidenceCount)} ảnh</button>` : ""}</div></article>`;
+    return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}"><div class="kpi-team-event-head"><div>${clean(event.status).toUpperCase()==="PENDING" && !periodFrozen?`<input type="checkbox" data-kpi2-review-event="${esc(event.id)}" data-version="${esc(event.lock_version)}" aria-label="Chọn đề xuất ${esc(snapshot.title || kpiTeamDefinitionName(assignment))}">`:""}<b>${esc(kpiTeamDefinitionName(assignment))}</b></div><span class="pill ${kpiTeamStatusClass(event.status)}">${esc(kpiTeamStatusLabel(event.status))}</span></div><div class="kpi-team-event-body"><b>${esc(snapshot.title || snapshot.description || snapshot.customer_name || event.source_type || "Đề xuất KPI")}</b><span>${esc(fmtDate(event.event_at))} · Giá trị ${esc(kpiTeamNumber(event.claimed_value, 2))}</span><span>${evidenceCount} ảnh minh chứng${event.location ? " · Có vị trí" : ""}${event.event_at ? " · Có thời gian" : ""}</span>${event.possible_duplicate ? `<span class="pill orange">Có thể trùng${duplicateCount ? ` · ${esc(duplicateCount)} kết quả` : ""}</span>` : ""}${event.manager_note ? `<div class="detail-note">${esc(event.manager_note)}</div>` : ""}</div><div class="actions">${evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${esc(event.id)}">Xem ${esc(evidenceCount)} ảnh</button>` : ""}</div></article>`;
   }).join("") : `<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${summary.name} chưa có dữ liệu phù hợp.</span></div>`}</div>`;
 }
 
@@ -4715,7 +4796,7 @@ async function loadKpiTeamEmployeeHistory({force = false} = {}) {
     const progress = await callCrmRpc("crm_kpi_get_assignment_progress", {p_period_id:null}) || [];
     const periodIds = uniq([
       ...progress.map(row => clean(kpiTeamValue(row, "periodId", "period_id"))),
-      ...kpiPeriods.filter(row => ["ACTIVE","CLOSED"].includes(clean(row.status).toUpperCase())).map(row => clean(row.id))
+      ...kpiPeriods.filter(row => ["ACTIVE","CLOSED","CANCELLED"].includes(clean(row.status).toUpperCase())).map(row => clean(row.id))
     ].filter(Boolean));
     const periods = periodIds.map(id => {
       const saved = kpiPeriods.find(row => clean(row.id) === id);
@@ -4773,7 +4854,7 @@ function renderKpiTeamEmployeeHistory(summary) {
   target.innerHTML = (rows.length ? `<div class="kpi-team-history-list">${rows.map(row => {
     const monthlyScore = row.score == null ? null : Number(kpiTeamValue(row.score, "monthlyScore", "monthly_score") || 0);
     const openCount = row.assignments.reduce((sum, item) => sum + (kpiTeamValue(item, "hasOpenItems", "has_open_items") ? 1 : 0), 0);
-    return `<details class="kpi-team-history-detail"><summary><span><b>${esc(kpi1PeriodLabel(row.period))}</b><small>${esc(clean(row.period.status).toUpperCase())}</small></span><span><b>${monthlyScore == null ? "Chưa có điểm" : `${esc(kpiTeamNumber(monthlyScore, 2))}%`}</b><small>${esc(row.assignments.length)} KPI${openCount ? ` · ${esc(openCount)} mục mở` : ""}</small></span></summary><div class="kpi-team-history-assignments">${row.assignments.map(item => { const metric=assignmentProgressMetrics(item); return `<div><span><b>${esc(kpiTeamDefinitionName(item))}</b><small>${kpiTeamValue(item,"scoreEnabled","score_enabled") ? "Tính điểm" : "Tham chiếu"}</small></span><span>${esc(kpiTeamNumber(metric.actual,2))}/${esc(kpiTeamNumber(metric.target,2))} · ${esc(kpiTeamNumber(metric.scoringPercent,2))}%</span></div>`; }).join("")}</div></details>`;
+    return `<details class="kpi-team-history-detail"><summary><span><b>${esc(kpi1PeriodLabel(row.period))}</b><small>${esc(kpiPeriodHistoryStatusText(row.period))}</small></span><span><b>${monthlyScore == null ? "Chưa có điểm" : `${esc(kpiTeamNumber(monthlyScore, 2))}%`}</b><small>${esc(row.assignments.length)} KPI${openCount ? ` · ${esc(openCount)} mục mở` : ""}</small></span></summary><div class="kpi-team-history-assignments">${row.assignments.map(item => { const metric=assignmentProgressMetrics(item); return `<div><span><b>${esc(kpiTeamDefinitionName(item))}</b><small>${kpiTeamValue(item,"scoreEnabled","score_enabled") ? "Tính điểm" : "Tham chiếu"}</small></span><span>${esc(kpiTeamNumber(metric.actual,2))}/${esc(kpiTeamNumber(metric.target,2))} · ${esc(kpiTeamNumber(metric.scoringPercent,2))}%</span></div>`; }).join("")}</div></details>`;
   }).join("")}</div>` : `<div class="kpi-team-empty"><b>Chưa có dữ liệu KPI ở các kỳ trước.</b></div>`) + configHistoryHtml;
 }
 
@@ -4782,7 +4863,7 @@ function openKpiTeamAssign(employeeId) {
   const period = kpiTeamPeriod();
   if (!summary || !period) return notice("Không tìm thấy nhân viên hoặc kỳ KPI.", true);
   const periodStatus = clean(period.status).toUpperCase();
-  if (!["DRAFT", "ACTIVE"].includes(periodStatus)) return notice("Kỳ CLOSED không thể gán KPI.", true);
+  if (!["DRAFT", "ACTIVE"].includes(periodStatus)) return notice(`Kỳ ${periodStatus === "CANCELLED" ? "ĐÃ HỦY" : periodStatus} chỉ đọc.`, true);
   const assignedDefinitionIds = new Set(kpiTeamRawAssignments(period.id).filter(row => assignmentEmployeeId(row) === summary.id).map(row => clean(row.definitionId)));
   const definitions = kpiDefinitions.filter(row => row.active !== false);
   $("kpiTeamAssignTitle").textContent = `Gán KPI cho ${summary.name}`;
@@ -4816,7 +4897,7 @@ function openKpiTeamEditAssignment(assignmentId) {
   const employee = assignment ? kpi1EmployeeById(assignment.employeeId) : null;
   if (!assignment || !period || !definition) return notice("Không tìm thấy cấu hình KPI cần sửa.", true);
   const periodStatus = clean(period.status).toUpperCase();
-  if (!["DRAFT", "ACTIVE"].includes(periodStatus)) return notice("Kỳ CLOSED không thể chỉnh sửa.", true);
+  if (!["DRAFT", "ACTIVE"].includes(periodStatus)) return notice(`Kỳ ${periodStatus === "CANCELLED" ? "ĐÃ HỦY" : periodStatus} chỉ đọc.`, true);
   $("kpiTeamAssignTitle").textContent = `Chỉnh sửa KPI của ${employee?.name || employee?.email || assignment.employeeId}`;
   $("kpiTeamAssignSubtitle").textContent = `Kỳ ${kpi1PeriodLabel(period)} · ${periodStatus}`;
   $("kpiTeamAssignDefinition").innerHTML = `<option value="${esc(definition.id)}">${esc(definition.name || definition.code)}</option>`;
@@ -4884,7 +4965,7 @@ async function submitKpiTeamAssignment() {
   const period = kpiTeamPeriod();
   if (!employeeId || !period) return notice("Thiếu nhân viên hoặc kỳ KPI.", true);
   const periodStatus = clean(period.status).toUpperCase();
-  if (!["DRAFT", "ACTIVE"].includes(periodStatus)) return notice("Kỳ CLOSED không thể thay đổi.", true);
+  if (!["DRAFT", "ACTIVE"].includes(periodStatus)) return notice(`Kỳ ${periodStatus === "CANCELLED" ? "ĐÃ HỦY" : periodStatus} chỉ đọc.`, true);
   const reason = clean($("kpiTeamAssignReason")?.value);
   if (periodStatus === "ACTIVE" && !reason) return notice("Hãy nhập lý do thay đổi KPI trong kỳ ACTIVE.", true);
   if (!definitionId) return notice("Hãy chọn KPI cần gán.", true);
@@ -8406,7 +8487,6 @@ document.addEventListener("click", e => {
   const kpiOwnerDetailBtn = e.target.closest("[data-kpi-owner-detail]");
   const kpi1SelectPeriodId = e.target.closest("[data-kpi1-select-period]")?.dataset.kpi1SelectPeriod;
   const kpi1RenamePeriodId = e.target.closest("[data-kpi1-rename-period]")?.dataset.kpi1RenamePeriod;
-  const kpi1DeletePeriodId = e.target.closest("[data-kpi1-delete-period]")?.dataset.kpi1DeletePeriod;
   const kpi1EditDefinitionId = e.target.closest("[data-kpi1-edit-definition]")?.dataset.kpi1EditDefinition;
   const kpi1ToggleDefinitionId = e.target.closest("[data-kpi1-toggle-definition]")?.dataset.kpi1ToggleDefinition;
   const kpi1DeleteDefinitionId = e.target.closest("[data-kpi1-delete-definition]")?.dataset.kpi1DeleteDefinition;
@@ -8478,7 +8558,6 @@ document.addEventListener("click", e => {
   if (kpiOwnerDetailBtn) openKpiOwnerDetail(kpiOwnerDetailBtn.dataset.kpiOwnerDetail, kpiOwnerDetailBtn.dataset.ownerKey);
   if (kpi1SelectPeriodId) selectKpi1Period(kpi1SelectPeriodId);
   if (kpi1RenamePeriodId) runAction(`kpi1Rename:${kpi1RenamePeriodId}`, "kpi1Rename", "Đang lưu...", () => renameKpi1Period(kpi1RenamePeriodId));
-  if (kpi1DeletePeriodId) runAction(`kpi1DeletePeriod:${kpi1DeletePeriodId}`, "kpi1DeletePeriod", "Đang xóa...", () => deleteKpi1Period(kpi1DeletePeriodId));
   if (kpi1EditDefinitionId) editKpi1Definition(kpi1EditDefinitionId);
   if (kpi1ToggleDefinitionId) runAction(`kpi1Toggle:${kpi1ToggleDefinitionId}`, "kpi1Toggle", "Đang cập nhật...", () => toggleKpi1Definition(kpi1ToggleDefinitionId));
   if (kpi1DeleteDefinitionId) runAction(`kpi1DeleteDefinition:${kpi1DeleteDefinitionId}`, "kpi1DeleteDefinition", "Đang xóa...", () => deleteKpi1Definition(kpi1DeleteDefinitionId));
@@ -8601,7 +8680,14 @@ on("kpi1CreatePeriodBtn", "click", () => runAction("kpi1CreatePeriodBtn", "kpi1C
 on("kpi1SaveDefinitionBtn", "click", () => runAction("kpi1SaveDefinitionBtn", "kpi1SaveDefinition", "Đang lưu...", saveKpi1Definition));
 on("kpi1CancelDefinitionBtn", "click", resetKpi1DefinitionForm);
 on("kpi1ActivatePeriodBtn", "click", () => runAction("kpi1ActivatePeriodBtn", "kpi1Activate", "Đang kích hoạt...", activateKpi1Period));
+on("kpi1RevertPeriodBtn", "click", () => openKpiPeriodLifecycle("revert"));
+on("kpi1DeletePeriodR31Btn", "click", () => openKpiPeriodLifecycle("delete"));
+on("kpi1CancelPeriodBtn", "click", () => openKpiPeriodLifecycle("cancel"));
 on("kpi1ClosePeriodDetailBtn", "click", closeKpi1PeriodDetail);
+on("kpiPeriodLifecycleCloseBtn", "click", closeKpiPeriodLifecycle);
+on("kpiPeriodLifecycleCancelBtn", "click", closeKpiPeriodLifecycle);
+on("kpiPeriodLifecycleBackdrop", "click", closeKpiPeriodLifecycle);
+on("kpiPeriodLifecycleSubmitBtn", "click", () => runAction("kpiPeriodLifecycleSubmitBtn", "kpiPeriodLifecycle", "Đang xử lý...", confirmKpiPeriodLifecycle));
 on("kpiTeamReloadBtn", "click", () => runAction("kpiTeamReloadBtn", "kpiTeamSummary", "Đang tải...", () => reloadKpiTeamSummary({force:true})));
 on("kpiTeamPeriod", "change", e => {
   kpiTeamState.selectedPeriodId = clean(e.target.value);

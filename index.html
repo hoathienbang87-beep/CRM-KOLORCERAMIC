@@ -440,11 +440,15 @@
               </div>
               <div class="actions">
                 <button id="kpi1ActivatePeriodBtn" class="primary" type="button">Kích hoạt kỳ</button>
+                <button id="kpi1RevertPeriodBtn" class="hide" type="button">Đưa về DRAFT</button>
+                <button id="kpi1DeletePeriodR31Btn" class="danger hide" type="button">Xóa kỳ</button>
+                <button id="kpi1CancelPeriodBtn" class="danger hide" type="button">Hủy kỳ KPI</button>
                 <button id="kpi1ClosePeriodDetailBtn" type="button">Đóng chi tiết</button>
               </div>
             </div>
             <div id="kpi1ActivationSummary" class="kpi1-summary-grid"></div>
             <div id="kpi1LockedNotice" class="maintenance-note hide">Kỳ ACTIVE cho phép điều chỉnh có kiểm soát; mọi thay đổi cần lý do và được ghi audit.</div>
+            <div id="kpi1LifecycleInfo" class="detail-note muted">Đang kiểm tra dữ liệu thực hiện trên máy chủ...</div>
             <div class="table-title">Ma trận assignment</div>
             <div class="muted" style="margin-bottom:8px">Kỳ DRAFT chỉnh bằng ma trận. Với kỳ ACTIVE, dùng chi tiết nhân viên để gán, sửa, gỡ hoặc ngừng KPI có audit.</div>
             <div class="table-wrap kpi1-matrix-wrap">
@@ -947,6 +951,18 @@
       <button id="kpiTeamAssignSubmitBtn" class="primary" type="button">Xác nhận gán</button>
       <button id="kpiTeamRemoveSubmitBtn" class="danger hide" type="button">Xác nhận gỡ KPI</button>
     </div>
+  </aside>
+
+  <div id="kpiPeriodLifecycleBackdrop" class="drawer-backdrop hide"></div>
+  <aside id="kpiPeriodLifecycleDrawer" class="drawer hide" role="dialog" aria-modal="true" aria-labelledby="kpiPeriodLifecycleTitle">
+    <div class="drawer-head">
+      <div><h2 id="kpiPeriodLifecycleTitle" style="margin:0">Thay đổi trạng thái kỳ KPI</h2><div id="kpiPeriodLifecycleSubtitle" class="muted"></div></div>
+      <button id="kpiPeriodLifecycleCloseBtn" class="small" type="button">Đóng</button>
+    </div>
+    <div id="kpiPeriodLifecycleWarning" class="maintenance-note"></div>
+    <div id="kpiPeriodLifecycleCounts" class="detail-note muted"></div>
+    <div class="field"><label for="kpiPeriodLifecycleReason">Lý do nghiệp vụ</label><textarea id="kpiPeriodLifecycleReason" maxlength="500" placeholder="Nhập lý do bắt buộc"></textarea></div>
+    <div class="actions"><button id="kpiPeriodLifecycleCancelBtn" type="button">Hủy thao tác</button><button id="kpiPeriodLifecycleSubmitBtn" class="danger" type="button">Xác nhận</button></div>
   </aside>
 
   <div id="savingMask" class="saving-mask hide">Đang xử lý...</div>
