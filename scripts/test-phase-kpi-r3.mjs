@@ -56,6 +56,7 @@ check(/id="kpi1DefinitionReason"[^>]+maxlength="500"/.test(html) && /kpi1Definit
 check(/Thay đổi mục tiêu hoặc cách tính điểm sẽ làm thay đổi tỷ lệ hoàn thành/.test(app), "UI phải cảnh báo tác động điểm.");
 check(/Ngừng KPI/.test(app) && /Gỡ KPI/.test(app), "UI phải phân biệt gỡ và ngừng.");
 check(/id="kpiTeamRemoveSubmitBtn"/.test(html) && /confirmKpiTeamRemoveAssignment/.test(app) && !/prompt\("Lý do thay đổi \(bắt buộc\):/.test(app), "Gỡ/ngừng ACTIVE phải dùng reason inline, không dùng prompt.");
+check(/historicalEmployees = kpiTeamRawAssignments\(period\?\.id\)[\s\S]+employees: \[\.\.\.eligibleEmployees, \.\.\.historicalEmployees\]/.test(app), "KPI Team phải giữ assignment lịch sử hiển thị khi nhân viên đổi role.");
 check(/crm_kpi_get_config_history_r3/.test(app), "History phải tải audit ACTIVE.");
 check(/where a\.assignment_status = 'ASSIGNED'[\s\S]+p\.status in \('ACTIVE', 'CLOSED'\)/.test(canonical), "Điểm canonical phải loại assignment CANCELLED.");
 check(/crm_kpi_submit_events[\s\S]+for update[\s\S]+assignment_status <> 'ASSIGNED'/.test(canonical), "Submit và cancel phải serialize qua khóa assignment và fail-closed.");
