@@ -45,6 +45,7 @@ check(!/drop table|delete from public\.kpi_(rules|proposals)/i.test(sql), "Khôn
 
 check(!/kpi-cutover\.js|crm_legacy_kpi_cutover_status|crm_(submit|review|archive)_kpi_proposal|collection\(db, ["']kpi(Proposals|Rules)["']\)/.test(app), "Runtime không được dùng legacy KPI.");
 check(!/hydrateProposalKpiOptions|\$\(["']kpiRuleMonth["']\)|\$\(["']kpi(?:Rule|Approval)Panel["']\)/.test(app), "Runtime không được giữ lời gọi hoặc DOM ref legacy KPI đã bị gỡ.");
+check(/!Array\.isArray\(raw\[key\]\) \|\| \(!raw\[key\]\.length && DEFAULT_SETTINGS\[key\]\.length\)/.test(app), "Owner migration không được ghi no-op cho mảng mặc định rỗng.");
 check(!/KPI cũ|kpiProposalModal|kpiApprovalPanel|kpiSummaryPanel|kpiRulePanel/.test(html), "DOM legacy phải được gỡ.");
 check(/crm_kpi_assign_employee_r3/.test(app), "UI phải dùng RPC gán R3.");
 check(/crm_kpi_update_assignment_target_r3/.test(app) && /crm_kpi_update_assignment_options_r3/.test(app), "UI phải dùng RPC sửa ACTIVE R3.");

@@ -682,7 +682,9 @@ async function migrateSettingsIfNeeded(raw = {}) {
   if (!canAccessAdminPanel()) return;
   const patch = {};
   Object.keys(DEFAULT_SETTINGS).forEach(key => {
-    if (Array.isArray(DEFAULT_SETTINGS[key]) && (!Array.isArray(raw[key]) || !raw[key].length)) patch[key] = DEFAULT_SETTINGS[key];
+    if (Array.isArray(DEFAULT_SETTINGS[key]) && (
+      !Array.isArray(raw[key]) || (!raw[key].length && DEFAULT_SETTINGS[key].length)
+    )) patch[key] = DEFAULT_SETTINGS[key];
     else if ((key === "sourceChannels" || key === "systemLabels") && (!raw[key] || typeof raw[key] !== "object")) patch[key] = DEFAULT_SETTINGS[key];
     else if (raw[key] === undefined || raw[key] === null || raw[key] === "") patch[key] = DEFAULT_SETTINGS[key];
   });
