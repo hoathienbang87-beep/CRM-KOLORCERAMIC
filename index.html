@@ -127,7 +127,6 @@
           <div id="reportCenterGrid" class="executive-grid order-summary-grid"></div>
           <div class="actions">
             <button id="reportExportManagementBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
-            <button id="reportExportKpiBtn" class="small primary" type="button">Xuất KPI</button>
           </div>
           <div class="section" style="margin-top:14px">
             <div class="pro-section-title">
@@ -272,7 +271,6 @@
             <div class="toolbar-actions">
               <button id="resetFilterBtn">Xóa lọc</button>
               <button id="exportBtn">Xuất Excel</button>
-              <button id="openKpiProposalBtn" class="primary hide" type="button">Đề xuất KPI</button>
             </div>
           </div>
           <div id="channelQuickFilters" class="quick-filter-grid" aria-label="Lọc nhanh theo kênh chi tiết">
@@ -326,13 +324,13 @@
           <div id="customerPager" class="list-pager"></div>
         </div>
 
-        <div id="kpiCutoverStatus" class="kpi-cutover-status hide" role="status" aria-live="polite"></div>
+
 
         <div id="kpiTeamPanel" class="panel hide kpi-team-panel" style="margin-top:14px">
           <div class="pro-section-title kpi-team-header">
             <div>
               <h3>KPI Team</h3>
-              <div class="muted">Theo dõi tiến độ và đề xuất KPI theo từng nhân viên.</div>
+              <div class="muted">Theo dõi tiến độ và cấu hình KPI theo từng nhân viên.</div>
             </div>
             <div class="actions">
               <button id="kpiTeamPendingBtn" class="small" type="button">Cần duyệt (0)</button>
@@ -371,53 +369,9 @@
           </div>
         </div>
 
-        <div id="kpiApprovalPanel" class="panel hide" style="margin-top:14px">
-          <div class="pro-section-title">
-            <h3>KPI cũ — Đang đóng sổ</h3>
-            <div class="actions">
-              <select id="kpiApprovalScope" class="small-select" aria-label="Lọc KPI chờ duyệt">
-                <option value="all">Tất cả chờ duyệt</option>
-                <option value="month">Tháng đang xem</option>
-                <option value="old">Tồn tháng cũ</option>
-              </select>
-              <button id="resetKpiApprovalFilterBtn" class="small" type="button">Xóa lọc</button>
-            </div>
-          </div>
-          <div class="muted" style="margin-bottom:8px">Hàng đợi lịch sử được tách khỏi KPI-2. Sau cutover chỉ proposal pending tạo trước 01/09/2026 mới được xử lý.</div>
-          <div id="kpiApprovalList" class="rule-list muted">Chưa có KPI chờ duyệt.</div>
-        </div>
 
-        <div id="kpiSummaryPanel" class="panel hide" style="margin-top:14px">
-          <div class="pro-section-title">
-            <h3>KPI cũ — Lịch sử và đóng sổ</h3>
-            <div class="actions">
-              <button id="openKpiProposalBtnTop" class="small primary" type="button">Đề xuất KPI</button>
-              <button id="exportKpiBtn" class="small primary hide" type="button">Xuất KPI cũ</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead id="kpiHead"></thead>
-              <tbody id="kpiRows"></tbody>
-            </table>
-          </div>
-          <div id="kpiMyProposalPanel" class="section" style="margin-top:14px">
-            <div class="pro-section-title">
-              <h3>Đề xuất KPI cũ của tôi</h3>
-              <div class="actions">
-                <select id="myKpiProposalStatus" class="small-select" aria-label="Lọc đề xuất KPI của tôi">
-                  <option value="">Tất cả trạng thái</option>
-                  <option value="pending">Chờ duyệt</option>
-                  <option value="approved">Đã duyệt</option>
-                  <option value="rejected">Từ chối</option>
-                </select>
-                <button id="resetMyKpiProposalFilterBtn" class="small" type="button">Xóa lọc</button>
-              </div>
-            </div>
-            <div class="muted" style="margin-bottom:8px">Chờ duyệt được sửa/xóa; đã duyệt hoặc từ chối sẽ khóa để giữ log.</div>
-            <div id="kpiMyProposalList" class="detail-list muted">Chưa có đề xuất KPI.</div>
-          </div>
-        </div>
+
+
 
         <div id="kpiFoundationPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
@@ -489,9 +443,9 @@
               </div>
             </div>
             <div id="kpi1ActivationSummary" class="kpi1-summary-grid"></div>
-            <div id="kpi1LockedNotice" class="maintenance-note hide">Kỳ KPI đã hoạt động. Cấu hình chính đã được khóa.</div>
+            <div id="kpi1LockedNotice" class="maintenance-note hide">Kỳ ACTIVE cho phép điều chỉnh có kiểm soát; mọi thay đổi cần lý do và được ghi audit.</div>
             <div class="table-title">Ma trận assignment</div>
-            <div class="muted" style="margin-bottom:8px">Tick sale được áp dụng, nhập target lớn hơn 0 rồi lưu từng hàng KPI.</div>
+            <div class="muted" style="margin-bottom:8px">Kỳ DRAFT chỉnh bằng ma trận. Với kỳ ACTIVE, dùng chi tiết nhân viên để gán, sửa, gỡ hoặc ngừng KPI có audit.</div>
             <div class="table-wrap kpi1-matrix-wrap">
               <table class="admin-table kpi1-matrix">
                 <thead id="kpi1MatrixHead"></thead>
@@ -535,37 +489,7 @@
           </section>
         </div>
 
-        <div id="kpiRulePanel" class="panel hide" style="margin-top:14px">
-          <h3>KPI cũ — Chỉ đọc từ 01/09/2026</h3>
-          <div class="kpi-rule-grid">
-            <div class="field"><label>Tháng báo cáo</label><input id="kpiRuleMonth" type="month"></div>
-            <div class="field"><label>Tên KPI</label><input id="kpiRuleName" placeholder="Gửi kệ trưng bày"></div>
-            <div class="field"><label>Chỉ tiêu / Sale</label><input id="kpiRuleTarget" type="number" min="0" step="1"></div>
-            <div class="field"><label>Cách tính</label><select id="kpiRuleCountMode"><option value="approvedProposals">Số đề xuất được duyệt</option></select></div>
-          </div>
-          <div class="field">
-            <label>Diễn giải</label>
-            <textarea id="kpiRuleDescription" placeholder="Mô tả rõ hoạt động KPI, điều kiện được tính, minh chứng cần gửi..."></textarea>
-          </div>
-          <div class="kpi-assignment-box">
-            <div class="pro-section-title">
-              <h3>Gán KPI cho nhân viên</h3>
-              <span class="muted">Có thể đặt chỉ tiêu riêng từng người</span>
-            </div>
-            <div id="kpiAssignRows" class="kpi-assign-list muted">Chưa có danh sách nhân viên.</div>
-          </div>
-          <div class="actions">
-            <button id="saveKpiRuleBtn" class="primary">Tạo KPI</button>
-            <button id="cancelEditKpiRuleBtn" class="hide" type="button">Hủy sửa</button>
-          </div>
-          <div class="table-title">Bảng kiểm soát KPI</div>
-          <div class="table-wrap">
-            <table class="admin-table">
-              <thead><tr><th>KPI</th><th>Nhân viên được gán</th><th>Tiến độ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-              <tbody id="kpiControlRows"></tbody>
-            </table>
-          </div>
-        </div>
+
 
         <div id="proHealthPanel" class="panel" style="margin-top:14px">
           <div class="pro-section-title">
@@ -955,35 +879,6 @@
     <div id="detailModalContent" class="detail-content muted"></div>
   </aside>
 
-  <div id="kpiProposalBackdrop" class="drawer-backdrop hide"></div>
-  <aside id="kpiProposalModal" class="drawer hide">
-    <div class="drawer-head">
-      <div>
-        <h2 id="proposalModalTitle" style="margin:0">Đề Xuất KPI</h2>
-        <div class="muted">Gửi nội dung công việc để manager/admin xem xét</div>
-      </div>
-      <button id="closeKpiProposalBtn" class="small" type="button">Đóng</button>
-    </div>
-    <div id="proposalCustomerContext" class="detail-row hide"></div>
-    <div class="grid2">
-      <div class="field"><label>Tên</label><input id="proposalName" readonly></div>
-      <div class="field"><label>Email</label><input id="proposalEmail" readonly></div>
-      <div class="field"><label>SĐT</label><input id="proposalPhone" placeholder="SĐT nhân viên"></div>
-      <div class="field"><label>Bộ phận</label><input id="proposalDepartment" placeholder="Bộ phận / team"></div>
-    </div>
-    <div class="field"><label>KPI đề xuất</label><select id="proposalKpiRule"></select></div>
-    <div class="field"><label>Nội dung công việc đạt KPI</label><textarea id="proposalContent" placeholder="VD: Đã giới thiệu kệ trưng bày cho công ty xây dựng..., khách phản hồi..., bước tiếp theo..."></textarea></div>
-    <div class="field">
-      <label>Ảnh minh chứng</label>
-      <input id="proposalEvidenceFiles" type="file" accept="image/*" multiple>
-      <div class="muted">Chọn tối đa 6 ảnh, mỗi ảnh dưới 5MB.</div>
-    </div>
-    <div class="field"><label>Link minh chứng bổ sung</label><textarea id="proposalEvidenceUrl" placeholder="Có thể dán thêm link nếu cần, mỗi dòng một link..."></textarea></div>
-    <div class="actions">
-      <button id="submitKpiProposalBtn" class="primary" type="button">Gửi đề xuất</button>
-    </div>
-  </aside>
-
   <div id="productDrawerBackdrop" class="drawer-backdrop hide"></div>
   <aside id="productDrawer" class="drawer hide" role="dialog" aria-modal="true" aria-labelledby="productDrawerTitle">
     <div class="drawer-head">
@@ -1044,6 +939,7 @@
     <div id="kpiTeamAssignDefinitionMeta" class="detail-note muted"></div>
     <div class="field"><label for="kpiTeamAssignTarget">Mục tiêu</label><input id="kpiTeamAssignTarget" type="number" min="0.01" step="0.01" placeholder="Nhập mục tiêu lớn hơn 0"></div>
     <label class="kpi-team-check kpi-team-score-check"><input id="kpiTeamAssignScoreEnabled" type="checkbox"> Tính vào điểm KPI tháng</label>
+    <div id="kpiTeamAssignReasonField" class="field hide"><label for="kpiTeamAssignReason">Lý do thay đổi</label><textarea id="kpiTeamAssignReason" maxlength="500" placeholder="Nhập lý do nghiệp vụ (bắt buộc khi kỳ ACTIVE)"></textarea></div>
     <div id="kpiTeamAssignWarning" class="maintenance-note hide"></div>
     <div class="actions kpi-team-assign-actions">
       <button id="kpiTeamAssignCancelBtn" type="button">Hủy</button>
@@ -1055,7 +951,7 @@
   <div id="notice" class="notice hide"></div>
 
 <script src="./js/supabase-config.js"></script>
-<script type="module" src="./js/app.js?v=20260809-settings-persistence"></script>
+<script type="module" src="./js/app.js?v=20260909-kpi-r3"></script>
 <script async src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </body>
 </html>
