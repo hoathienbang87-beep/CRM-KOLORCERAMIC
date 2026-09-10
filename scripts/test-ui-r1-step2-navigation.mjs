@@ -6,6 +6,7 @@ const shellSource = await readFile(new URL("js/components/app-shell.js", root), 
 const appSource = await readFile(new URL("js/features/crm-app.js", root), "utf8");
 const html = await readFile(new URL("index.html", root), "utf8");
 const css = await readFile(new URL("css/styles.css", root), "utf8");
+const vercelConfig = JSON.parse(await readFile(new URL("vercel.json", root), "utf8"));
 const shell = await import(`data:text/javascript;base64,${Buffer.from(shellSource).toString("base64")}`);
 
 assert.deepEqual(
@@ -18,6 +19,10 @@ assert.equal(shell.normalizeWorkspaceHash("#/kpi/"), "#/kpi");
 assert.equal(shell.workspaceForHash("#/unknown").id, "overview");
 assert.equal(shell.CRM_HASH_ROUTES["#/reports"].mainView, "reports");
 assert.equal(shell.CRM_NAV_ITEMS.find(item => item.id === "admin").path, "/admin");
+assert.ok(
+  vercelConfig.rewrites.some(route => route.source === "/admin" && route.destination === "/index.html"),
+  "Vercel phải phục vụ canonical /admin route"
+);
 
 assert.match(shellSource, /desktopNavItems/);
 assert.match(shellSource, /mobileNavItems/);
