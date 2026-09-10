@@ -119,17 +119,6 @@
       </section>
 
       <section class="workspace-root">
-        <div id="todayCarePanel" class="today-panel">
-          <div class="pro-section-title">
-            <h3>Lịch hẹn hôm nay</h3>
-            <button id="enableNotifyBtn" class="small" type="button">Bật nhắc</button>
-          </div>
-          <div id="todayCareList" class="care-empty">Không có lịch hẹn hôm nay.</div>
-        </div>
-        <div id="onlinePanel" class="online-panel hide">
-          <h3>Đang truy cập</h3>
-          <div id="onlineUsers" class="muted">Chưa có dữ liệu.</div>
-        </div>
         <div id="viewTabsSlot" class="legacy-view-tabs" hidden aria-hidden="true">
           <button id="crmViewBtn" type="button" tabindex="-1">Tổng quan</button>
           <button id="customersViewBtn" type="button">Khách hàng</button>
@@ -139,21 +128,37 @@
           <button id="adminViewBtn" type="button">Quản trị</button>
         </div>
 
-        <div id="executiveDashboard" class="panel manager-only hide" style="margin-bottom:14px">
+        <section id="overviewDashboard" class="overview-dashboard">
+          <header class="overview-heading">
+            <h1>Tổng quan</h1>
+            <p>Trạng thái công việc và những điểm cần chú ý hôm nay.</p>
+          </header>
+          <section id="executiveDashboard" class="panel overview-summary-panel">
+            <div class="pro-section-title"><h2>Tình hình nhanh</h2></div>
+            <div id="executiveGrid" class="overview-summary-grid"></div>
+          </section>
+          <section id="overviewAttentionPanel" class="panel overview-attention-panel">
+            <div class="pro-section-title">
+              <h2>Việc cần chú ý hôm nay</h2>
+              <button type="button" class="small" data-overview-route="#/customers/care">Mở khu chăm sóc</button>
+            </div>
+            <div id="overviewAttentionSummary" class="overview-attention-summary"></div>
+        <div id="todayCarePanel" class="today-panel">
           <div class="pro-section-title">
-            <h3>Dashboard quản trị</h3>
-            <button id="exportManagementReportBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
+            <h3>Lịch hẹn hôm nay</h3>
+            <button id="enableNotifyBtn" class="small" type="button">Bật nhắc</button>
           </div>
-          <div id="executiveGrid" class="executive-grid"></div>
+          <div id="todayCareList" class="care-empty">Không có lịch hẹn hôm nay.</div>
         </div>
-
-        <div id="pipelinePanel" class="panel manager-only hide" style="margin-bottom:14px">
-          <div class="pro-section-title">
-            <h3>Pipeline bán hàng</h3>
-            <span id="pipelineRangeText" class="muted"></span>
-          </div>
-          <div id="pipelineGrid" class="pipeline-grid"></div>
-        </div>
+          </section>
+          <section id="overviewPipelineSummary" class="panel overview-pipeline-summary hide">
+            <div class="pro-section-title">
+              <h2>Pipeline</h2>
+              <button type="button" class="small" data-overview-route="#/reports">Xem báo cáo</button>
+            </div>
+            <div id="overviewPipelineCompact" class="overview-pipeline-compact"></div>
+          </section>
+        </section>
 
         <div id="reportsPanel" class="panel hide" style="margin-bottom:14px">
           <div class="pro-section-title">
@@ -181,6 +186,43 @@
             <div id="saleActivityTimeline" class="detail-list" style="margin-top:12px"></div>
             <div id="saleActivityPager" class="list-pager"></div>
           </div>
+          <section class="reports-analysis-section">
+            <div class="table-title">Phân tích khách hàng</div>
+            <div id="pipelinePanel" class="panel manager-only hide" style="margin-bottom:14px">
+          <div class="pro-section-title">
+            <h3>Pipeline bán hàng</h3>
+            <span id="pipelineRangeText" class="muted"></span>
+          </div>
+          <div id="pipelineGrid" class="pipeline-grid"></div>
+            </div>
+            <div class="chart-grid">
+          <div class="panel">
+            <h3>Tăng trưởng khách hàng</h3>
+            <div class="chart-wrap"><canvas id="growthChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="pro-section-title">
+              <h3>Báo cáo theo kênh chi tiết</h3>
+              <div class="channel-report-controls">
+                <select id="channelReportRange">
+                  <option value="week">Tuần này</option>
+                  <option value="month">Tháng này</option>
+                  <option value="year" selected>Năm nay</option>
+                  <option value="custom">Tùy chọn</option>
+                </select>
+                <div id="channelReportCustomRange" class="channel-date-range hide">
+                  <input id="channelReportStartDate" type="date" aria-label="Ngày bắt đầu báo cáo kênh chi tiết">
+                  <span>đến</span>
+                  <input id="channelReportEndDate" type="date" aria-label="Ngày kết thúc báo cáo kênh chi tiết">
+                </div>
+                <button id="resetChannelReportFilterBtn" class="small" type="button">Xóa lọc</button>
+              </div>
+            </div>
+            <div class="chart-wrap channel-chart-wrap"><canvas id="channelReportChart"></canvas></div>
+          </div>
+        </div>
+
+          </section>
         </div>
 
         <div id="productsPanel" class="panel hide" style="margin-bottom:14px">
@@ -209,34 +251,7 @@
           <div id="productPager" class="list-pager"></div>
         </div>
 
-        <div class="chart-grid">
-          <div class="panel">
-            <h3>Tăng trưởng khách hàng</h3>
-            <div class="chart-wrap"><canvas id="growthChart"></canvas></div>
-          </div>
-          <div class="panel">
-            <div class="pro-section-title">
-              <h3>Báo cáo theo kênh chi tiết</h3>
-              <div class="channel-report-controls">
-                <select id="channelReportRange">
-                  <option value="week">Tuần này</option>
-                  <option value="month">Tháng này</option>
-                  <option value="year" selected>Năm nay</option>
-                  <option value="custom">Tùy chọn</option>
-                </select>
-                <div id="channelReportCustomRange" class="channel-date-range hide">
-                  <input id="channelReportStartDate" type="date" aria-label="Ngày bắt đầu báo cáo kênh chi tiết">
-                  <span>đến</span>
-                  <input id="channelReportEndDate" type="date" aria-label="Ngày kết thúc báo cáo kênh chi tiết">
-                </div>
-                <button id="resetChannelReportFilterBtn" class="small" type="button">Xóa lọc</button>
-              </div>
-            </div>
-            <div class="chart-wrap channel-chart-wrap"><canvas id="channelReportChart"></canvas></div>
-          </div>
-        </div>
-
-        <div id="needCarePanel" class="customer-workspace panel" style="margin-top:14px">
+        <div id="needCarePanel" class="customer-workspace panel hide" style="margin-top:14px">
           <button type="button" class="customer-workspace-back customer-care-back hide" data-customer-workspace="#/customers">← Khách hàng</button>
           <div class="customer-workspace-context customer-care-context hide"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Chăm sóc &amp; lịch hẹn</b></div>
           <div class="pro-section-title">
@@ -261,6 +276,10 @@
           <div id="taskPager" class="list-pager"></div>
         </div>
 
+        <div id="onlinePanel" class="online-panel hide">
+          <h3>Đang truy cập</h3>
+          <div id="onlineUsers" class="muted">Chưa có dữ liệu.</div>
+        </div>
         <div id="careSettingsPanel" class="panel hide" style="margin-top:14px">
           <h3>Thiết lập chăm sóc</h3>
           <div class="grid2">

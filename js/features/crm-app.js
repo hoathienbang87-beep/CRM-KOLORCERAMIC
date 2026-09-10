@@ -2489,7 +2489,7 @@ function updateCareStatusVisual() {
   el.classList.add(customerStatusClass(el.value));
 }
 
-const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel","todayCarePanel","onlinePanel"];
+const crmViewIds = ["overviewDashboard"];
 const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
 const customerViewIds = CUSTOMER_WORKSPACES.map(workspace => workspace.panelId);
 const kpiViewIds = ["kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
@@ -2497,11 +2497,10 @@ const reportsViewIds = ["reportsPanel"];
 const productsViewIds = ["productsPanel"];
 
 function renderCrmView() {
-  renderKpis();
   renderExecutiveDashboard();
-  renderPipelineReport();
-  requestChartRender();
-  renderNeedCare();
+  renderOverviewAttention();
+  renderOverviewPipelineCompact();
+  renderTodayCare();
 }
 
 function setCustomerPanelHidden(id, hidden) {
@@ -2521,7 +2520,6 @@ function applyCustomerWorkspaceVisibility(isCustomerView) {
     const visible = isCustomerView && workspace.customerWorkspace === activeCustomerWorkspace && canUseNavItem(workspace);
     setCustomerPanelHidden(workspace.panelId, !visible);
   });
-  if (!isCustomerView) setCustomerPanelHidden("needCarePanel", false);
   document.querySelectorAll(".customer-care-back,.customer-care-context").forEach(element => {
     element.classList.toggle("hide", !(isCustomerView && activeCustomerWorkspace === "care"));
   });
@@ -2545,11 +2543,7 @@ function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
     if (isOtherView) $(id)?.classList.add("hide");
   });
   if (!isOtherView) {
-    $("needCarePanel")?.classList.remove("hide");
-    $("todayCarePanel")?.classList.remove("hide");
-    $("onlinePanel")?.classList.toggle("hide", !isAdmin());
-    $("executiveDashboard")?.classList.toggle("hide", !isManager());
-    $("pipelinePanel")?.classList.toggle("hide", !isManager());
+    $("overviewDashboard")?.classList.remove("hide");
   }
   adminViewIds.forEach(id => $(id)?.classList.add("hide"));
   if (isAdminView) {
@@ -2563,7 +2557,8 @@ function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
   }
   applyCustomerWorkspaceVisibility(isCustomerView);
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
-  document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
+  document.querySelector(".chart-grid")?.classList.toggle("hide", !isReportsView);
+  $("pipelinePanel")?.classList.toggle("hide", !isReportsView || !isManager());
   $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager());
   $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView || isManager());
   $("kpiFoundationPanel")?.classList.add("hide");
@@ -2595,7 +2590,11 @@ function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
     }
     applyKpiManagerModeVisibility();
   }
-  if (isReportsView) renderReportCenter();
+  if (isReportsView) {
+    renderReportCenter();
+    renderPipelineReport();
+    requestChartRender();
+  }
   if (isAdminView) {
     renderHealthCheck();
     renderDataSafetyPanel();
@@ -2656,41 +2655,50 @@ function currentReportDeals() {
 }
 
 function renderExecutiveDashboard() {
-  $("executiveDashboard")?.classList.toggle("hide", !isManager());
-  if (!isManager()) return;
+  if (!$("executiveGrid")) return;
   const rows = currentReportCustomers();
-  const month = currentMonth();
-  const monthCustomers = rows.filter(c => monthOf(c.createdAt) === month);
-  const rowIds = new Set(rows.map(c => c.id));
-  const monthCareLogs = careLogs.filter(l => !l.isDeleted && rowIds.has(l.customerId) && monthOf(careLogActivityDate(l)) === month);
-  const boughtCustomers = rows.filter(c => basicPurchaseCountFor(c) > 0);
-  const purchaseTimes = rows.reduce((sum, c) => sum + basicPurchaseCountFor(c), 0);
-  const purchaseValue = rows.reduce((sum, c) => sum + basicPurchaseValueFor(c), 0);
-  const pendingKpi = operationalKpiPendingCount();
-  const dueCare = rows.filter(isCareDue);
+  const todayCare = rows.filter(c => !isCustomerClosed(c) && clean(c.nextCareDate) === todayIso());
   const overdueCare = rows.filter(isCareOverdue);
-  const noDateCare = rows.filter(c => !isCustomerClosed(c) && !clean(c.nextCareDate));
-  const showroomVisits = rows.reduce((sum, c) => sum + showroomVisitCountFor(c), 0);
+  const activePeriod = kpiPeriods.find(period => clean(period.status).toUpperCase() === "ACTIVE");
+  const unassigned = rows.filter(c => !clean(c.ownerUserId) && !clean(c.ownerEmail)).length;
   const cards = [
-    ["Khách đang quản lý", rows.length, "", "managed-customers"],
-    ["Khách mới tháng này", monthCustomers.length, "", "month-customers"],
-    ["Lượt chăm tháng", monthCareLogs.length, "", ""],
-    ["Cần chăm", dueCare.length, dueCare.length ? "warn" : "", "due-care"],
-    ["Quá hạn chăm", overdueCare.length, overdueCare.length ? "bad" : "", "overdue-care"],
-    ["Chưa có lịch chăm", noDateCare.length, noDateCare.length ? "warn" : "", ""],
-    ["Đến showroom", showroomVisits, "", ""],
-    ["Khách đã mua", boughtCustomers.length, "", ""],
-    ["Số lần mua", purchaseTimes, "", ""],
-    ["Giá trị mua căn bản", money(purchaseValue), "", ""],
-    ["KPI cần duyệt", pendingKpi, pendingKpi ? "warn" : "", "pending-kpi"],
-    ["Tỉ lệ mua", rows.length ? Math.round(boughtCustomers.length / rows.length * 100) + "%" : "0%", ""]
+    [isSale() ? "Khách hàng của tôi" : "Khách hàng trong phạm vi", rows.length, isSale() ? "Danh sách được phân quyền" : "Theo phạm vi hiện tại", "#/customers/list", ""],
+    ["Chăm sóc hôm nay", todayCare.length, todayCare.length ? "Có lịch cần theo dõi" : "Không có lịch hôm nay", "#/customers/care", todayCare.length ? "warn" : ""],
+    ["Quá hạn", overdueCare.length, overdueCare.length ? "Cần kiểm tra" : "Không có việc quá hạn", "#/customers/care", overdueCare.length ? "bad" : ""],
+    ["KPI", activePeriod ? (activePeriod.name || kpi1PeriodLabel(activePeriod)) : "Chưa có kỳ đang hoạt động", activePeriod ? "Xem tiến độ hiện tại" : "Không hiển thị phần trăm giả", "#/kpi", ""]
   ];
-  $("executiveGrid").innerHTML = cards.map(([label,value,cls,action]) => `
-    <div class="executive-card ${esc(cls)} ${action ? "clickable" : ""}" ${action ? `role="button" tabindex="0" data-dashboard-action="${esc(action)}"` : ""}>
-      <span class="muted">${esc(label)}</span>
+  if (isManager()) cards.splice(3, 0, ["Khách chưa phân bổ", unassigned, unassigned ? "Cần xem xét phân bổ" : "Không có khách chờ phân bổ", "#/customers/allocation", unassigned ? "warn" : ""]);
+  if (isManager()) cards.push(["Báo cáo", "Xem phân tích", "Pipeline, tăng trưởng và kênh", "#/reports", ""]);
+  $("executiveGrid").innerHTML = cards.map(([label,value,context,route,cls]) => `
+    <button class="overview-summary-card ${esc(cls)}" type="button" data-overview-route="${esc(route)}">
+      <span>${esc(label)}</span>
       <b>${esc(value)}</b>
-    </div>
+      <small>${esc(context)}</small>
+    </button>
   `).join("");
+}
+
+function renderOverviewAttention() {
+  const rows = currentReportCustomers();
+  const today = rows.filter(c => !isCustomerClosed(c) && clean(c.nextCareDate) === todayIso()).length;
+  const overdue = rows.filter(isCareOverdue).length;
+  const upcoming = rows.filter(c => taskTypeForCustomer(c) === "upcoming").length;
+  $("overviewAttentionSummary").innerHTML = [
+    ["Hôm nay", today, today ? "Có lịch cần theo dõi" : "Không có lịch chăm sóc hôm nay"],
+    ["Quá hạn", overdue, overdue ? "Cần ưu tiên xử lý" : "Không có việc quá hạn"],
+    ["Sắp tới", upcoming, "Lịch chăm sóc tiếp theo"]
+  ].map(([label,value,text]) => `<button type="button" class="overview-attention-card" data-overview-route="#/customers/care"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(text)}</small></button>`).join("");
+}
+
+function renderOverviewPipelineCompact() {
+  const panel = $("overviewPipelineSummary");
+  if (!panel) return;
+  panel.classList.toggle("hide", !isManager());
+  if (!isManager()) return;
+  const data = pipelineReportData().slice(0, 4);
+  $("overviewPipelineCompact").innerHTML = data.length
+    ? data.map(item => `<div><span>${esc(item.label)}</span><b>${esc(item.count)}</b></div>`).join("")
+    : `<div class="overview-empty">Chưa có dữ liệu pipeline.</div>`;
 }
 
 function pipelineReportData() {
@@ -3548,7 +3556,7 @@ function renderTodayCare() {
     return;
   }
   list.className = "today-list";
-  list.innerHTML = rows.map(c => `
+  list.innerHTML = rows.slice(0, 5).map(c => `
     <div class="today-item">
       <b>${esc(c.name)}</b>
       <div class="today-meta">${esc(c.phoneRaw || c.phoneNormalized || "Không SĐT")} · ${esc(customerOwnerName(c))}</div>
@@ -3556,7 +3564,7 @@ function renderTodayCare() {
       ${c.note ? `<div class="muted">${esc(c.note)}</div>` : ""}
       <button class="small" type="button" data-care-open="${esc(c.id)}">Mở chăm sóc</button>
     </div>
-  `).join("");
+  `).join("") + (rows.length > 5 ? `<div class="muted overview-more">Còn ${esc(rows.length - 5)} lịch hẹn trong khu Chăm sóc.</div>` : "");
 }
 
 function notifyTodayCare(force=false) {
@@ -8544,7 +8552,7 @@ function showApp() {
   setViewHidden("loginView", true);
   setViewHidden("appView", false);
   setViewHidden("adminAppView", true);
-  $("onlinePanel").classList.toggle("hide", !isAdmin());
+  $("onlinePanel").classList.add("hide");
   $("userText").textContent = currentUser.email || currentUser.displayName || "";
   $("roleText").textContent = `Vai trò: ${appUser.role || "sale"} · Tên hiển thị: ${ownerName()}`;
   // Trình duyệt đôi khi tự khôi phục input type=month sau khi deploy. Chủ động xoá để mặc định là xem tất cả.
@@ -8660,11 +8668,13 @@ document.addEventListener("click", e => {
   const confirmDeactivateEmployeeId = e.target.closest("[data-confirm-deactivate-employee]")?.dataset.confirmDeactivateEmployee;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
+  const overviewRoute = e.target.closest("[data-overview-route]")?.dataset.overviewRoute;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   const customerWorkspaceHash = e.target.closest("[data-customer-workspace]")?.dataset.customerWorkspace;
   const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
+  if (overviewRoute) navigateToWorkspace(overviewRoute);
   if (customerWorkspaceHash) {
     closeDrawer();
     navigateToWorkspace(customerWorkspaceHash);
