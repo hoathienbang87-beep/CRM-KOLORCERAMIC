@@ -2531,13 +2531,13 @@ function applyCustomerWorkspaceVisibility(isCustomerView) {
 function renderKpiHub() {
   const target = $("kpiHubCards");
   if (!target) return;
-  const noPeriod = !kpiPeriods.length;
+  const noActivePeriod = !kpiPeriods.some(period => clean(period.status).toUpperCase() === "ACTIVE");
   const cards = isSale()
-    ? [["KPI của tôi", "Theo dõi tiến độ KPI và gửi kết quả thực hiện.", "#/kpi/mine", noPeriod ? "Chưa có kỳ KPI đang hoạt động" : "Xem KPI hiện tại"]]
+    ? [["KPI của tôi", "Theo dõi tiến độ KPI và gửi kết quả thực hiện.", "#/kpi/mine", noActivePeriod ? "Chưa có kỳ KPI đang hoạt động" : "Xem KPI hiện tại"]]
     : [
-        ["KPI Team", "Theo dõi KPI nhân viên và duyệt kết quả.", "#/kpi/team", noPeriod ? "Chưa có kỳ đang hoạt động" : "Mở KPI Team"],
-        ["Bộ KPI & Kỳ KPI", "Quản lý kỳ KPI, bộ KPI và phân công cho nhân viên.", "#/kpi/library", `${kpiDefinitions.length} mục · ${noPeriod ? "Chưa có kỳ" : `${kpiPeriods.length} kỳ`}`],
-        ["Lịch sử KPI", "Xem các kỳ, thay đổi cấu hình và lịch sử KPI.", "#/kpi/history", noPeriod ? "Chưa có lịch sử kỳ" : "Xem lịch sử"]
+        ["KPI Team", "Theo dõi KPI nhân viên và duyệt kết quả.", "#/kpi/team", noActivePeriod ? "Chưa có kỳ đang hoạt động" : "Mở KPI Team"],
+        ["Bộ KPI & Kỳ KPI", "Quản lý kỳ KPI, bộ KPI và phân công cho nhân viên.", "#/kpi/library", `${kpiDefinitions.length} mục · ${kpiPeriods.length ? `${kpiPeriods.length} kỳ` : "Chưa có kỳ"}`],
+        ["Lịch sử KPI", "Xem các kỳ, thay đổi cấu hình và lịch sử KPI.", "#/kpi/history", kpiPeriods.length ? "Xem lịch sử" : "Chưa có lịch sử kỳ"]
       ];
   target.innerHTML = cards.map(([title, description, route, status]) => `<button type="button" class="customer-action-card kpi-hub-card" data-kpi-route="${esc(route)}"><b>${esc(title)}</b><span>${esc(description)}</span><small>${esc(status)}</small></button>`).join("");
 }
@@ -5247,7 +5247,7 @@ function renderKpi2Operations() {
       <div class="metric">${esc(actual)} / ${esc(target)}</div><div class="kpi2-progress-meta"><span class="pill green">Đã duyệt ${esc(actual)}</span><span class="pill orange">Chờ ${esc(pending)}</span>${revision?`<span class="pill red">Bổ sung ${esc(revision)}</span>`:""}</div>
       <div class="muted">Actual ${esc(pct)}% · Score ${esc(score)}%${kpi2Field(row,"scoreEnabled","score_enabled")?"":" · Chỉ tham khảo"}</div>
       ${!isManager()?`<div class="actions"><button class="small primary" type="button" data-kpi2-open-claim="${esc(id)}">Gửi event</button>${revision?`<button class="small" type="button" data-kpi2-open-revision="${esc(id)}">Bổ sung (${esc(revision)})</button>`:""}</div>`:""}</div>`;
-  }).join(""):`<div class="kpi-team-empty"><b>${kpiPeriods.length ? "Chưa có KPI ACTIVE được giao." : "Chưa có kỳ KPI đang hoạt động."}</b><span>${kpiPeriods.length ? "KPI sẽ xuất hiện khi bạn được phân công." : "Khi quản lý kích hoạt kỳ KPI và phân công cho bạn, KPI sẽ xuất hiện tại đây."}</span></div>`;
+  }).join(""):`<div class="kpi-team-empty"><b>${kpiPeriods.some(period => clean(period.status).toUpperCase() === "ACTIVE") ? "Chưa có KPI ACTIVE được giao." : "Chưa có kỳ KPI đang hoạt động."}</b><span>Khi quản lý kích hoạt kỳ KPI và phân công cho bạn, KPI sẽ xuất hiện tại đây.</span></div>`;
   $('kpi2ManagerReviewPanel')?.classList.toggle('hide',!isManager());
   if(isManager()) renderKpi2ReviewQueue();
 }
