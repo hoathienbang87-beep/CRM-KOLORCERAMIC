@@ -48,7 +48,17 @@ try {
   assert.equal(await page.locator("#adminTrashHost #trashPanel").count(),1);
   for (const role of ["manager","sale"]) assert.equal(await page.evaluate(r=>window.testGuard(r),role),false);
   assert.equal(await page.evaluate(()=>window.testGuard("owner")),true);
-  await page.evaluate(()=>window.testRoute("/admin/users"));
-  await page.reload({waitUntil:"domcontentloaded"}).catch(()=>{});
+  await page.evaluate(() => {
+    addEventListener("popstate", event => window.testRoute(event.state?.route || "/admin"));
+    history.replaceState({route:"/admin"}, "", "#admin");
+    history.pushState({route:"/admin/users"}, "", "#admin-users");
+    window.testRoute("/admin/users");
+    history.pushState({route:"/admin/settings"}, "", "#admin-settings");
+    window.testRoute("/admin/settings");
+  });
+  await page.goBack();
+  assert.ok(await page.locator('[data-admin-page="users"]').isVisible(), "Back khôi phục Users");
+  await page.goForward();
+  assert.ok(await page.locator('[data-admin-page="settings"]').isVisible(), "Forward khôi phục Settings");
   console.log("PASS CRM-UI-R1 STEP7 browser fixture: workspaces, responsive và role denial");
 } finally { await browser.close(); }
