@@ -23,10 +23,18 @@ export const KPI_WORKSPACES = Object.freeze([
   { id: "history", label: "Lịch sử KPI", hash: "#/kpi/history", mainView: "kpi", kpiWorkspace: "history", capability: "manager", panelId: "kpiTeamPanel", mode: "history" }
 ]);
 
+export const REPORT_WORKSPACES = Object.freeze([
+  { id: "hub", label: "Báo cáo", hash: "#/reports", mainView: "reports", reportWorkspace: "hub", capability: "manager", panelId: "reportsHubPanel" },
+  { id: "summary", label: "Tổng hợp quản trị", hash: "#/reports/summary", mainView: "reports", reportWorkspace: "summary", capability: "manager", panelId: "reportSummaryPanel" },
+  { id: "sales", label: "Hoạt động Sale", hash: "#/reports/sales", mainView: "reports", reportWorkspace: "sales", capability: "manager", panelId: "reportSalesPanel" },
+  { id: "customers", label: "Khách hàng & kênh", hash: "#/reports/customers", mainView: "reports", reportWorkspace: "customers", capability: "manager", panelId: "reportCustomersPanel" }
+]);
+
 export const CRM_HASH_ROUTES = Object.freeze(Object.fromEntries([
   ...CRM_NAV_ITEMS.filter(item => item.hash).map(item => [item.hash, item]),
   ...CUSTOMER_WORKSPACES.map(item => [item.hash, {...item, id: "customers", navId: "customers"}]),
-  ...KPI_WORKSPACES.map(item => [item.hash, {...item, id: "kpi", navId: "kpi"}])
+  ...KPI_WORKSPACES.map(item => [item.hash, {...item, id: "kpi", navId: "kpi"}]),
+  ...REPORT_WORKSPACES.map(item => [item.hash, {...item, id: "reports", navId: "reports"}])
 ]));
 
 export function normalizeWorkspaceHash(hash = "") {
@@ -41,6 +49,7 @@ export function workspaceForHash(hash = "") {
   return CRM_HASH_ROUTES[normalized]
     || (normalized.startsWith("#/customers") ? CRM_HASH_ROUTES["#/customers"]
       : normalized.startsWith("#/kpi") ? CRM_HASH_ROUTES["#/kpi"]
+      : normalized.startsWith("#/reports") ? CRM_HASH_ROUTES["#/reports"]
       : CRM_HASH_ROUTES["#/overview"]);
 }
 

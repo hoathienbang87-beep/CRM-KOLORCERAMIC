@@ -38,7 +38,7 @@ try {
 
   await page.evaluate(() => {
     overviewDashboard.classList.add("hide"); reportsPanel.classList.remove("hide");
-    pipelinePanel.classList.remove("hide");
+    reportCustomersPanel.classList.remove("hide"); pipelinePanel.classList.remove("hide");
   });
   assert.equal(await page.locator("#growthChart").isVisible(), false);
   assert.equal(await page.locator("#channelReportChart").isVisible(), false);

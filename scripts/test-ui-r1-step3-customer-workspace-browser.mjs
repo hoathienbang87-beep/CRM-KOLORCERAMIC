@@ -33,7 +33,7 @@ try {
   for (const width of [1440, 1366, 1180, 768, 390, 360]) {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => showCustomerRoute("#/customers", true));
-    const columns = await page.locator(".customer-action-grid").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length);
+    const columns = await page.locator("#customerHubPanel .customer-action-grid").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length);
     assert.equal(columns, width <= 760 ? 1 : 2, `Customer Hub columns tại ${width}px`);
     assert.equal(await page.locator(".layout>aside.panel").count(), 0);
   }

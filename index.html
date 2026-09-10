@@ -191,18 +191,33 @@
           </section>
         </section>
 
-        <div id="reportsPanel" class="panel hide" style="margin-bottom:14px">
-          <div class="pro-section-title">
-            <h3>Báo cáo</h3>
-            <span id="reportCenterTime" class="muted"></span>
-          </div>
-          <div id="reportCenterGrid" class="executive-grid order-summary-grid"></div>
-          <div class="actions">
-            <button id="reportExportManagementBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
-          </div>
-          <div class="section" style="margin-top:14px">
+        <div id="reportsPanel" class="reports-workspace-root hide" style="margin-bottom:14px">
+          <section id="reportsHubPanel" class="report-workspace panel">
+            <header class="workspace-heading">
+              <h1>Báo cáo</h1>
+              <p>Chọn khu vực báo cáo phù hợp với công việc quản lý.</p>
+            </header>
+            <div id="reportsHubCards" class="customer-action-grid reports-hub-grid"></div>
+          </section>
+          <section id="reportSummaryPanel" class="report-workspace panel hide">
+            <button type="button" class="workspace-back" data-report-route="#/reports">← Báo cáo</button>
+            <div class="workspace-context"><span>Báo cáo</span><span aria-hidden="true">›</span><b>Tổng hợp quản trị</b></div>
             <div class="pro-section-title">
-              <h3>Hoạt động sale</h3>
+              <h1>Tổng hợp quản trị</h1>
+              <span id="reportCenterTime" class="muted"></span>
+            </div>
+            <p class="workspace-description">Các chỉ số tổng hợp về khách hàng và vận hành hiện tại.</p>
+            <div id="reportCenterGrid" class="executive-grid order-summary-grid"></div>
+            <div class="actions">
+              <button id="reportExportManagementBtn" class="small primary" type="button">Xuất báo cáo quản trị</button>
+            </div>
+          </section>
+          <section id="reportSalesPanel" class="report-workspace panel hide">
+            <button type="button" class="workspace-back" data-report-route="#/reports">← Báo cáo</button>
+            <div class="workspace-context"><span>Báo cáo</span><span aria-hidden="true">›</span><b>Hoạt động Sale</b></div>
+            <div class="section report-inner-section">
+            <div class="pro-section-title">
+              <h1>Hoạt động Sale</h1>
               <button id="reportExportActivityBtn" class="small primary" type="button">Xuất hoạt động sale</button>
             </div>
             <div class="toolbar report-toolbar">
@@ -216,9 +231,16 @@
             <div id="saleActivitySummary" class="table-wrap" style="margin-top:10px"></div>
             <div id="saleActivityTimeline" class="detail-list" style="margin-top:12px"></div>
             <div id="saleActivityPager" class="list-pager"></div>
-          </div>
-          <section class="reports-analysis-section">
-            <div class="table-title">Pipeline khách hàng</div>
+            </div>
+          </section>
+          <section id="reportCustomersPanel" class="report-workspace panel hide">
+            <button type="button" class="workspace-back" data-report-route="#/reports">← Báo cáo</button>
+            <div class="workspace-context"><span>Báo cáo</span><span aria-hidden="true">›</span><b>Khách hàng &amp; kênh</b></div>
+            <div class="pro-section-title">
+              <h1>Khách hàng &amp; kênh</h1>
+              <button type="button" class="small" data-report-route="#/overview">Xem biểu đồ nhanh ở Tổng quan</button>
+            </div>
+            <p class="workspace-description">Phân tích pipeline chi tiết trong phạm vi khách hàng được phân quyền.</p>
             <div id="pipelinePanel" class="panel manager-only hide" style="margin-bottom:14px">
           <div class="pro-section-title">
             <h3>Pipeline bán hàng</h3>

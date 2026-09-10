@@ -1,5 +1,5 @@
 import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
-import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
+import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, REPORT_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
   db,
@@ -145,6 +145,7 @@ let scopedSnapshots = {customers:{}, careLogs:{}, deals:{}, customerAssignments:
 let presenceTimer = null;
 let channelReportHitAreas = [];
 let activeMainView = "crm";
+let activeReportWorkspace = "hub";
 let activeCustomerWorkspace = "hub";
 let activeKpiWorkspace = "hub";
 let activeChannelQuickFilter = "";
@@ -475,7 +476,7 @@ function resolveWorkspaceRoute({replaceInvalid = true} = {}) {
   if (replaceInvalid && window.location.hash !== item.hash) {
     window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
   }
-  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace, kpiWorkspace:item.kpiWorkspace});
+  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace, kpiWorkspace:item.kpiWorkspace, reportWorkspace:item.reportWorkspace});
   updateNavigationUi(item);
   return item;
 }
@@ -499,7 +500,7 @@ function navigateToWorkspace(target, {replace = false} = {}) {
     const method = replace ? "replaceState" : "pushState";
     window.history[method]({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
   }
-  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace, kpiWorkspace:item.kpiWorkspace});
+  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace, kpiWorkspace:item.kpiWorkspace, reportWorkspace:item.reportWorkspace});
   updateNavigationUi(item);
   setMobileNavigationOpen(false);
   return item;
@@ -2543,10 +2544,11 @@ function renderKpiHub() {
   target.innerHTML = cards.map(([title, description, route, status]) => `<button type="button" class="customer-action-card kpi-hub-card" data-kpi-route="${esc(route)}"><b>${esc(title)}</b><span>${esc(description)}</span><small>${esc(status)}</small></button>`).join("");
 }
 
-function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorkspace = null} = {}) {
+function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorkspace = null, reportWorkspace = null} = {}) {
   const previousMainView = activeMainView;
   const previousCustomerWorkspace = activeCustomerWorkspace;
   const previousKpiWorkspace = activeKpiWorkspace;
+  const previousReportWorkspace = activeReportWorkspace;
   activeMainView = ["customers","kpi","reports","admin","products"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
@@ -2561,7 +2563,8 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
     const requestedKpiWorkspace = kpiWorkspace || activeKpiWorkspace || "hub";
     activeKpiWorkspace = KPI_WORKSPACES.some(item => item.kpiWorkspace === requestedKpiWorkspace && canUseNavItem(item)) ? requestedKpiWorkspace : "hub";
   }
-  if (previousMainView !== activeMainView || (isCustomerView && previousCustomerWorkspace !== activeCustomerWorkspace) || (isKpiView && previousKpiWorkspace !== activeKpiWorkspace)) closeDrawer();
+  if (isReportsView) activeReportWorkspace = REPORT_WORKSPACES.some(item => item.reportWorkspace === reportWorkspace) ? reportWorkspace : activeReportWorkspace || "hub";
+  if (previousMainView !== activeMainView || (isCustomerView && previousCustomerWorkspace !== activeCustomerWorkspace) || (isKpiView && previousKpiWorkspace !== activeKpiWorkspace) || (isReportsView && previousReportWorkspace !== activeReportWorkspace)) closeDrawer();
   crmViewIds.forEach(id => {
     if (isOtherView) $(id)?.classList.add("hide");
   });
@@ -2581,7 +2584,14 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   applyCustomerWorkspaceVisibility(isCustomerView);
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
-  $("pipelinePanel")?.classList.toggle("hide", !isReportsView || !isManager());
+  REPORT_WORKSPACES.forEach(workspace => {
+    const panel = $(workspace.panelId);
+    const visible = isReportsView && activeReportWorkspace === workspace.reportWorkspace;
+    panel?.classList.toggle("hide", !visible);
+    panel?.toggleAttribute("inert", !visible);
+    panel?.setAttribute("aria-hidden", String(!visible));
+  });
+  $("pipelinePanel")?.classList.toggle("hide", !isReportsView || activeReportWorkspace !== "customers" || !isManager());
   $("kpiHubPanel")?.classList.toggle("hide", !isKpiView || activeKpiWorkspace !== "hub");
   $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager() || !["team","history"].includes(activeKpiWorkspace));
   $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView || !isSale() || activeKpiWorkspace !== "mine");
@@ -2616,8 +2626,10 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
     }
   }
   if (isReportsView) {
-    renderReportCenter();
-    renderPipelineReport();
+    if (activeReportWorkspace === "hub") renderReportsHub();
+    if (activeReportWorkspace === "summary") renderReportCenter();
+    if (activeReportWorkspace === "sales") renderSaleActivityReport();
+    if (activeReportWorkspace === "customers") renderPipelineReport();
   }
   if (isAdminView) {
     renderHealthCheck();
@@ -2629,6 +2641,7 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   const workspace = isCustomerView
     ? CUSTOMER_WORKSPACES.find(item => item.customerWorkspace === activeCustomerWorkspace)
     : isKpiView ? KPI_WORKSPACES.find(item => item.kpiWorkspace === activeKpiWorkspace)
+    : isReportsView ? REPORT_WORKSPACES.find(item => item.reportWorkspace === activeReportWorkspace)
     : workspaceByMainView(activeMainView) || CRM_HASH_ROUTES["#/overview"];
   if (syncHash && canUseNavItem(workspace) && !isAdminRoute() && window.location.hash !== workspace.hash) {
     window.history.pushState({}, "", `${window.location.pathname}${window.location.search}${workspace.hash}`);
@@ -7858,7 +7871,17 @@ function renderReportCenter() {
       <b>${esc(value)}</b>
     </div>
   `;}).join("");
-  renderSaleActivityReport();
+}
+
+function renderReportsHub() {
+  const target = $("reportsHubCards");
+  if (!target || !isManager()) return;
+  const cards = [
+    ["Tổng hợp quản trị", "Xem các chỉ số tổng hợp và tình hình vận hành.", "#/reports/summary"],
+    ["Hoạt động Sale", "Theo dõi hoạt động và hiệu suất làm việc của đội Sale.", "#/reports/sales"],
+    ["Khách hàng & kênh", "Phân tích khách hàng, pipeline và nguồn/kênh.", "#/reports/customers"]
+  ];
+  target.innerHTML = cards.map(([title, description, route]) => `<button type="button" class="customer-action-card report-hub-card" data-report-route="${esc(route)}"><b>${esc(title)}</b><span>${esc(description)}</span></button>`).join("");
 }
 
 function hydrateErpReportFilters() {
@@ -8599,6 +8622,7 @@ function showApp() {
   activeMainView = workspace.mainView;
   activeCustomerWorkspace = workspace.customerWorkspace || "hub";
   activeKpiWorkspace = workspace.kpiWorkspace || "hub";
+  activeReportWorkspace = workspace.reportWorkspace || "hub";
   hydrateSelects();
   renderAll();
   updateNavigationUi(workspace);
@@ -8705,6 +8729,7 @@ document.addEventListener("click", e => {
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   const overviewRoute = e.target.closest("[data-overview-route]")?.dataset.overviewRoute;
   const kpiRoute = e.target.closest("[data-kpi-route]")?.dataset.kpiRoute;
+  const reportRoute = e.target.closest("[data-report-route]")?.dataset.reportRoute;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
@@ -8715,6 +8740,7 @@ document.addEventListener("click", e => {
     closeDrawer();
     navigateToWorkspace(kpiRoute);
   }
+  if (reportRoute) navigateToWorkspace(reportRoute);
   if (customerWorkspaceHash) {
     closeDrawer();
     navigateToWorkspace(customerWorkspaceHash);

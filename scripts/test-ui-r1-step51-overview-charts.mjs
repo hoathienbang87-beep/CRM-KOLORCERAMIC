@@ -11,7 +11,7 @@ assert.match(overview, /id="overviewCustomerCharts"[\s\S]*?Tổng quan khách h�
 assert.match(overview, /Khách hàng theo kênh[\s\S]*?id="channelReportChart"[\s\S]*?Tăng trưởng khách hàng theo tháng[\s\S]*?id="growthChart"/);
 for (const id of ["growthChart", "channelReportChart"]) assert.equal((html.match(new RegExp(`id="${id}"`, "g")) || []).length, 1);
 assert.doesNotMatch(reports, /id="growthChart"|id="channelReportChart"|class="chart-grid"/);
-assert.match(reports, /Pipeline khách hàng[\s\S]*?id="pipelinePanel"/);
+assert.match(reports, /Khách hàng &amp; kênh[\s\S]*?id="pipelinePanel"/);
 assert.match(app, /customers\.filter\(canSeeCustomer\)[\s\S]*?canonicalChannel\(c\.channel, labels\)/);
 assert.match(app, /rowsByLabel\[ch\]\.push\(c\)/);
 assert.match(app, /customers: rowsByLabel\[label\] \|\| \[\]/);
