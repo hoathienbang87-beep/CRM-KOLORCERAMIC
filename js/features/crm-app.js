@@ -2504,6 +2504,7 @@ function renderCrmView() {
   renderOverviewAttention();
   renderOverviewPipelineCompact();
   renderTodayCare();
+  requestChartRender();
 }
 
 function setCustomerPanelHidden(id, hidden) {
@@ -2579,7 +2580,7 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   }
   applyCustomerWorkspaceVisibility(isCustomerView);
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
-  document.querySelector(".chart-grid")?.classList.toggle("hide", !isReportsView);
+  document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
   $("pipelinePanel")?.classList.toggle("hide", !isReportsView || !isManager());
   $("kpiHubPanel")?.classList.toggle("hide", !isKpiView || activeKpiWorkspace !== "hub");
   $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager() || !["team","history"].includes(activeKpiWorkspace));
@@ -2617,7 +2618,6 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   if (isReportsView) {
     renderReportCenter();
     renderPipelineReport();
-    requestChartRender();
   }
   if (isAdminView) {
     renderHealthCheck();
@@ -2832,6 +2832,14 @@ function renderChart() {
     ctx.fillText(String(v), x-4, y-10);
     ctx.fillStyle = "#147a68";
   });
+  if (!counts.some(Boolean)) {
+    ctx.clearRect(0,0,w,h);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#64748b";
+    ctx.font = "13px Arial";
+    ctx.fillText("Chưa có dữ liệu khách hàng trong năm nay.", w / 2, h / 2);
+    ctx.textAlign = "left";
+  }
   return true;
 }
 
@@ -2980,13 +2988,13 @@ function renderChannelReportChart() {
     const centerY = padT + rowH * i + rowH / 2;
     const y = centerY - barH / 2;
     const bw = Math.max(value > 0 ? 2 : 0, innerW * (value / max));
-    channelReportHitAreas.push({
+    if (value > 0) channelReportHitAreas.push({
       label,
       value,
       customers: rowsByLabel[label] || [],
       x: padL,
       y: centerY - Math.max(barH, 28) / 2,
-      w: Math.max(bw + 36, innerW),
+      w: Math.min(innerW, bw + 36),
       h: Math.max(barH, 28)
     });
     ctx.textAlign = "right";
@@ -3366,8 +3374,8 @@ function openChannelReportDetail(area) {
   if (!area) return;
   const rows = [...(area.customers || [])].sort(byDateDesc);
   openDetailModal(
-    `Chi tiết kênh: ${area.label}`,
-    `${rows.length} khách trong bộ lọc báo cáo hiện tại`,
+    `Khách hàng theo kênh: ${area.label}`,
+    `${rows.length} khách hàng trong bộ lọc hiện tại`,
     customerDetailRows(rows)
   );
 }
@@ -8955,6 +8963,7 @@ on("sidebarLogoutBtn", "click", async () => {
 });
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
+    if (!$('detailModal')?.classList.contains("hide")) return closeDetailModal();
     if (!$("productDrawer")?.classList.contains("hide")) return closeProductDrawer();
     if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) return closeKpiTeamAssign();
     if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) return closeKpiTeamEmployee();

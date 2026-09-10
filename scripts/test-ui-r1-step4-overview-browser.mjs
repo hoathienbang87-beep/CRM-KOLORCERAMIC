@@ -23,7 +23,8 @@ try {
   for (const width of [1440, 1366, 1180, 768, 390, 360]) {
     await page.setViewportSize({ width, height: width === 1366 ? 768 : 900 });
     assert.equal(await page.locator("#overviewDashboard").isVisible(), true);
-    assert.equal(await page.locator("#growthChart").isVisible(), false, "chart chi tiết không hiện ở Overview");
+    assert.equal(await page.locator("#growthChart").isVisible(), true, "chart tăng trưởng phải hiện ở Overview");
+    assert.equal(await page.locator("#channelReportChart").isVisible(), true, "chart kênh phải hiện ở Overview");
     assert.equal(await page.locator("#needCarePanel").isVisible(), false, "full care list không hiện ở Overview");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 1, `Overview không tràn ngang tại ${width}px`);
@@ -37,10 +38,10 @@ try {
 
   await page.evaluate(() => {
     overviewDashboard.classList.add("hide"); reportsPanel.classList.remove("hide");
-    document.querySelector(".chart-grid").classList.remove("hide"); pipelinePanel.classList.remove("hide");
+    pipelinePanel.classList.remove("hide");
   });
-  assert.equal(await page.locator("#growthChart").isVisible(), true);
-  assert.equal(await page.locator("#channelReportChart").isVisible(), true);
+  assert.equal(await page.locator("#growthChart").isVisible(), false);
+  assert.equal(await page.locator("#channelReportChart").isVisible(), false);
   assert.equal(await page.locator("#pipelinePanel").isVisible(), true);
 
   console.log("PASS CRM-UI-R1 STEP4 browser fixture: roles/zero-state/responsive/report relocation");

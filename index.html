@@ -158,6 +158,37 @@
             </div>
             <div id="overviewPipelineCompact" class="overview-pipeline-compact"></div>
           </section>
+          <section id="overviewCustomerCharts" class="overview-customer-charts" aria-labelledby="overviewCustomerChartsTitle">
+            <div class="overview-section-heading">
+              <h2 id="overviewCustomerChartsTitle">Tổng quan khách hàng</h2>
+            </div>
+            <div class="chart-grid">
+              <div class="panel">
+                <div class="pro-section-title">
+                  <h3>Khách hàng theo kênh</h3>
+                  <div class="channel-report-controls">
+                    <select id="channelReportRange" aria-label="Khoảng thời gian khách hàng theo kênh">
+                      <option value="week">Tuần này</option>
+                      <option value="month">Tháng này</option>
+                      <option value="year" selected>Năm nay</option>
+                      <option value="custom">Tùy chọn</option>
+                    </select>
+                    <div id="channelReportCustomRange" class="channel-date-range hide">
+                      <input id="channelReportStartDate" type="date" aria-label="Ngày bắt đầu báo cáo kênh chi tiết">
+                      <span>đến</span>
+                      <input id="channelReportEndDate" type="date" aria-label="Ngày kết thúc báo cáo kênh chi tiết">
+                    </div>
+                    <button id="resetChannelReportFilterBtn" class="small" type="button">Xóa lọc</button>
+                  </div>
+                </div>
+                <div class="chart-wrap channel-chart-wrap"><canvas id="channelReportChart" aria-label="Biểu đồ khách hàng theo kênh"></canvas></div>
+              </div>
+              <div class="panel">
+                <h3>Tăng trưởng khách hàng theo tháng</h3>
+                <div class="chart-wrap"><canvas id="growthChart" aria-label="Biểu đồ tăng trưởng khách hàng theo tháng"></canvas></div>
+              </div>
+            </div>
+          </section>
         </section>
 
         <div id="reportsPanel" class="panel hide" style="margin-bottom:14px">
@@ -187,7 +218,7 @@
             <div id="saleActivityPager" class="list-pager"></div>
           </div>
           <section class="reports-analysis-section">
-            <div class="table-title">Phân tích khách hàng</div>
+            <div class="table-title">Pipeline khách hàng</div>
             <div id="pipelinePanel" class="panel manager-only hide" style="margin-bottom:14px">
           <div class="pro-section-title">
             <h3>Pipeline bán hàng</h3>
@@ -195,33 +226,6 @@
           </div>
           <div id="pipelineGrid" class="pipeline-grid"></div>
             </div>
-            <div class="chart-grid">
-          <div class="panel">
-            <h3>Tăng trưởng khách hàng</h3>
-            <div class="chart-wrap"><canvas id="growthChart"></canvas></div>
-          </div>
-          <div class="panel">
-            <div class="pro-section-title">
-              <h3>Báo cáo theo kênh chi tiết</h3>
-              <div class="channel-report-controls">
-                <select id="channelReportRange">
-                  <option value="week">Tuần này</option>
-                  <option value="month">Tháng này</option>
-                  <option value="year" selected>Năm nay</option>
-                  <option value="custom">Tùy chọn</option>
-                </select>
-                <div id="channelReportCustomRange" class="channel-date-range hide">
-                  <input id="channelReportStartDate" type="date" aria-label="Ngày bắt đầu báo cáo kênh chi tiết">
-                  <span>đến</span>
-                  <input id="channelReportEndDate" type="date" aria-label="Ngày kết thúc báo cáo kênh chi tiết">
-                </div>
-                <button id="resetChannelReportFilterBtn" class="small" type="button">Xóa lọc</button>
-              </div>
-            </div>
-            <div class="chart-wrap channel-chart-wrap"><canvas id="channelReportChart"></canvas></div>
-          </div>
-        </div>
-
           </section>
         </div>
 
@@ -960,7 +964,7 @@
   </aside>
 
   <div id="detailModalBackdrop" class="drawer-backdrop hide"></div>
-  <aside id="detailModal" class="drawer detail-modal hide">
+  <aside id="detailModal" class="drawer detail-modal hide" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
     <div class="drawer-head">
       <div>
         <h2 id="detailModalTitle" style="margin:0">Chi tiết</h2>

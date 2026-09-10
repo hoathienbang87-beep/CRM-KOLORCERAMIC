@@ -73,6 +73,8 @@
     .overview-pipeline-compact>div{border:1px solid #dbe7f4;border-radius:8px;padding:11px;background:#f8fbff;display:flex;justify-content:space-between;gap:8px}
     .overview-pipeline-compact span{color:var(--muted);font-weight:700}
     .overview-pipeline-compact b{font-size:18px}
+    .overview-customer-charts{display:grid;gap:10px}
+    .overview-section-heading h2{margin:4px 0 0;font-size:21px;color:#061633}
     .reports-analysis-section{margin-top:18px;padding-top:16px;border-top:1px solid #dbe7f4}
     .overview-more{padding:9px 0 0}
     .panel{background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:16px;box-shadow:0 6px 20px rgba(15,23,42,.04)}

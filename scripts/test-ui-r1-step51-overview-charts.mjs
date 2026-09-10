@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const root = new URL("../", import.meta.url);
+const html = await readFile(new URL("index.html", root), "utf8");
+const app = await readFile(new URL("js/features/crm-app.js", root), "utf8");
+
+const overview = html.slice(html.indexOf('id="overviewDashboard"'), html.indexOf('id="reportsPanel"'));
+const reports = html.slice(html.indexOf('id="reportsPanel"'), html.indexOf('id="productsPanel"'));
+assert.match(overview, /id="overviewCustomerCharts"[\s\S]*?Tổng quan khách hàng/);
+assert.match(overview, /Khách hàng theo kênh[\s\S]*?id="channelReportChart"[\s\S]*?Tăng trưởng khách hàng theo tháng[\s\S]*?id="growthChart"/);
+for (const id of ["growthChart", "channelReportChart"]) assert.equal((html.match(new RegExp(`id="${id}"`, "g")) || []).length, 1);
+assert.doesNotMatch(reports, /id="growthChart"|id="channelReportChart"|class="chart-grid"/);
+assert.match(reports, /Pipeline khách hàng[\s\S]*?id="pipelinePanel"/);
+assert.match(app, /customers\.filter\(canSeeCustomer\)[\s\S]*?canonicalChannel\(c\.channel, labels\)/);
+assert.match(app, /rowsByLabel\[ch\]\.push\(c\)/);
+assert.match(app, /customers: rowsByLabel\[label\] \|\| \[\]/);
+assert.match(app, /if \(value > 0\) channelReportHitAreas\.push/);
+assert.match(app, /channelReportHitAreas\.find\(item =>[\s\S]*?x >= item\.x[\s\S]*?y >= item\.y/);
+assert.match(app, /if \(area\) openChannelReportDetail\(area\)/);
+assert.match(app, /`Khách hàng theo kênh: \$\{area\.label\}`/);
+assert.match(app, /customerDetailRows\(rows\)/);
+assert.match(app, /data-open-care/);
+assert.match(app, /const counts = Array\(12\)\.fill\(0\)[\s\S]*?d\.getFullYear\(\) === year[\s\S]*?counts\[d\.getMonth\(\)\]\+\+/);
+assert.match(app, /Chưa có dữ liệu khách hàng trong năm nay/);
+assert.match(app.match(/function renderCrmView\(\)[\s\S]*?\n}\n/)[0], /requestChartRender\(\)/);
+assert.doesNotMatch(overview, /id="needCarePanel"|id="careWorkSummary"|id="pipelinePanel"/);
+assert.match(html, /id="detailModal"[^>]*role="dialog"[^>]*aria-modal="true"/);
+assert.match(app, /event\.key === "Escape"[\s\S]*?detailModal[\s\S]*?closeDetailModal/);
+console.log("PASS CRM-UI-R1 STEP5.1 overview chart contracts");

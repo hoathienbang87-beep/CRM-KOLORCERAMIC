@@ -17,13 +17,13 @@ assert.equal((html.match(/id="pipelinePanel"/g) || []).length, 1);
 const overviewStart = html.indexOf('id="overviewDashboard"');
 const reportsStart = html.indexOf('id="reportsPanel"');
 const productsStart = html.indexOf('id="productsPanel"');
-for (const id of ["pipelinePanel", "growthChart", "channelReportChart"]) {
+for (const id of ["growthChart", "channelReportChart"]) {
   const offset = html.indexOf(`id="${id}"`);
-  assert.ok(offset > reportsStart && offset < productsStart, `${id} phải nằm trong Reports, không nằm Overview`);
-  assert.ok(offset > overviewStart, `${id} phải còn nguyên node`);
+  assert.ok(offset > overviewStart && offset < reportsStart, `${id} phải nằm trong Overview`);
 }
+assert.ok(html.indexOf('id="pipelinePanel"') > reportsStart && html.indexOf('id="pipelinePanel"') < productsStart, "pipelinePanel phải nằm trong Reports");
 assert.ok(html.indexOf('id="needCarePanel"') > productsStart, "Full Care panel không được nằm trong Overview");
-assert.doesNotMatch(html.slice(overviewStart, reportsStart), /id="careWorkSummary"|id="needCareList"|id="growthChart"|id="channelReportChart"/);
+assert.doesNotMatch(html.slice(overviewStart, reportsStart), /id="careWorkSummary"|id="needCareList"/);
 assert.doesNotMatch(html.slice(overviewStart, reportsStart), /id="userAdminPanel"|id="dropdownSettingsPanel"|id="auditPanel"/);
 assert.doesNotMatch(html, /<aside class="panel">\s*<h2>Thêm khách mới/);
 
@@ -37,7 +37,8 @@ assert.match(app, /if \(overviewRoute\) navigateToWorkspace\(overviewRoute\)/);
 for (const route of ["#/customers/list", "#/customers/care", "#/customers/allocation", "#/kpi", "#/reports"]) {
   assert.ok(shell.CRM_HASH_ROUTES[route], `${route} phải là canonical whitelist route`);
 }
-assert.match(app, /if \(isReportsView\) \{[\s\S]*?renderPipelineReport\(\);[\s\S]*?requestChartRender\(\)/);
+assert.match(app.match(/function renderCrmView\(\)[\s\S]*?\n}\n/)[0], /requestChartRender\(\)/);
+assert.doesNotMatch(app.match(/if \(isReportsView\) \{[\s\S]*?\n  }/)[0], /requestChartRender\(\)/);
 assert.match(css, /\.overview-summary-grid\{display:grid/);
 assert.match(css, /@media\(max-width:760px\)[\s\S]*\.overview-summary-grid[\s\S]*grid-template-columns:1fr/);
 
