@@ -1,5 +1,5 @@
 import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
-import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
+import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
   db,
@@ -146,6 +146,7 @@ let presenceTimer = null;
 let channelReportHitAreas = [];
 let activeMainView = "crm";
 let activeCustomerWorkspace = "hub";
+let activeKpiWorkspace = "hub";
 let activeChannelQuickFilter = "";
 let editingDealId = "";
 let editingQuoteId = "";
@@ -423,6 +424,7 @@ function goToRoute(path) {
 
 const workspaceByMainView = view => CRM_NAV_ITEMS.find(item => item.mainView === view);
 const canUseNavItem = item => item?.capability === "crm"
+  || (item?.capability === "sale" && isSale())
   || (item?.capability === "manager" && isManager())
   || (item?.capability === "admin" && canAccessAdminPanel());
 
@@ -463,6 +465,7 @@ function authorizedWorkspaceForHash(hash = window.location.hash) {
   const normalized = normalizeWorkspaceHash(hash);
   const item = workspaceForHash(normalized);
   if (item.mainView === "customers" && !canUseNavItem(item)) return CRM_HASH_ROUTES["#/customers"];
+  if (item.mainView === "kpi" && !canUseNavItem(item)) return CRM_HASH_ROUTES["#/kpi"];
   return canUseNavItem(item) ? item : CRM_HASH_ROUTES["#/overview"];
 }
 
@@ -472,7 +475,7 @@ function resolveWorkspaceRoute({replaceInvalid = true} = {}) {
   if (replaceInvalid && window.location.hash !== item.hash) {
     window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
   }
-  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace});
+  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace, kpiWorkspace:item.kpiWorkspace});
   updateNavigationUi(item);
   return item;
 }
@@ -496,7 +499,7 @@ function navigateToWorkspace(target, {replace = false} = {}) {
     const method = replace ? "replaceState" : "pushState";
     window.history[method]({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
   }
-  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace});
+  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace, kpiWorkspace:item.kpiWorkspace});
   updateNavigationUi(item);
   setMobileNavigationOpen(false);
   return item;
@@ -2492,7 +2495,7 @@ function updateCareStatusVisual() {
 const crmViewIds = ["overviewDashboard"];
 const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
 const customerViewIds = CUSTOMER_WORKSPACES.map(workspace => workspace.panelId);
-const kpiViewIds = ["kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
+const kpiViewIds = ["kpiHubPanel","kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
 const reportsViewIds = ["reportsPanel"];
 const productsViewIds = ["productsPanel"];
 
@@ -2525,9 +2528,24 @@ function applyCustomerWorkspaceVisibility(isCustomerView) {
   });
 }
 
-function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
+function renderKpiHub() {
+  const target = $("kpiHubCards");
+  if (!target) return;
+  const noPeriod = !kpiPeriods.length;
+  const cards = isSale()
+    ? [["KPI của tôi", "Theo dõi tiến độ KPI và gửi kết quả thực hiện.", "#/kpi/mine", noPeriod ? "Chưa có kỳ KPI đang hoạt động" : "Xem KPI hiện tại"]]
+    : [
+        ["KPI Team", "Theo dõi KPI nhân viên và duyệt kết quả.", "#/kpi/team", noPeriod ? "Chưa có kỳ đang hoạt động" : "Mở KPI Team"],
+        ["Bộ KPI & Kỳ KPI", "Quản lý kỳ KPI, bộ KPI và phân công cho nhân viên.", "#/kpi/library", `${kpiDefinitions.length} mục · ${noPeriod ? "Chưa có kỳ" : `${kpiPeriods.length} kỳ`}`],
+        ["Lịch sử KPI", "Xem các kỳ, thay đổi cấu hình và lịch sử KPI.", "#/kpi/history", noPeriod ? "Chưa có lịch sử kỳ" : "Xem lịch sử"]
+      ];
+  target.innerHTML = cards.map(([title, description, route, status]) => `<button type="button" class="customer-action-card kpi-hub-card" data-kpi-route="${esc(route)}"><b>${esc(title)}</b><span>${esc(description)}</span><small>${esc(status)}</small></button>`).join("");
+}
+
+function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorkspace = null} = {}) {
   const previousMainView = activeMainView;
   const previousCustomerWorkspace = activeCustomerWorkspace;
+  const previousKpiWorkspace = activeKpiWorkspace;
   activeMainView = ["customers","kpi","reports","admin","products"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
@@ -2538,7 +2556,11 @@ function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
   const isProductsView = activeMainView === "products";
   const isOtherView = isCustomerView || isKpiView || isReportsView || isAdminView || isProductsView;
   if (isCustomerView) activeCustomerWorkspace = CUSTOMER_WORKSPACES.some(item => item.customerWorkspace === customerWorkspace) ? customerWorkspace : activeCustomerWorkspace || "hub";
-  if (previousMainView !== activeMainView || (isCustomerView && previousCustomerWorkspace !== activeCustomerWorkspace)) closeDrawer();
+  if (isKpiView) {
+    const requestedKpiWorkspace = kpiWorkspace || activeKpiWorkspace || "hub";
+    activeKpiWorkspace = KPI_WORKSPACES.some(item => item.kpiWorkspace === requestedKpiWorkspace && canUseNavItem(item)) ? requestedKpiWorkspace : "hub";
+  }
+  if (previousMainView !== activeMainView || (isCustomerView && previousCustomerWorkspace !== activeCustomerWorkspace) || (isKpiView && previousKpiWorkspace !== activeKpiWorkspace)) closeDrawer();
   crmViewIds.forEach(id => {
     if (isOtherView) $(id)?.classList.add("hide");
   });
@@ -2559,9 +2581,10 @@ function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", !isReportsView);
   $("pipelinePanel")?.classList.toggle("hide", !isReportsView || !isManager());
-  $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager());
-  $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView || isManager());
-  $("kpiFoundationPanel")?.classList.add("hide");
+  $("kpiHubPanel")?.classList.toggle("hide", !isKpiView || activeKpiWorkspace !== "hub");
+  $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager() || !["team","history"].includes(activeKpiWorkspace));
+  $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView || !isSale() || activeKpiWorkspace !== "mine");
+  $("kpiFoundationPanel")?.classList.toggle("hide", !isKpiView || !isManager() || activeKpiWorkspace !== "library");
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
   $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
   $("reportsViewBtn")?.classList.toggle("hide", !isManager());
@@ -2579,16 +2602,17 @@ function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
   }
   if (isProductsView) renderProducts();
   if (isKpiView) {
-    if (isManager()) {
+    renderKpiHub();
+    if (isManager() && ["team","history"].includes(activeKpiWorkspace)) {
+      kpiTeamState.activeMode = activeKpiWorkspace === "history" ? "history" : "employees";
       renderKpiTeamShell();
       reloadKpiTeamSummary().catch(err => notice("Lỗi tải KPI Team: " + authMessage(err), true));
-      if (kpiTeamState.activeMode === "library") {
-        renderKpiFoundation();
-      }
-    } else {
+    } else if (isManager() && activeKpiWorkspace === "library") {
+      kpiTeamState.activeMode = "library";
+      renderKpiFoundation();
+    } else if (isSale() && activeKpiWorkspace === "mine") {
       reloadKpi2Data().catch(err => notice("Lỗi tải KPI mới: " + authMessage(err), true));
     }
-    applyKpiManagerModeVisibility();
   }
   if (isReportsView) {
     renderReportCenter();
@@ -2604,6 +2628,7 @@ function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
   }
   const workspace = isCustomerView
     ? CUSTOMER_WORKSPACES.find(item => item.customerWorkspace === activeCustomerWorkspace)
+    : isKpiView ? KPI_WORKSPACES.find(item => item.kpiWorkspace === activeKpiWorkspace)
     : workspaceByMainView(activeMainView) || CRM_HASH_ROUTES["#/overview"];
   if (syncHash && canUseNavItem(workspace) && !isAdminRoute() && window.location.hash !== workspace.hash) {
     window.history.pushState({}, "", `${window.location.pathname}${window.location.search}${workspace.hash}`);
@@ -3333,7 +3358,7 @@ async function snoozeTask(customerId, days=1) {
 
 function jumpToPendingKpi() {
   if (!isManager()) return;
-  setMainView("kpi");
+  navigateToWorkspace("#/kpi/team");
   loadKpiTeamGlobalQueue({force:true}).catch(err => notice("Không tải được KPI cần duyệt: " + authMessage(err), true));
 }
 
@@ -4536,24 +4561,25 @@ function kpiTeamSkeleton(count = 4) {
 
 function setKpiTeamMode(mode) {
   if (!isManager()) return;
-  kpiTeamState.activeMode = ["library", "history"].includes(mode) ? mode : "employees";
+  const route = mode === "library" ? "#/kpi/library" : mode === "history" ? "#/kpi/history" : "#/kpi/team";
   kpiTeamState.globalQueueOpen = false;
-  renderKpiTeamShell();
-  applyKpiManagerModeVisibility();
-  if (kpiTeamState.activeMode === "library") {
-    renderKpiFoundation();
-  }
+  navigateToWorkspace(route);
 }
 
 function applyKpiManagerModeVisibility() {
   if (!isManager() || activeMainView !== "kpi") return;
-  const library = kpiTeamState.activeMode === "library";
-  $("kpiFoundationPanel")?.classList.toggle("hide", !library);
+  $("kpiTeamPanel")?.classList.toggle("hide", !["team","history"].includes(activeKpiWorkspace));
+  $("kpiFoundationPanel")?.classList.toggle("hide", activeKpiWorkspace !== "library");
   $("kpi2OperationsPanel")?.classList.add("hide");
 }
 
 function renderKpiTeamShell() {
   if (!isManager() || !$("kpiTeamPanel")) return;
+  const historyMode = kpiTeamState.activeMode === "history";
+  if ($("kpiTeamHeading")) $("kpiTeamHeading").textContent = historyMode ? "Lịch sử KPI" : "KPI Team";
+  if ($("kpiTeamDescription")) $("kpiTeamDescription").textContent = historyMode ? "Xem các kỳ, kết quả và thay đổi cấu hình KPI." : "Theo dõi KPI nhân viên và duyệt kết quả.";
+  const contextLabel = $("kpiTeamContext")?.querySelector("b");
+  if (contextLabel) contextLabel.textContent = historyMode ? "Lịch sử KPI" : "KPI Team";
   const period = ensureKpiTeamPeriod();
   const periodSelect = $("kpiTeamPeriod");
   if (periodSelect) {
@@ -4615,7 +4641,7 @@ function renderKpiTeamEmployeeList() {
     ? `${rows.length}/${allRows.length} nhân viên · ${kpi1PeriodLabel(period)} · ${clean(period.status).toUpperCase()}`
     : "Chưa có kỳ KPI.";
   if (!period) {
-    target.innerHTML = `<div class="kpi-team-empty"><b>Chưa có kỳ KPI để theo dõi.</b><span>Hãy mở Bộ KPI để tạo kỳ mới.</span><button class="small primary" type="button" data-kpi-team-mode="library">Mở Bộ KPI</button></div>`;
+    target.innerHTML = `<div class="kpi-team-empty"><b>Chưa có kỳ KPI đang hoạt động.</b><span>Hãy mở Bộ KPI & Kỳ KPI để tạo kỳ mới.</span><button class="small primary" type="button" data-kpi-route="#/kpi/library">Mở Bộ KPI & Kỳ KPI</button></div>`;
     return;
   }
   if (!allRows.length) {
@@ -5221,7 +5247,7 @@ function renderKpi2Operations() {
       <div class="metric">${esc(actual)} / ${esc(target)}</div><div class="kpi2-progress-meta"><span class="pill green">Đã duyệt ${esc(actual)}</span><span class="pill orange">Chờ ${esc(pending)}</span>${revision?`<span class="pill red">Bổ sung ${esc(revision)}</span>`:""}</div>
       <div class="muted">Actual ${esc(pct)}% · Score ${esc(score)}%${kpi2Field(row,"scoreEnabled","score_enabled")?"":" · Chỉ tham khảo"}</div>
       ${!isManager()?`<div class="actions"><button class="small primary" type="button" data-kpi2-open-claim="${esc(id)}">Gửi event</button>${revision?`<button class="small" type="button" data-kpi2-open-revision="${esc(id)}">Bổ sung (${esc(revision)})</button>`:""}</div>`:""}</div>`;
-  }).join(""):`<div class="muted">Chưa có KPI ACTIVE được giao.</div>`;
+  }).join(""):`<div class="kpi-team-empty"><b>${kpiPeriods.length ? "Chưa có KPI ACTIVE được giao." : "Chưa có kỳ KPI đang hoạt động."}</b><span>${kpiPeriods.length ? "KPI sẽ xuất hiện khi bạn được phân công." : "Khi quản lý kích hoạt kỳ KPI và phân công cho bạn, KPI sẽ xuất hiện tại đây."}</span></div>`;
   $('kpi2ManagerReviewPanel')?.classList.toggle('hide',!isManager());
   if(isManager()) renderKpi2ReviewQueue();
 }
@@ -8564,6 +8590,7 @@ function showApp() {
   }
   activeMainView = workspace.mainView;
   activeCustomerWorkspace = workspace.customerWorkspace || "hub";
+  activeKpiWorkspace = workspace.kpiWorkspace || "hub";
   hydrateSelects();
   renderAll();
   updateNavigationUi(workspace);
@@ -8669,12 +8696,17 @@ document.addEventListener("click", e => {
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
   const overviewRoute = e.target.closest("[data-overview-route]")?.dataset.overviewRoute;
+  const kpiRoute = e.target.closest("[data-kpi-route]")?.dataset.kpiRoute;
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   const customerWorkspaceHash = e.target.closest("[data-customer-workspace]")?.dataset.customerWorkspace;
   const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
   if (overviewRoute) navigateToWorkspace(overviewRoute);
+  if (kpiRoute) {
+    closeDrawer();
+    navigateToWorkspace(kpiRoute);
+  }
   if (customerWorkspaceHash) {
     closeDrawer();
     navigateToWorkspace(customerWorkspaceHash);
@@ -8888,7 +8920,7 @@ on("kpi2BulkReviewBtn", "click", () => runAction("kpi2BulkReviewBtn", "kpi2Revie
 on("kpi2SelectAllEvents", "change", e => document.querySelectorAll("[data-kpi2-review-event]").forEach(box => box.checked=e.target.checked));
 on("crmViewBtn", "click", () => setMainView("crm"));
 on("customersViewBtn", "click", () => setMainView("customers"));
-on("kpiViewBtn", "click", () => setMainView("kpi"));
+on("kpiViewBtn", "click", () => navigateToWorkspace("#/kpi"));
 on("productsViewBtn", "click", () => setMainView("products"));
 on("reportsViewBtn", "click", () => setMainView("reports"));
 on("adminViewBtn", "click", () => goToRoute("/admin"));

@@ -46,6 +46,14 @@
     .customer-action-card b{font-size:17px}
     .customer-action-card span{color:var(--muted);font-weight:600;line-height:1.45}
     .customer-action-card:hover,.customer-action-card:focus-visible{border-color:#0d9488;background:#f3fbf9;outline:3px solid rgba(13,148,136,.18);outline-offset:2px}
+    .kpi-hub{max-width:1120px;margin:0 auto;display:grid;gap:16px}
+    .kpi-hub-heading h1{margin:0 0 5px;font-size:27px}
+    .kpi-hub-heading p{margin:0;color:var(--muted)}
+    .kpi-hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;max-width:1040px;margin-top:0}
+    .kpi-hub-card{min-height:118px}
+    .kpi-hub-card small{color:var(--brand);font-weight:800}
+    .kpi-workspace-back{margin-bottom:8px;background:#f8fbff;color:#163b73}
+    .legacy-kpi-mode-tabs{display:none!important;pointer-events:none!important}
     .overview-dashboard{max-width:1480px;margin:0 auto;display:grid;gap:14px}
     .overview-heading h1{margin:0 0 5px;font-size:27px;color:#061633}
     .overview-heading p{margin:0;color:var(--muted)}

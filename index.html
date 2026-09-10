@@ -388,21 +388,28 @@
           </div>
           <div id="customerPager" class="list-pager"></div>
         </div>
-
-
+        <section id="kpiHubPanel" class="kpi-hub hide">
+          <header class="kpi-hub-heading">
+            <h1>KPI</h1>
+            <p>Chọn khu vực phù hợp với công việc của bạn.</p>
+          </header>
+          <div id="kpiHubCards" class="kpi-hub-grid"></div>
+        </section>
 
         <div id="kpiTeamPanel" class="panel hide kpi-team-panel" style="margin-top:14px">
+          <button type="button" class="kpi-workspace-back" data-kpi-route="#/kpi">← KPI</button>
+          <div id="kpiTeamContext" class="customer-workspace-context"><span>KPI</span><span aria-hidden="true">›</span><b>KPI Team</b></div>
           <div class="pro-section-title kpi-team-header">
             <div>
-              <h3>KPI Team</h3>
-              <div class="muted">Theo dõi tiến độ và cấu hình KPI theo từng nhân viên.</div>
+              <h3 id="kpiTeamHeading">KPI Team</h3>
+              <div id="kpiTeamDescription" class="muted">Theo dõi tiến độ và cấu hình KPI theo từng nhân viên.</div>
             </div>
             <div class="actions">
               <button id="kpiTeamPendingBtn" class="small" type="button">Cần duyệt (0)</button>
               <button id="kpiTeamReloadBtn" class="small" type="button">Tải lại</button>
             </div>
           </div>
-          <div class="kpi-team-mode-tabs" role="tablist" aria-label="Chế độ KPI Team">
+          <div class="kpi-team-mode-tabs legacy-kpi-mode-tabs hide" aria-hidden="true">
             <button id="kpiTeamEmployeesModeBtn" class="small primary" type="button" role="tab" aria-selected="true" data-kpi-team-mode="employees">Nhân viên</button>
             <button id="kpiTeamLibraryModeBtn" class="small" type="button" role="tab" aria-selected="false" data-kpi-team-mode="library">Bộ KPI</button>
             <button id="kpiTeamHistoryModeBtn" class="small" type="button" role="tab" aria-selected="false" data-kpi-team-mode="history">Lịch sử</button>
@@ -439,9 +446,11 @@
 
 
         <div id="kpiFoundationPanel" class="panel hide" style="margin-top:14px">
+          <button type="button" class="kpi-workspace-back" data-kpi-route="#/kpi">← KPI</button>
+          <div class="customer-workspace-context"><span>KPI</span><span aria-hidden="true">›</span><b>Bộ KPI &amp; Kỳ KPI</b></div>
           <div class="pro-section-title">
             <div>
-              <h3>Kỳ KPI mới</h3>
+              <h3>Bộ KPI &amp; Kỳ KPI</h3>
               <div class="muted">Cấu hình theo tháng, target riêng từng sale và khóa cấu hình khi kích hoạt.</div>
             </div>
             <button id="kpi1ReloadBtn" class="small" type="button">Tải lại</button>
@@ -526,8 +535,10 @@
         </div>
 
         <div id="kpi2OperationsPanel" class="panel hide" style="margin-top:14px">
+          <button type="button" class="kpi-workspace-back" data-kpi-route="#/kpi">← KPI</button>
+          <div class="customer-workspace-context"><span>KPI</span><span aria-hidden="true">›</span><b>KPI của tôi</b></div>
           <div class="pro-section-title">
-            <div><h3>KPI mới · Event claim</h3><div class="muted">Tiến độ chỉ tính event đã được Manager duyệt.</div></div>
+            <div><h3>KPI của tôi</h3><div class="muted">Theo dõi tiến độ KPI và gửi kết quả thực hiện.</div></div>
             <button id="kpi2ReloadBtn" class="small" type="button">Tải lại</button>
           </div>
           <div id="kpi2ProgressRows" class="kpi2-progress-grid"><div class="muted">Chưa có KPI ACTIVE được giao.</div></div>

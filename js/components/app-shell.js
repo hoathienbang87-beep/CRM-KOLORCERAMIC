@@ -15,9 +15,18 @@ export const CUSTOMER_WORKSPACES = Object.freeze([
   { id: "allocation", label: "Phân bổ khách hàng", hash: "#/customers/allocation", mainView: "customers", customerWorkspace: "allocation", capability: "manager", panelId: "customerAllocationPanel" }
 ]);
 
+export const KPI_WORKSPACES = Object.freeze([
+  { id: "hub", label: "KPI", hash: "#/kpi", mainView: "kpi", kpiWorkspace: "hub", capability: "crm", panelId: "kpiHubPanel" },
+  { id: "mine", label: "KPI của tôi", hash: "#/kpi/mine", mainView: "kpi", kpiWorkspace: "mine", capability: "sale", panelId: "kpi2OperationsPanel" },
+  { id: "team", label: "KPI Team", hash: "#/kpi/team", mainView: "kpi", kpiWorkspace: "team", capability: "manager", panelId: "kpiTeamPanel", mode: "employees" },
+  { id: "library", label: "Bộ KPI & Kỳ KPI", hash: "#/kpi/library", mainView: "kpi", kpiWorkspace: "library", capability: "manager", panelId: "kpiFoundationPanel", mode: "library" },
+  { id: "history", label: "Lịch sử KPI", hash: "#/kpi/history", mainView: "kpi", kpiWorkspace: "history", capability: "manager", panelId: "kpiTeamPanel", mode: "history" }
+]);
+
 export const CRM_HASH_ROUTES = Object.freeze(Object.fromEntries([
   ...CRM_NAV_ITEMS.filter(item => item.hash).map(item => [item.hash, item]),
-  ...CUSTOMER_WORKSPACES.map(item => [item.hash, {...item, id: "customers", navId: "customers"}])
+  ...CUSTOMER_WORKSPACES.map(item => [item.hash, {...item, id: "customers", navId: "customers"}]),
+  ...KPI_WORKSPACES.map(item => [item.hash, {...item, id: "kpi", navId: "kpi"}])
 ]));
 
 export function normalizeWorkspaceHash(hash = "") {
@@ -30,7 +39,9 @@ export function normalizeWorkspaceHash(hash = "") {
 export function workspaceForHash(hash = "") {
   const normalized = normalizeWorkspaceHash(hash);
   return CRM_HASH_ROUTES[normalized]
-    || (normalized.startsWith("#/customers") ? CRM_HASH_ROUTES["#/customers"] : CRM_HASH_ROUTES["#/overview"]);
+    || (normalized.startsWith("#/customers") ? CRM_HASH_ROUTES["#/customers"]
+      : normalized.startsWith("#/kpi") ? CRM_HASH_ROUTES["#/kpi"]
+      : CRM_HASH_ROUTES["#/overview"]);
 }
 
 function navMarkup(className) {

@@ -1,0 +1,24 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+import { KPI_WORKSPACES, CRM_HASH_ROUTES, workspaceForHash } from "../js/components/app-shell.js";
+
+const html = fs.readFileSync("index.html", "utf8");
+const js = fs.readFileSync("js/features/crm-app.js", "utf8");
+const ids = ["kpiHubPanel","kpiHubCards","kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
+for (const id of ids) assert.equal((html.match(new RegExp(`id=["']${id}["']`, "g")) || []).length, 1, `${id} phải tồn tại đúng một lần`);
+assert.deepEqual(KPI_WORKSPACES.map(item => item.hash), ["#/kpi","#/kpi/mine","#/kpi/team","#/kpi/library","#/kpi/history"]);
+assert.equal(workspaceForHash("#/kpi/team").mode, "employees");
+assert.equal(workspaceForHash("#/kpi/library").mode, "library");
+assert.equal(workspaceForHash("#/kpi/history").mode, "history");
+assert.equal(workspaceForHash("#/kpi/unknown").hash, "#/kpi");
+assert.equal(CRM_HASH_ROUTES["#/kpi/mine"].capability, "sale");
+for (const hash of ["#/kpi/team","#/kpi/library","#/kpi/history"]) assert.equal(CRM_HASH_ROUTES[hash].capability, "manager");
+assert.match(js, /item\.mainView === "kpi" && !canUseNavItem\(item\).*CRM_HASH_ROUTES\["#\/kpi"\]/);
+assert.match(js, /activeKpiWorkspace === "history" \? "history" : "employees"/);
+assert.match(html, /legacy-kpi-mode-tabs hide[^>]*aria-hidden="true"/);
+assert.match(js, /Chưa có kỳ KPI đang hoạt động/);
+assert.match(js, /\$\{kpiDefinitions\.length\} mục/);
+assert.doesNotMatch(js.match(/function renderKpiHub\(\)[\s\S]*?\n\}/)?.[0] || "", /0%|0\/0|legacy|proposal/i);
+for (const id of ["kpi1CreatePeriodBtn","kpi1SaveDefinitionBtn","kpi1ActivatePeriodBtn","kpi1RevertPeriodBtn","kpi1DeletePeriodR31Btn","kpi1CancelPeriodBtn","kpi2SubmitBtn","kpiTeamPendingBtn"]) assert.match(html, new RegExp(`id="${id}"`), `${id} phải được bảo toàn`);
+assert.match(js, /navigateToWorkspace\(kpiRoute\)/);
+console.log("PASS CRM-UI-R1 STEP5 KPI workspace contracts");
