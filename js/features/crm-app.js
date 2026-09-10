@@ -2733,7 +2733,11 @@ function renderOverviewPipelineCompact() {
   if (!panel) return;
   panel.classList.toggle("hide", !isManager());
   if (!isManager()) return;
-  const data = pipelineReportData().slice(0, 4);
+  const allStages = pipelineReportData();
+  const data = allStages.slice(0, 4);
+  if ($("overviewPipelineContext")) {
+    $("overviewPipelineContext").textContent = allStages.length ? `${data.length}/${allStages.length} trạng thái chính` : "";
+  }
   $("overviewPipelineCompact").innerHTML = data.length
     ? data.map(item => `<div><span>${esc(item.label)}</span><b>${esc(item.count)}</b></div>`).join("")
     : `<div class="overview-empty">Chưa có dữ liệu pipeline.</div>`;
@@ -2761,15 +2765,20 @@ function renderPipelineReport() {
   $("pipelinePanel")?.classList.toggle("hide", !isManager());
   if (!isManager()) return;
   const data = pipelineReportData();
-  const total = Math.max(1, data.reduce((sum,item) => sum + item.count, 0));
-  $("pipelineRangeText").textContent = `${data.reduce((sum,item) => sum + item.count, 0)} khách theo trạng thái hiện tại`;
+  const uniqueCount = currentReportCustomers().length;
+  const membershipCount = data.reduce((sum,item) => sum + item.count, 0);
+  const total = Math.max(1, membershipCount);
+  $("pipelineUniqueCount").textContent = data.length ? `${uniqueCount} khách hàng duy nhất` : "Chưa có dữ liệu pipeline.";
+  $("pipelineMembershipCount").textContent = data.length ? `${membershipCount} lượt phân loại theo trạng thái/lịch sử giao dịch` : "";
+  $("pipelineExplanation").classList.toggle("hide", !data.length);
+  $("pipelineRangeText").classList.toggle("hide", !data.length);
   $("pipelineGrid").innerHTML = data.length ? data.map(item => {
     const pct = Math.round(item.count / total * 100);
     return `
       <button class="pipeline-card" type="button" data-pipeline-detail="${esc(item.label)}">
         <span class="muted">${esc(item.label)}</span>
         <b>${esc(item.count)} khách</b>
-        <span>${esc(pct)}%</span>
+        <span class="pipeline-share">Tỷ trọng lượt phân loại: ${esc(pct)}%</span>
         <span class="pipeline-bar"><span style="width:${esc(pct)}%"></span></span>
       </button>
     `;

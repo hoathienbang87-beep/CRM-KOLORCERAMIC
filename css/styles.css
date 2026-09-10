@@ -73,6 +73,7 @@
     .overview-pipeline-compact>div{border:1px solid #dbe7f4;border-radius:8px;padding:11px;background:#f8fbff;display:flex;justify-content:space-between;gap:8px}
     .overview-pipeline-compact span{color:var(--muted);font-weight:700}
     .overview-pipeline-compact b{font-size:18px}
+    .pipeline-compact-context{display:block;margin-top:3px;font-size:12px;font-weight:700}
     .overview-customer-charts{display:grid;gap:10px}
     .overview-section-heading h2{margin:4px 0 0;font-size:21px;color:#061633}
     .reports-analysis-section{margin-top:18px;padding-top:16px;border-top:1px solid #dbe7f4}
@@ -438,6 +439,11 @@
     .pipeline-grid{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px}
     .pipeline-card{border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:8px;background:#fff;padding:12px;display:grid;gap:7px}
     .pipeline-card b{font-size:20px}
+    .pipeline-summary{display:flex;align-items:baseline;gap:8px 18px;flex-wrap:wrap;padding:10px 12px;border:1px solid #dbe7f4;border-radius:8px;background:#f8fbff}
+    .pipeline-summary strong{font-size:20px;color:#061633}
+    .pipeline-summary span{color:var(--muted);font-weight:700}
+    .pipeline-explanation,.pipeline-share-label{margin:0}
+    .pipeline-share{color:var(--muted);font-size:12px;font-weight:700}
     .pipeline-bar{height:8px;border-radius:999px;background:#edf2f7;overflow:hidden}
     .pipeline-bar span{display:block;height:100%;background:var(--brand)}
 

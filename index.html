@@ -153,7 +153,10 @@
           </section>
           <section id="overviewPipelineSummary" class="panel overview-pipeline-summary hide">
             <div class="pro-section-title">
-              <h2>Pipeline</h2>
+              <div>
+                <h2>Pipeline</h2>
+                <span id="overviewPipelineContext" class="muted pipeline-compact-context"></span>
+              </div>
               <button type="button" class="small" data-overview-route="#/reports">Xem báo cáo</button>
             </div>
             <div id="overviewPipelineCompact" class="overview-pipeline-compact"></div>
@@ -243,9 +246,14 @@
             <p class="workspace-description">Phân tích pipeline chi tiết trong phạm vi khách hàng được phân quyền.</p>
             <div id="pipelinePanel" class="panel manager-only hide" style="margin-bottom:14px">
           <div class="pro-section-title">
-            <h3>Pipeline bán hàng</h3>
-            <span id="pipelineRangeText" class="muted"></span>
+            <h3>Pipeline khách hàng</h3>
           </div>
+          <div id="pipelineSummary" class="pipeline-summary" aria-live="polite">
+            <strong id="pipelineUniqueCount"></strong>
+            <span id="pipelineMembershipCount"></span>
+          </div>
+          <p id="pipelineExplanation" class="muted pipeline-explanation">Một khách hàng có thể xuất hiện ở nhiều trạng thái khi có lịch sử giao dịch khác nhau.</p>
+          <p id="pipelineRangeText" class="muted pipeline-share-label">Tỷ trọng lượt phân loại theo từng trạng thái</p>
           <div id="pipelineGrid" class="pipeline-grid"></div>
             </div>
           </section>
