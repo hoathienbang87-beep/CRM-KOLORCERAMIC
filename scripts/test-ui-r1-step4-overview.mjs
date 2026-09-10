@@ -40,6 +40,6 @@ for (const route of ["#/customers/list", "#/customers/care", "#/customers/alloca
 assert.match(app.match(/function renderCrmView\(\)[\s\S]*?\n}\n/)[0], /requestChartRender\(\)/);
 assert.doesNotMatch(app.match(/if \(isReportsView\) \{[\s\S]*?\n  }/)[0], /requestChartRender\(\)/);
 assert.match(css, /\.overview-summary-grid\{display:grid/);
-assert.match(css, /@media\(max-width:760px\)[\s\S]*\.overview-summary-grid[\s\S]*grid-template-columns:1fr/);
+assert.match(css, /@media\(max-width:768px\)[\s\S]*\.overview-summary-grid[\s\S]*grid-template-columns:1fr/);
 
 console.log("PASS CRM-UI-R1 STEP4 overview contracts");

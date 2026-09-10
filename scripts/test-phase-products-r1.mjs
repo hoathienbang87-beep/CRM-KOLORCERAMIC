@@ -5,7 +5,7 @@ const read = f => fs.readFileSync(new URL('../'+f,import.meta.url),'utf8');
 const app=read('js/features/crm-app.js'), html=read('index.html'), shell=read('js/components/app-shell.js'), sql=read('supabase-phase-crm-products-r1-lightweight-catalog.sql');
 let checks=0;
 const check=(value,message)=>{assert.ok(value,message);checks++;};
-check(shell.includes('id="productsViewBtn"'),'Nav sản phẩm');
+check(/id: "products"[^\n]*hash: "#\/products"/.test(shell),'Nav sản phẩm canonical');
 check(html.includes('id="productsPanel"'),'Panel sản phẩm');
 for(const id of ['quotesViewBtn','ordersViewBtn','inventoryViewBtn','paymentsViewBtn','suppliersViewBtn']) check(!(html+shell).includes(`id="${id}"`),'Không khôi phục ERP nav '+id);
 for(const id of ['productFilterSize','productFilterSurface','productFilterOrigin','editProductBtn']) check(html.includes(`id="${id}"`),id);

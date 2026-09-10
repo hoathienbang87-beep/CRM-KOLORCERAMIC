@@ -34,7 +34,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => showCustomerRoute("#/customers", true));
     const columns = await page.locator("#customerHubPanel .customer-action-grid").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length);
-    assert.equal(columns, width <= 760 ? 1 : 2, `Customer Hub columns tại ${width}px`);
+    assert.equal(columns, width <= 768 ? 1 : 2, `Customer Hub columns tại ${width}px`);
     assert.equal(await page.locator(".layout>aside.panel").count(), 0);
   }
 

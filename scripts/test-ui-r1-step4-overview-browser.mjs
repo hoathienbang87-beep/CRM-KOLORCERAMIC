@@ -29,7 +29,7 @@ try {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 1, `Overview không tràn ngang tại ${width}px`);
     const columns = await page.locator("#executiveGrid").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length);
-    if (width <= 760) assert.equal(columns, 1, `Summary phải một cột tại ${width}px`);
+    if (width <= 768) assert.equal(columns, 1, `Summary phải một cột tại ${width}px`);
   }
   assert.equal(await page.locator('.overview-summary-card[data-overview-route="#/reports"]').count(), 0, "Sale fixture không có Reports shortcut");
   assert.equal(await page.locator('.overview-summary-card[data-overview-route="#/customers/allocation"]').count(), 0, "Sale fixture không có Allocation shortcut");

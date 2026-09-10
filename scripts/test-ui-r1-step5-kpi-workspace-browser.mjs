@@ -27,11 +27,11 @@ try {
       await page.setViewportSize({width,height:900});
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       assert.ok(overflow <= 1, `${role} KPI Hub không tràn tại ${width}px`);
-      if (width <= 760) assert.equal(await page.locator("#kpiHubCards").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 1);
+      if (width <= 768) assert.equal(await page.locator("#kpiHubCards").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 1);
     }
   }
   await page.evaluate(() => { kpiHubPanel.classList.add("hide"); kpiTeamPanel.classList.remove("hide"); });
-  assert.equal(await page.locator(".legacy-kpi-mode-tabs").isVisible(), false);
+  assert.equal(await page.locator(".legacy-kpi-mode-tabs,[data-kpi-team-mode]").count(), 0);
   assert.equal(await page.locator("#kpiTeamPendingBtn").isVisible(), true, "review/drawer controls còn khả dụng");
   console.log("PASS CRM-UI-R1 STEP5 browser fixture: roles/routes/mobile/controls");
 } finally { await browser.close(); }

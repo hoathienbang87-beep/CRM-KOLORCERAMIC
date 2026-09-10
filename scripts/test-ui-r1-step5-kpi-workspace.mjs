@@ -15,7 +15,7 @@ assert.equal(CRM_HASH_ROUTES["#/kpi/mine"].capability, "sale");
 for (const hash of ["#/kpi/team","#/kpi/library","#/kpi/history"]) assert.equal(CRM_HASH_ROUTES[hash].capability, "manager");
 assert.match(js, /item\.mainView === "kpi" && !canUseNavItem\(item\).*CRM_HASH_ROUTES\["#\/kpi"\]/);
 assert.match(js, /activeKpiWorkspace === "history" \? "history" : "employees"/);
-assert.match(html, /legacy-kpi-mode-tabs hide[^>]*aria-hidden="true"/);
+assert.doesNotMatch(html, /legacy-kpi-mode-tabs|data-kpi-team-mode|kpiTeamEmployeesModeBtn/);
 assert.match(js, /Chưa có kỳ KPI đang hoạt động/);
 assert.match(js, /\$\{kpiDefinitions\.length\} mục/);
 assert.doesNotMatch(js.match(/function renderKpiHub\(\)[\s\S]*?\n\}/)?.[0] || "", /0%|0\/0|legacy|proposal/i);

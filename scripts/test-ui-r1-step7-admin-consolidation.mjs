@@ -14,7 +14,8 @@ assert.match(app, /if \(isAdminRoute\(\)\) \{[\s\S]*?if \(!canAccessAdminPanel\(
 assert.match(html, /id="adminHubCards"/);
 for (const key of ["dashboard", "users", "categories", "settings", "health", "audit-logs"]) assert.match(html, new RegExp(`data-admin-page="${key}"`));
 assert.match(app, /function consolidateAdminDom\(\)/);
-assert.match(app, /\["careSettingsPanel", "dropdownSettingsPanel", "userAdminPanel", "auditPanel"\]\.forEach\(id => \$\(id\)\?\.remove\(\)\)/);
+assert.doesNotMatch(html, /careSettingsPanel|dropdownSettingsPanel|userAdminPanel|auditPanel/);
+assert.doesNotMatch(app, /saveCareSettings|saveDropdownSettings|renderAuditTrail/);
 for (const id of ["seedBtn", "syncPhoneBtn", "syncOwnerBtn", "importBtn", "importFile"]) {
   assert.equal((html.match(new RegExp(`id="${id}"`, "g")) || []).length, 1, `${id} phải có đúng một control`);
   assert.match(app, new RegExp(`"${id}"`));

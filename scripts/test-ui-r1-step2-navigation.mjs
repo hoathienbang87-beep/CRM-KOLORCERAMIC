@@ -33,11 +33,9 @@ assert.ok(
 assert.match(shellSource, /desktopNavItems/);
 assert.match(shellSource, /mobileNavItems/);
 assert.equal((shellSource.match(/CRM_NAV_ITEMS\.map/g) || []).length, 1, "Desktop/mobile phải render từ cùng model");
-assert.match(html, /id="viewTabsSlot" class="legacy-view-tabs" hidden aria-hidden="true"/);
-assert.match(css, /\.legacy-view-tabs\{display:none!important;pointer-events:none!important\}/);
-for (const id of ["crmViewBtn", "customersViewBtn", "kpiViewBtn", "productsViewBtn", "reportsViewBtn", "adminViewBtn"]) {
-  assert.match(shellSource, new RegExp(`id="${id}"[^>]*tabindex="-1"[^>]*aria-hidden="true"`), `${id} phải không tương tác`);
-}
+assert.doesNotMatch(html, /viewTabsSlot|crmViewBtn|customersViewBtn|kpiViewBtn|productsViewBtn|reportsViewBtn|adminViewBtn/);
+assert.doesNotMatch(css, /legacy-view-tabs|\.view-tabs/);
+assert.doesNotMatch(shellSource, /renderLegacyViewTabs/);
 for (const id of ["name", "saveCustomerBtn", "customerSearchPanel", "drawer", "productDrawer", "kpiTeamPanel", "kpi2OperationsPanel", "reportsPanel"]) {
   assert.match(html, new RegExp(`id="${id}"`), `Không được xóa business DOM #${id}`);
 }
@@ -48,6 +46,6 @@ assert.match(appSource, /activeMainView = workspace\.mainView;[\s\S]{0,260}rende
 assert.match(appSource, /aria-current/);
 assert.match(appSource, /canAccessAdminPanel\(\)/);
 assert.match(css, /grid-template-columns:240px minmax\(0,1fr\)/);
-assert.match(css, /@media\(max-width:760px\)[\s\S]*\.crm-sidebar\{display:none\}/);
+assert.match(css, /@media\(max-width:768px\)[\s\S]*\.crm-sidebar\{display:none\}/);
 
 console.log("PASS CRM-UI-R1 STEP2 navigation contracts");

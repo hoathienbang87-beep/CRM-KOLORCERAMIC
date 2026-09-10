@@ -158,7 +158,6 @@ const pagingState = {
   tasks: {limit: 30, step: 30},
   products: {limit: 80, step: 80},
   saleActivity: {limit: 80, step: 80},
-  audit: {limit: 80, step: 80},
   adminAudit: {limit: 80, step: 80}
 };
 let pendingLoginSuccessNotice = false;
@@ -437,6 +436,8 @@ function setMobileNavigationOpen(open, {restoreFocus = true} = {}) {
   if (!drawer || !backdrop || !trigger) return;
   drawer.classList.toggle("hide", !open);
   backdrop.classList.toggle("hide", !open);
+  drawer.toggleAttribute("inert", !open);
+  backdrop.toggleAttribute("inert", !open);
   drawer.setAttribute("aria-hidden", String(!open));
   trigger.setAttribute("aria-expanded", String(open));
   document.body.classList.toggle("mobile-nav-open", open);
@@ -445,6 +446,18 @@ function setMobileNavigationOpen(open, {restoreFocus = true} = {}) {
   } else if (restoreFocus && document.activeElement && drawer.contains(document.activeElement)) {
     trigger.focus();
   }
+}
+
+const overlayReturnFocus = new Map();
+function rememberOverlayFocus(id) {
+  if (document.activeElement instanceof HTMLElement && !document.activeElement.closest("[inert]")) {
+    overlayReturnFocus.set(id, document.activeElement);
+  }
+}
+function restoreOverlayFocus(id) {
+  const target = overlayReturnFocus.get(id);
+  overlayReturnFocus.delete(id);
+  if (target?.isConnected) requestAnimationFrame(() => target.focus());
 }
 
 function updateNavigationUi(item) {
@@ -515,7 +528,6 @@ function loadMorePage(key) {
     customers: renderCustomers,
     tasks: renderTaskBoard,
     saleActivity: renderSaleActivityReport,
-    audit: renderAuditTrail,
     adminAudit: renderAdminAuditPage
   };
   renderers[key]?.();
@@ -690,9 +702,6 @@ function hydrateSelects() {
     $("syncPhoneBtn").classList.add("hide");
     $("syncOwnerBtn").classList.add("hide");
     $("importBtn").classList.add("hide");
-    ["careSettingsPanel","dropdownSettingsPanel","userAdminPanel","trashPanel","proHealthPanel","auditPanel"].forEach(id => $(id)?.classList.add("hide"));
-    $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("reportsViewBtn")?.classList.add("hide");
   } else {
     $("owner").disabled = false;
     $("editOwner").disabled = false;
@@ -703,9 +712,6 @@ function hydrateSelects() {
     $("syncPhoneBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("syncOwnerBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("importBtn").classList.toggle("hide", !canAccessAdminPanel());
-    ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","auditPanel","userAdminPanel","trashPanel"].forEach(id => $(id)?.classList.toggle("hide", !canAccessAdminPanel()));
-    $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("reportsViewBtn")?.classList.remove("hide");
   }
 }
 
@@ -1061,93 +1067,6 @@ async function seedSettings() {
     .catch(err => notice("Đã tạo SETTINGS, nhưng chưa ghi được audit log: " + authMessage(err), true));
   await loadSettings();
   notice("Đã tạo/cập nhật SETTINGS trên Supabase.");
-}
-
-async function saveCareSettings() {
-  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu thiết lập chăm sóc.", true);
-  const days = Math.max(0, Number($("careDueDays").value || 0));
-  try {
-    const careSettings = {
-      careDueDays: days,
-      updatedByEmail: currentUser?.email || "",
-      updatedAt: serverTimestamp()
-    };
-    await saveSettingsAndVerify(careSettings, ["careDueDays"]);
-    await logAudit("updateCareSettings", "settings", "crm", {careDueDays: days})
-      .catch(err => notice("Đã lưu thiết lập chăm sóc, nhưng chưa ghi được audit log: " + authMessage(err), true));
-    renderAll();
-    notice("Đã lưu thiết lập chăm sóc.");
-  } catch (err) {
-    notice("Không lưu được thiết lập chăm sóc: " + authMessage(err), true);
-  }
-}
-
-function renderDropdownSettingsForm() {
-  const pairs = [
-    ["settingsCustomerTypes", settings.customerTypes],
-    ["settingsStatuses", settings.statuses],
-    ["settingsFollows", settings.follows],
-    ["settingsCareChannels", settings.careChannels],
-    ["settingsCareResults", settings.careResults],
-    ["settingsDealStatuses", settings.dealStatuses]
-  ];
-  pairs.forEach(([id, values]) => {
-    const el = $(id);
-    if (el && document.activeElement !== el) el.value = listToText(values);
-  });
-  if ($("settingsSourceChannels") && document.activeElement !== $("settingsSourceChannels")) {
-    $("settingsSourceChannels").value = listToText(settings.channels);
-  }
-  if ($("settingsSystemLabels") && document.activeElement !== $("settingsSystemLabels")) {
-    $("settingsSystemLabels").value = objectToText(settings.systemLabels);
-  }
-}
-
-async function saveDropdownSettings() {
-  if (!canAccessAdminPanel()) return notice("Chỉ owner/admin được lưu cấu hình dropdown.", true);
-  const channels = textToList($("settingsSourceChannels").value);
-  const data = {
-    sources: [],
-    sourceChannels: {},
-    channels,
-    customerTypes: textToList($("settingsCustomerTypes").value),
-    potentialLevels: settings.potentialLevels?.length ? settings.potentialLevels : DEFAULT_SETTINGS.potentialLevels,
-    statuses: textToList($("settingsStatuses").value),
-    follows: textToList($("settingsFollows").value),
-    careChannels: textToList($("settingsCareChannels").value),
-    careResults: textToList($("settingsCareResults").value),
-    partnerTypes: settings.partnerTypes?.length ? settings.partnerTypes : DEFAULT_SETTINGS.partnerTypes,
-    partnerActivities: settings.partnerActivities?.length ? settings.partnerActivities : DEFAULT_SETTINGS.partnerActivities,
-    partnerLevels: settings.partnerLevels?.length ? settings.partnerLevels : DEFAULT_SETTINGS.partnerLevels,
-    partnerCapacity: settings.partnerCapacity?.length ? settings.partnerCapacity : DEFAULT_SETTINGS.partnerCapacity,
-    dealStatuses: textToList($("settingsDealStatuses").value),
-    systemLabels: {...DEFAULT_SETTINGS.systemLabels, ...textToObject($("settingsSystemLabels").value)},
-    sourceConfigVersion: DEFAULT_SETTINGS.sourceConfigVersion,
-    followConfigVersion: DEFAULT_SETTINGS.followConfigVersion,
-    updatedByEmail: currentUser?.email || "",
-    updatedAt: serverTimestamp()
-  };
-  if (!data.channels.length) return notice("Cần có ít nhất 1 kênh chi tiết.", true);
-  if (!data.customerTypes.length) data.customerTypes = DEFAULT_SETTINGS.customerTypes;
-  if (!data.statuses.length || !data.follows.length) return notice("Trạng thái và tình trạng chăm không được để trống.", true);
-  try {
-    await saveSettingsAndVerify(data, [
-      "channels", "customerTypes", "potentialLevels", "statuses", "follows",
-      "careChannels", "careResults", "dealStatuses", "systemLabels"
-    ]);
-    await logAudit("updateDropdownSettings", "settings", "crm", {
-      channels: data.channels.length,
-      statuses: data.statuses.length,
-      follows: data.follows.length,
-      careChannels: data.careChannels.length,
-      careResults: data.careResults.length,
-      dealStatuses: data.dealStatuses.length
-    }).catch(err => notice("Đã lưu dropdown, nhưng chưa ghi được audit log: " + authMessage(err), true));
-    renderAll();
-    notice("Đã lưu cấu hình dropdown.");
-  } catch (err) {
-    notice("Không lưu được dropdown: " + authMessage(err), true);
-  }
 }
 
 async function syncPhoneIndex() {
@@ -1607,14 +1526,17 @@ function openProductDrawer(id) {
   $("productDrawer").querySelectorAll("input").forEach(input => input.disabled = !editing);
   $("editProductBtn").classList.toggle("hide", editing);
   $("saveProductBtn").classList.toggle("hide", !editing);
-  $("productDrawerBackdrop")?.classList.remove("hide");
-  $("productDrawer")?.classList.remove("hide");
+  rememberOverlayFocus("productDrawer");
+  setViewHidden("productDrawerBackdrop", false);
+  setViewHidden("productDrawer", false);
+  requestAnimationFrame(() => $("closeProductDrawerBtn")?.focus());
 }
 
 function closeProductDrawer() {
-  $("productDrawerBackdrop")?.classList.add("hide");
-  $("productDrawer")?.classList.add("hide");
+  setViewHidden("productDrawerBackdrop", true);
+  setViewHidden("productDrawer", true);
   productDrawerEditingId = null;
+  restoreOverlayFocus("productDrawer");
 }
 
 async function saveProductDrawer() {
@@ -2483,7 +2405,6 @@ function updateCareStatusVisual() {
 }
 
 const crmViewIds = ["overviewDashboard"];
-const adminViewIds = [];
 const customerViewIds = CUSTOMER_WORKSPACES.map(workspace => workspace.panelId);
 const kpiViewIds = ["kpiHubPanel","kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
 const reportsViewIds = ["reportsPanel"];
@@ -2538,15 +2459,13 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   const previousCustomerWorkspace = activeCustomerWorkspace;
   const previousKpiWorkspace = activeKpiWorkspace;
   const previousReportWorkspace = activeReportWorkspace;
-  activeMainView = ["customers","kpi","reports","admin","products"].includes(view) ? view : "crm";
+  activeMainView = ["customers","kpi","reports","products"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
-  if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
   const isCustomerView = activeMainView === "customers";
   const isKpiView = activeMainView === "kpi";
   const isReportsView = activeMainView === "reports";
-  const isAdminView = activeMainView === "admin";
   const isProductsView = activeMainView === "products";
-  const isOtherView = isCustomerView || isKpiView || isReportsView || isAdminView || isProductsView;
+  const isOtherView = isCustomerView || isKpiView || isReportsView || isProductsView;
   if (isCustomerView) activeCustomerWorkspace = CUSTOMER_WORKSPACES.some(item => item.customerWorkspace === customerWorkspace) ? customerWorkspace : activeCustomerWorkspace || "hub";
   if (isKpiView) {
     const requestedKpiWorkspace = kpiWorkspace || activeKpiWorkspace || "hub";
@@ -2560,7 +2479,6 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   if (!isOtherView) {
     $("overviewDashboard")?.classList.remove("hide");
   }
-  adminViewIds.forEach(id => $(id)?.classList.add("hide"));
   applyCustomerWorkspaceVisibility(isCustomerView);
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
@@ -2577,14 +2495,6 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   $("kpi2OperationsPanel")?.classList.toggle("hide", !isKpiView || !isSale() || activeKpiWorkspace !== "mine");
   $("kpiFoundationPanel")?.classList.toggle("hide", !isKpiView || !isManager() || activeKpiWorkspace !== "library");
   reportsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isReportsView));
-  $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
-  $("reportsViewBtn")?.classList.toggle("hide", !isManager());
-  $("crmViewBtn")?.classList.toggle("primary", !isOtherView);
-  $("customersViewBtn")?.classList.toggle("primary", isCustomerView);
-  $("kpiViewBtn")?.classList.toggle("primary", isKpiView);
-  $("productsViewBtn")?.classList.toggle("primary", isProductsView);
-  $("reportsViewBtn")?.classList.toggle("primary", isReportsView);
-  $("adminViewBtn")?.classList.toggle("primary", isAdminView);
   if (!isOtherView) renderCrmView();
   if (isCustomerView) {
     if (activeCustomerWorkspace === "list" || activeCustomerWorkspace === "allocation") renderCustomers();
@@ -3006,16 +2916,19 @@ function renderChannelReportChart() {
 }
 
 function closeDetailModal() {
-  $("detailModalBackdrop")?.classList.add("hide");
-  $("detailModal")?.classList.add("hide");
+  setViewHidden("detailModalBackdrop", true);
+  setViewHidden("detailModal", true);
+  restoreOverlayFocus("detailModal");
 }
 
 function openDetailModal(title, subtitle, html) {
   $("detailModalTitle").textContent = title || "Chi tiết";
   $("detailModalSubtitle").textContent = subtitle || "";
   $("detailModalContent").innerHTML = html || `<div class="muted">Chưa có dữ liệu chi tiết.</div>`;
-  $("detailModalBackdrop").classList.remove("hide");
-  $("detailModal").classList.remove("hide");
+  rememberOverlayFocus("detailModal");
+  setViewHidden("detailModalBackdrop", false);
+  setViewHidden("detailModal", false);
+  requestAnimationFrame(() => $("closeDetailModalBtn")?.focus());
 }
 
 function customerDetailRows(rows) {
@@ -4562,13 +4475,6 @@ function kpiTeamSkeleton(count = 4) {
   return `<div class="kpi-team-skeleton" aria-label="Đang tải KPI">${Array.from({length:count}, () => "<span></span>").join("")}</div>`;
 }
 
-function setKpiTeamMode(mode) {
-  if (!isManager()) return;
-  const route = mode === "library" ? "#/kpi/library" : mode === "history" ? "#/kpi/history" : "#/kpi/team";
-  kpiTeamState.globalQueueOpen = false;
-  navigateToWorkspace(route);
-}
-
 function applyKpiManagerModeVisibility() {
   if (!isManager() || activeMainView !== "kpi") return;
   $("kpiTeamPanel")?.classList.toggle("hide", !["team","history"].includes(activeKpiWorkspace));
@@ -4591,11 +4497,6 @@ function renderKpiTeamShell() {
       : `<option value="">Chưa có kỳ KPI</option>`;
     periodSelect.disabled = !kpiPeriods.length;
   }
-  document.querySelectorAll("[data-kpi-team-mode]").forEach(button => {
-    const active = button.dataset.kpiTeamMode === kpiTeamState.activeMode;
-    button.classList.toggle("primary", active);
-    button.setAttribute("aria-selected", String(active));
-  });
   const showFilters = kpiTeamState.activeMode === "employees" && !kpiTeamState.globalQueueOpen;
   $("kpiTeamSearchField")?.classList.toggle("hide", !showFilters);
   $("kpiTeamProgressField")?.classList.toggle("hide", !showFilters);
@@ -5622,21 +5523,6 @@ function renderUserAdmin() {
       </td>
     </tr>`;
   }).join("") : `<tr><td colspan="6" class="muted">Chưa có user.</td></tr>`;
-}
-
-function renderAuditTrail() {
-  if (!isAdmin()) return;
-  const rows = pageRows("audit", auditLogs);
-  $("auditRows").innerHTML = rows.length ? rows.map(a => `
-    <tr class="audit-row">
-      <td>${esc(fmtDate(a.createdAt))}</td>
-      <td><b>${esc(a.email || "")}</b></td>
-      <td><span class="audit-action">${esc(a.action || "")}</span></td>
-      <td>${esc(a.entity || "")}<div class="muted">${esc(a.entityId || "")}</div></td>
-      <td><div class="audit-payload">${esc(a.payloadJson || a.note || "")}</div></td>
-    </tr>
-  `).join("") : `<tr><td colspan="5" class="muted">Chưa có audit log hoặc chưa được cấp quyền đọc.</td></tr>`;
-  renderPager("auditPager", "audit", auditLogs.length, "log");
 }
 
 function hydrateAdminAuditFilters() {
@@ -6998,8 +6884,10 @@ function openDrawer(id, mode="care") {
   $("dealSection").classList.toggle("hide", mode !== "deal");
   $("dealListSection").classList.add("hide");
   renderHistories(id);
-  $("drawerBackdrop").classList.remove("hide");
-  $("drawer").classList.remove("hide");
+  rememberOverlayFocus("drawer");
+  setViewHidden("drawerBackdrop", false);
+  setViewHidden("drawer", false);
+  requestAnimationFrame(() => $("closeDrawerBtn")?.focus());
   setTimeout(() => $("drawer").scrollTo({top:0,behavior:"smooth"}), 60);
 }
 
@@ -7014,8 +6902,9 @@ function toggleCareHistory() {
 
 function closeDrawer() {
   selectedCustomerId = "";
-  $("drawerBackdrop").classList.add("hide");
-  $("drawer").classList.add("hide");
+  setViewHidden("drawerBackdrop", true);
+  setViewHidden("drawer", true);
+  restoreOverlayFocus("drawer");
 }
 
 function dealCard(d) {
@@ -8573,7 +8462,6 @@ function consolidateAdminDom() {
     trashPanel.classList.remove("hide");
     $("adminTrashHost").append(trashPanel);
   }
-  ["careSettingsPanel", "dropdownSettingsPanel", "userAdminPanel", "auditPanel"].forEach(id => $(id)?.remove());
 }
 
 function renderAdminShell() {
@@ -8731,7 +8619,6 @@ document.addEventListener("click", e => {
   const kpi1DeleteDefinitionId = e.target.closest("[data-kpi1-delete-definition]")?.dataset.kpi1DeleteDefinition;
   const kpi1RemoveAssignmentId = e.target.closest("[data-kpi1-remove-assignment]")?.dataset.kpi1RemoveAssignment;
   const kpi1SaveMatrixId = e.target.closest("[data-kpi1-save-matrix]")?.dataset.kpi1SaveMatrix;
-  const kpiTeamMode = e.target.closest("[data-kpi-team-mode]")?.dataset.kpiTeamMode;
   const kpiTeamEmployeeBtn = e.target.closest("[data-kpi-team-open-employee]");
   const kpiTeamAssignEmployeeId = e.target.closest("[data-kpi-team-assign-employee]")?.dataset.kpiTeamAssignEmployee;
   const kpiTeamEditAssignmentId = e.target.closest("[data-kpi-team-edit-assignment]")?.dataset.kpiTeamEditAssignment;
@@ -8820,7 +8707,6 @@ document.addEventListener("click", e => {
   if (kpi1DeleteDefinitionId) runAction(`kpi1DeleteDefinition:${kpi1DeleteDefinitionId}`, "kpi1DeleteDefinition", "Đang xóa...", () => deleteKpi1Definition(kpi1DeleteDefinitionId));
   if (kpi1RemoveAssignmentId) runAction(`kpi1RemoveAssignment:${kpi1RemoveAssignmentId}`, "kpi1RemoveAssignment", "Đang gỡ...", () => removeKpi1Assignment(kpi1RemoveAssignmentId));
   if (kpi1SaveMatrixId) runAction(`kpi1Matrix:${kpi1SaveMatrixId}`, "kpi1Matrix", "Đang lưu ma trận...", () => saveKpi1MatrixRow(kpi1SaveMatrixId));
-  if (kpiTeamMode) setKpiTeamMode(kpiTeamMode);
   if (kpiTeamEmployeeBtn) openKpiTeamEmployee(kpiTeamEmployeeBtn.dataset.kpiTeamOpenEmployee, kpiTeamEmployeeBtn.dataset.kpiTeamOpenTab || "overview");
   if (kpiTeamAssignEmployeeId) openKpiTeamAssign(kpiTeamAssignEmployeeId);
   if (kpiTeamEditAssignmentId) openKpiTeamEditAssignment(kpiTeamEditAssignmentId);
@@ -8983,12 +8869,6 @@ on("kpi2EvidenceFiles", "change", () => runAction("", "kpi2EvidenceUpload", "Đa
 on("kpi2SubmitBtn", "click", () => runAction("kpi2SubmitBtn", "kpi2Submit", "Đang gửi...", submitKpi2Claim));
 on("kpi2BulkReviewBtn", "click", () => runAction("kpi2BulkReviewBtn", "kpi2Review", "Đang xử lý...", reviewSelectedKpi2Events));
 on("kpi2SelectAllEvents", "change", e => document.querySelectorAll("[data-kpi2-review-event]").forEach(box => box.checked=e.target.checked));
-on("crmViewBtn", "click", () => setMainView("crm"));
-on("customersViewBtn", "click", () => setMainView("customers"));
-on("kpiViewBtn", "click", () => navigateToWorkspace("#/kpi"));
-on("productsViewBtn", "click", () => setMainView("products"));
-on("reportsViewBtn", "click", () => setMainView("reports"));
-on("adminViewBtn", "click", () => goToRoute("/admin"));
 on("addProductBtn", "click", () => openProductDrawer(null));
 on("saveProductBtn", "click", () => runAction("saveProductBtn", "saveProduct", "Đang lưu...", saveProductDrawer));
 on("editProductBtn", "click", () => {
@@ -9024,6 +8904,7 @@ document.addEventListener("keydown", event => {
     if (!$("productDrawer")?.classList.contains("hide")) return closeProductDrawer();
     if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) return closeKpiTeamAssign();
     if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) return closeKpiTeamEmployee();
+    if (!$("drawer")?.classList.contains("hide")) return closeDrawer();
     if (!$("mobileNavDrawer")?.classList.contains("hide")) return setMobileNavigationOpen(false);
     return;
   }
@@ -9091,8 +8972,6 @@ on("detailModalBackdrop", "click", closeDetailModal);
 on("closeDrawerBtn", "click", closeDrawer);
 on("drawerBackdrop", "click", closeDrawer);
 on("saveCareBtn", "click", () => runAction("saveCareBtn", "saveCare", "Đang lưu...", saveCareLog));
-on("saveCareSettingsBtn", "click", () => runAction("saveCareSettingsBtn", "saveCareSettings", "Đang lưu...", saveCareSettings));
-on("saveDropdownSettingsBtn", "click", () => runAction("saveDropdownSettingsBtn", "saveDropdownSettings", "Đang lưu...", saveDropdownSettings));
 on("toggleCareHistoryBtn", "click", toggleCareHistory);
 on("saveDealBtn", "click", () => runAction("saveDealBtn", "saveDeal", "Đang lưu...", saveDeal));
 on("cancelEditDealBtn", "click", clearDealEditMode);

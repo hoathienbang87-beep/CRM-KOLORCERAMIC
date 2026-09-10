@@ -23,6 +23,8 @@ try {
     ${read('js/features/product-catalog.js').replaceAll('export function','function')}
     ${read('js/components/app-shell.js').replaceAll('export function','function').replaceAll('export const','const')}
     const $=id=>document.getElementById(id),clean=x=>String(x??'').trim();
+    const setViewHidden=(id,hidden)=>{const el=$(id);el.classList.toggle('hide',hidden);el.toggleAttribute('inert',hidden);el.setAttribute('aria-hidden',String(hidden))};
+    const rememberOverlayFocus=()=>{},restoreOverlayFocus=()=>{};
     const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const normalizeKey=x=>clean(x).normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/đ/g,'d').toLowerCase();
     const uniq=x=>[...new Set(x)],uniqueOptions=x=>x.map(v=>({value:v,label:v}));

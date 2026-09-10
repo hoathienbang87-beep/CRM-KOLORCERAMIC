@@ -38,7 +38,7 @@ assert.match(appSource, /\(item\?\.navId \|\| item\?\.id\) === config\?\.id/);
 assert.match(appSource, /activeMainView === "customers" && activeCustomerWorkspace === "allocation"/);
 assert.doesNotMatch(css, /\.layout\s*>\s*aside\.panel/);
 assert.match(css, /\.layout\{display:block;padding:18px\}/);
-assert.match(css, /@media\(max-width:760px\)[\s\S]*\.customer-action-grid\{grid-template-columns:1fr\}/);
+assert.match(css, /@media\(max-width:768px\)[\s\S]*\.customer-action-grid\{grid-template-columns:1fr\}/);
 assert.match(css, /\.customer-form-workspace\{max-width:880px\}/);
 
 console.log("PASS CRM-UI-R1 STEP3 customer workspace contracts");

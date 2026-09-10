@@ -63,11 +63,6 @@
       <div class="userbar">
         <span id="userText"></span>
         <button id="reloadBtn" class="small">Reload</button>
-        <button id="seedBtn" class="small">Tạo SETTINGS</button>
-        <button id="syncPhoneBtn" class="small">Đồng bộ SĐT</button>
-        <button id="syncOwnerBtn" class="small">Đồng bộ NV</button>
-        <button id="importBtn" class="small">Import CSV</button>
-        <input id="importFile" class="hide" type="file" accept=".csv,text/csv">
         <button id="logoutBtn" class="small">Đăng xuất</button>
       </div>
     </header>
@@ -119,15 +114,6 @@
       </section>
 
       <section class="workspace-root">
-        <div id="viewTabsSlot" class="legacy-view-tabs" hidden aria-hidden="true">
-          <button id="crmViewBtn" type="button" tabindex="-1">Tổng quan</button>
-          <button id="customersViewBtn" type="button">Khách hàng</button>
-          <button id="kpiViewBtn" type="button">KPI</button>
-          <button id="productsViewBtn" type="button">Sản phẩm</button>
-          <button id="reportsViewBtn" type="button">Báo cáo</button>
-          <button id="adminViewBtn" type="button">Quản trị</button>
-        </div>
-
         <section id="overviewDashboard" class="overview-dashboard">
           <header class="overview-heading">
             <h1>Tổng quan</h1>
@@ -285,7 +271,7 @@
           <div id="productPager" class="list-pager"></div>
         </div>
 
-        <div id="needCarePanel" class="customer-workspace panel hide" style="margin-top:14px">
+        <div id="needCarePanel" class="customer-workspace panel hide" inert aria-hidden="true" style="margin-top:14px">
           <button type="button" class="customer-workspace-back customer-care-back hide" data-customer-workspace="#/customers">← Khách hàng</button>
           <div class="customer-workspace-context customer-care-context hide"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Chăm sóc &amp; lịch hẹn</b></div>
           <div class="pro-section-title">
@@ -314,38 +300,6 @@
           <h3>Đang truy cập</h3>
           <div id="onlineUsers" class="muted">Chưa có dữ liệu.</div>
         </div>
-        <div id="careSettingsPanel" class="panel hide" style="margin-top:14px">
-          <h3>Thiết lập chăm sóc</h3>
-          <div class="grid2">
-            <div class="field"><label>Số ngày cảnh báo chăm</label><input id="careDueDays" type="number" min="0" step="1"></div>
-            <div class="field"><label>&nbsp;</label><button id="saveCareSettingsBtn" class="primary" type="button">Lưu thiết lập</button></div>
-          </div>
-          <div class="muted">Ví dụ đặt 3 ngày: khách có lịch hẹn quá 3 ngày sẽ tự vào nhóm cần chăm/lâu chưa chăm.</div>
-        </div>
-
-        <div id="dropdownSettingsPanel" class="panel hide" style="margin-top:14px">
-          <div class="pro-section-title">
-            <h3>Cấu hình dropdown</h3>
-            <button id="saveDropdownSettingsBtn" class="primary small" type="button">Lưu dropdown</button>
-          </div>
-          <div class="settings-grid">
-            <textarea id="settingsSources" class="hide"></textarea>
-            <div class="field settings-wide"><label>Kênh chi tiết</label><textarea id="settingsSourceChannels" placeholder="Mỗi dòng một kênh chi tiết"></textarea></div>
-            <div class="field"><label>Loại khách</label><textarea id="settingsCustomerTypes" placeholder="Mỗi dòng một loại khách"></textarea></div>
-            <div class="field"><label>Trạng thái</label><textarea id="settingsStatuses"></textarea></div>
-            <div class="field"><label>Tình trạng chăm</label><textarea id="settingsFollows"></textarea></div>
-            <div class="field"><label>Hình thức chăm</label><textarea id="settingsCareChannels"></textarea></div>
-            <div class="field"><label>Kết quả chăm</label><textarea id="settingsCareResults"></textarea></div>
-            <textarea id="settingsPartnerTypes" class="hide"></textarea>
-            <textarea id="settingsPartnerActivities" class="hide"></textarea>
-            <textarea id="settingsPartnerLevels" class="hide"></textarea>
-            <textarea id="settingsPartnerCapacity" class="hide"></textarea>
-            <div class="field"><label>Trạng thái mua căn bản</label><textarea id="settingsDealStatuses"></textarea></div>
-            <div class="field settings-wide"><label>Nhãn hệ thống</label><textarea id="settingsSystemLabels"></textarea></div>
-          </div>
-          <div class="muted">Mỗi dòng là một giá trị. Kênh chi tiết và Loại khách được quản lý độc lập để nhập khách nhanh hơn.</div>
-        </div>
-
         <section id="customerAllocationPanel" class="customer-workspace panel hide" inert aria-hidden="true" style="margin-top:14px">
           <button type="button" class="customer-workspace-back" data-customer-workspace="#/customers">← Khách hàng</button>
           <div class="customer-workspace-context"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Phân bổ khách hàng</b></div>
@@ -442,11 +396,6 @@
               <button id="kpiTeamPendingBtn" class="small" type="button">Cần duyệt (0)</button>
               <button id="kpiTeamReloadBtn" class="small" type="button">Tải lại</button>
             </div>
-          </div>
-          <div class="kpi-team-mode-tabs legacy-kpi-mode-tabs hide" aria-hidden="true">
-            <button id="kpiTeamEmployeesModeBtn" class="small primary" type="button" role="tab" aria-selected="true" data-kpi-team-mode="employees">Nhân viên</button>
-            <button id="kpiTeamLibraryModeBtn" class="small" type="button" role="tab" aria-selected="false" data-kpi-team-mode="library">Bộ KPI</button>
-            <button id="kpiTeamHistoryModeBtn" class="small" type="button" role="tab" aria-selected="false" data-kpi-team-mode="history">Lịch sử</button>
           </div>
           <div class="kpi-team-toolbar">
             <div class="field">
@@ -636,17 +585,6 @@
           </div>
         </div>
 
-        <div id="userAdminPanel" class="panel hide" style="margin-top:14px">
-          <div class="pro-section-title">
-            <h3>Quản lý nhân viên</h3>
-            <span class="muted">Đã chuyển sang Admin Panel riêng</span>
-          </div>
-          <div class="admin-empty-state">
-            <b>Quản lý nhân viên hiện nằm ở /admin/users.</b>
-            <span>Bấm nút Quản trị trên thanh tab để mở khu admin mới, tách khỏi giao diện làm việc hằng ngày.</span>
-          </div>
-        </div>
-
         <div id="trashPanel" class="panel hide" style="margin-top:14px">
           <div class="pro-section-title">
             <h3>Thùng rác & dọn dữ liệu</h3>
@@ -660,20 +598,6 @@
           <div id="trashList" class="rule-list muted">Chưa có khách trong thùng rác.</div>
         </div>
 
-        <div id="auditPanel" class="panel hide" style="margin-top:14px">
-          <div class="pro-section-title">
-            <h3>Audit log gần đây</h3>
-            <span class="muted">Theo dõi ai đã thêm/sửa/xóa dữ liệu</span>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Thời gian</th><th>Người thao tác</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead>
-              <tbody id="auditRows"></tbody>
-            </table>
-          </div>
-          <div id="auditPager" class="list-pager"></div>
-        </div>
-
       </section>
     </main>
       </div>
@@ -681,7 +605,7 @@
   </section>
 
   <div id="mobileNavBackdrop" class="crm-mobile-nav-backdrop hide"></div>
-  <aside id="mobileNavDrawer" class="crm-mobile-nav-drawer hide" aria-label="Điều hướng CRM trên di động" aria-hidden="true">
+  <aside id="mobileNavDrawer" class="crm-mobile-nav-drawer hide" aria-label="Điều hướng CRM trên di động" aria-hidden="true" inert>
     <div class="crm-mobile-nav-head">
       <div><b>KOLOR CRM</b><span>Điều hướng</span></div>
       <button id="mobileNavCloseBtn" type="button" aria-label="Đóng điều hướng">Đóng</button>
@@ -834,7 +758,13 @@
           <div id="adminHealthPanels"></div>
           <section class="admin-panel admin-danger-zone" aria-labelledby="adminDangerTitle">
             <div class="admin-section-title"><div><h2 id="adminDangerTitle">Công cụ vận hành nhạy cảm</h2><p>Chỉ Owner/Admin. Các thao tác có ghi dữ liệu giữ nguyên xác nhận và role guard hiện hữu.</p></div></div>
-            <div id="adminDangerTools" class="admin-danger-tools"></div>
+            <div id="adminDangerTools" class="admin-danger-tools">
+              <button id="seedBtn" class="small" type="button">Tạo SETTINGS</button>
+              <button id="syncPhoneBtn" class="small" type="button">Đồng bộ SĐT</button>
+              <button id="syncOwnerBtn" class="small" type="button">Đồng bộ NV</button>
+              <button id="importBtn" class="small" type="button">Import CSV</button>
+              <input id="importFile" class="hide" type="file" accept=".csv,text/csv">
+            </div>
           </section>
         </section>
 
@@ -879,7 +809,7 @@
   </section>
 
   <div id="drawerBackdrop" class="drawer-backdrop hide"></div>
-  <aside id="drawer" class="drawer hide">
+  <aside id="drawer" class="drawer hide" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
     <div class="drawer-head">
       <div>
         <h2 id="drawerTitle" style="margin:0"></h2>
