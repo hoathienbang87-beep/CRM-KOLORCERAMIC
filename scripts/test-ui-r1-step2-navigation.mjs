@@ -23,6 +23,8 @@ assert.ok(
   vercelConfig.rewrites.some(route => route.source === "/admin" && route.destination === "/"),
   "Vercel phải phục vụ canonical /admin route"
 );
+assert.match(html, /href="\/css\/styles\.css"/, "Deep /admin phải tải CSS từ root");
+assert.match(html, /src="\/js\/app\.js\?v=/, "Deep /admin phải tải app module từ root");
 assert.ok(
   vercelConfig.rewrites.some(route => route.source === "/admin/:path*" && route.destination === "/"),
   "Vercel phải phục vụ các route con /admin/*"
