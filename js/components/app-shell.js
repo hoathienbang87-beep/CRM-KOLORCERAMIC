@@ -7,9 +7,18 @@ export const CRM_NAV_ITEMS = Object.freeze([
   { id: "admin", label: "Quản trị", path: "/admin", capability: "admin" }
 ]);
 
-export const CRM_HASH_ROUTES = Object.freeze(
-  Object.fromEntries(CRM_NAV_ITEMS.filter(item => item.hash).map(item => [item.hash, item]))
-);
+export const CUSTOMER_WORKSPACES = Object.freeze([
+  { id: "hub", label: "Khách hàng", hash: "#/customers", mainView: "customers", customerWorkspace: "hub", capability: "crm", panelId: "customerHubPanel" },
+  { id: "new", label: "Thêm khách hàng mới", hash: "#/customers/new", mainView: "customers", customerWorkspace: "new", capability: "crm", panelId: "customerNewPanel" },
+  { id: "list", label: "Tìm & danh sách khách hàng", hash: "#/customers/list", mainView: "customers", customerWorkspace: "list", capability: "crm", panelId: "customerSearchPanel" },
+  { id: "care", label: "Chăm sóc & lịch hẹn", hash: "#/customers/care", mainView: "customers", customerWorkspace: "care", capability: "crm", panelId: "needCarePanel" },
+  { id: "allocation", label: "Phân bổ khách hàng", hash: "#/customers/allocation", mainView: "customers", customerWorkspace: "allocation", capability: "manager", panelId: "customerAllocationPanel" }
+]);
+
+export const CRM_HASH_ROUTES = Object.freeze(Object.fromEntries([
+  ...CRM_NAV_ITEMS.filter(item => item.hash).map(item => [item.hash, item]),
+  ...CUSTOMER_WORKSPACES.map(item => [item.hash, {...item, id: "customers", navId: "customers"}])
+]));
 
 export function normalizeWorkspaceHash(hash = "") {
   const raw = String(hash || "").trim().toLowerCase();
@@ -19,7 +28,9 @@ export function normalizeWorkspaceHash(hash = "") {
 }
 
 export function workspaceForHash(hash = "") {
-  return CRM_HASH_ROUTES[normalizeWorkspaceHash(hash)] || CRM_HASH_ROUTES["#/overview"];
+  const normalized = normalizeWorkspaceHash(hash);
+  return CRM_HASH_ROUTES[normalized]
+    || (normalized.startsWith("#/customers") ? CRM_HASH_ROUTES["#/customers"] : CRM_HASH_ROUTES["#/overview"]);
 }
 
 function navMarkup(className) {

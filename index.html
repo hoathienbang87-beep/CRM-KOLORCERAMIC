@@ -73,8 +73,23 @@
     </header>
 
     <main class="layout">
-      <aside class="panel">
-        <h2>Thêm khách mới</h2>
+      <section id="customerHubPanel" class="customer-workspace customer-hub panel hide" inert aria-hidden="true">
+        <div class="customer-workspace-context"><span>Khách hàng</span></div>
+        <h2>Không gian Khách hàng</h2>
+        <p class="muted customer-workspace-description">Chọn công việc bạn muốn thực hiện.</p>
+        <div class="customer-action-grid">
+          <button type="button" class="customer-action-card" data-customer-workspace="#/customers/new"><b>Thêm khách hàng mới</b><span>Tạo hồ sơ khách hàng mới.</span></button>
+          <button type="button" class="customer-action-card" data-customer-workspace="#/customers/list"><b>Tìm &amp; danh sách khách hàng</b><span>Tìm kiếm, lọc và quản lý khách hàng.</span></button>
+          <button type="button" class="customer-action-card" data-customer-workspace="#/customers/care"><b>Chăm sóc &amp; lịch hẹn</b><span>Theo dõi khách cần chăm sóc và lịch hẹn.</span></button>
+          <button type="button" class="customer-action-card manager-only" data-customer-workspace="#/customers/allocation"><b>Phân bổ khách hàng</b><span>Quản lý khách chưa phân bổ và giao phụ trách.</span></button>
+        </div>
+      </section>
+
+      <section id="customerNewPanel" class="customer-workspace customer-form-workspace panel hide" inert aria-hidden="true">
+        <button type="button" class="customer-workspace-back" data-customer-workspace="#/customers">← Khách hàng</button>
+        <div class="customer-workspace-context"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Thêm khách hàng mới</b></div>
+        <h2>Thêm khách hàng mới</h2>
+        <p class="muted customer-workspace-description">Tạo hồ sơ mới với thông tin liên hệ và người phụ trách.</p>
         <div class="field"><label>Khách hàng</label><input id="name"></div>
         <div class="field"><label>SĐT</label><input id="phone"><div id="phoneHint" class="muted">Có thể để trống nếu khách chưa có SĐT.</div></div>
         <div class="field"><label>Địa chỉ</label><textarea id="address"></textarea></div>
@@ -101,6 +116,9 @@
           <button id="saveCustomerBtn" class="primary">Lưu khách</button>
           <button id="clearBtn">Xóa form</button>
         </div>
+      </section>
+
+      <section class="workspace-root">
         <div id="todayCarePanel" class="today-panel">
           <div class="pro-section-title">
             <h3>Lịch hẹn hôm nay</h3>
@@ -112,9 +130,6 @@
           <h3>Đang truy cập</h3>
           <div id="onlineUsers" class="muted">Chưa có dữ liệu.</div>
         </div>
-      </aside>
-
-      <section>
         <div id="viewTabsSlot" class="legacy-view-tabs" hidden aria-hidden="true">
           <button id="crmViewBtn" type="button" tabindex="-1">Tổng quan</button>
           <button id="customersViewBtn" type="button">Khách hàng</button>
@@ -221,7 +236,9 @@
           </div>
         </div>
 
-        <div id="needCarePanel" class="panel" style="margin-top:14px">
+        <div id="needCarePanel" class="customer-workspace panel" style="margin-top:14px">
+          <button type="button" class="customer-workspace-back customer-care-back hide" data-customer-workspace="#/customers">← Khách hàng</button>
+          <div class="customer-workspace-context customer-care-context hide"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Chăm sóc &amp; lịch hẹn</b></div>
           <div class="pro-section-title">
             <h3>Lịch chăm sóc / Việc cần làm</h3>
             <span id="careWorkSummaryText" class="muted"></span>
@@ -276,8 +293,30 @@
           <div class="muted">Mỗi dòng là một giá trị. Kênh chi tiết và Loại khách được quản lý độc lập để nhập khách nhanh hơn.</div>
         </div>
 
-        <div id="customerSearchPanel" class="panel" style="margin-top:14px">
-          <h3>Tìm kiếm</h3>
+        <section id="customerAllocationPanel" class="customer-workspace panel hide" inert aria-hidden="true" style="margin-top:14px">
+          <button type="button" class="customer-workspace-back" data-customer-workspace="#/customers">← Khách hàng</button>
+          <div class="customer-workspace-context"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Phân bổ khách hàng</b></div>
+          <h3>Phân bổ khách hàng</h3>
+          <div id="unassignedPoolPanel" class="unassigned-pool hide">
+            <div>
+              <b>Phân bổ khách hàng</b>
+              <div class="muted">Chọn nhiều khách và giao cho một nhân viên ACTIVE. Toàn bộ thao tác sẽ rollback nếu có một dòng lỗi.</div>
+            </div>
+            <div class="unassigned-pool-controls">
+              <select id="unassignedEmployeeSelect" aria-label="Nhân viên nhận khách"></select>
+              <input id="unassignedReason" placeholder="Lý do phân bổ (khuyến nghị)">
+              <button id="selectAllUnassignedBtn" type="button">Chọn tất cả</button>
+              <button id="assignSelectedCustomersBtn" class="primary" type="button">Giao khách đã chọn</button>
+              <button id="exportUnassignedBtn" type="button">Xuất danh sách</button>
+            </div>
+            <div id="unassignedPoolList" class="unassigned-pool-list"></div>
+          </div>
+        </section>
+
+        <div id="customerSearchPanel" class="customer-workspace panel hide" inert aria-hidden="true" style="margin-top:14px">
+          <button type="button" class="customer-workspace-back" data-customer-workspace="#/customers">← Khách hàng</button>
+          <div class="customer-workspace-context"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Tìm &amp; danh sách khách hàng</b></div>
+          <h3>Tìm &amp; danh sách khách hàng</h3>
           <div class="toolbar">
             <div class="toolbar-search"><label>Tìm kiếm</label><input id="searchBox" placeholder="Tên, SĐT, địa chỉ, ghi chú..."></div>
             <div><label>Nhân viên</label><select id="filterOwner"></select></div>
@@ -315,20 +354,6 @@
               <b id="quickUnassignedCount">0</b>
               <small>Chưa có nhân viên phụ trách</small>
             </button>
-          </div>
-          <div id="unassignedPoolPanel" class="unassigned-pool hide">
-            <div>
-              <b>Phân bổ khách hàng</b>
-              <div class="muted">Chọn nhiều khách và giao cho một nhân viên ACTIVE. Toàn bộ thao tác sẽ rollback nếu có một dòng lỗi.</div>
-            </div>
-            <div class="unassigned-pool-controls">
-              <select id="unassignedEmployeeSelect" aria-label="Nhân viên nhận khách"></select>
-              <input id="unassignedReason" placeholder="Lý do phân bổ (khuyến nghị)">
-              <button id="selectAllUnassignedBtn" type="button">Chọn tất cả</button>
-              <button id="assignSelectedCustomersBtn" class="primary" type="button">Giao khách đã chọn</button>
-              <button id="exportUnassignedBtn" type="button">Xuất danh sách</button>
-            </div>
-            <div id="unassignedPoolList" class="unassigned-pool-list"></div>
           </div>
           <div class="table-title">Thông tin khách hàng</div>
           <div class="table-wrap customer-table-wrap">

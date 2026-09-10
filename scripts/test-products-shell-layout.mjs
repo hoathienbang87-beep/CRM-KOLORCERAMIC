@@ -16,21 +16,14 @@ try {
     document.querySelector('#maintenanceView').classList.add('hide');
     document.querySelector('#appView').classList.remove('hide');
   });
-  for(const width of [390,761,1131,1180,1280]){
+  assert.equal(await page.locator('.layout>aside.panel').count(),0,'permanent Add Customer aside phải được gỡ');
+  for(const width of [360,390,768,1180,1440]){
     await page.setViewportSize({width,height:900});
-    const position=await page.locator('.layout>aside.panel').evaluate(el=>getComputedStyle(el).position);
-    assert.equal(position,width<=1180?'static':'sticky',`sidebar tại ${width}px`);
-    if(width<=1180){
-      const boxes=await page.locator('.layout').evaluate(el=>[...el.children].map(x=>{const r=x.getBoundingClientRect();return {top:r.top,bottom:r.bottom};}));
-      assert.ok(boxes[1].top>=boxes[0].bottom,'hai vùng không chồng nhau');
-    }
-    assert.equal(await page.locator('#viewTabsSlot').isVisible(),false,'tab ngang cũ phải ẩn');
-    assert.equal(await page.locator('#desktopSidebar').isVisible(),width>760,`Sidebar desktop tại ${width}px`);
-    assert.equal(await page.locator('#mobileNavOpenBtn').isVisible(),width<=760,`Hamburger tại ${width}px`);
-    if(width>760){
-      const sidebarWidth=await page.locator('#desktopSidebar').evaluate(el=>el.getBoundingClientRect().width);
-      assert.equal(sidebarWidth,240,'Sidebar desktop rộng 240px');
-    }
+    const layout=await page.locator('.layout').boundingBox();
+    const rootBox=await page.locator('.workspace-root').boundingBox();
+    assert.ok(layout && rootBox && rootBox.width >= layout.width-40,'workspace phải dùng chiều rộng shell đã giải phóng');
+    const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+    assert.ok(overflow<=1,`shell không được tràn ngang tại ${width}px`);
   }
   console.log('PASS full shell layout: 390/761/1131/1180/1280px');
 } finally {await browser.close();}

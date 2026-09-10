@@ -1,5 +1,5 @@
 import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
-import { CRM_NAV_ITEMS, CRM_HASH_ROUTES, normalizeWorkspaceHash } from "../components/app-shell.js";
+import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
   db,
@@ -145,6 +145,7 @@ let scopedSnapshots = {customers:{}, careLogs:{}, deals:{}, customerAssignments:
 let presenceTimer = null;
 let channelReportHitAreas = [];
 let activeMainView = "crm";
+let activeCustomerWorkspace = "hub";
 let activeChannelQuickFilter = "";
 let editingDealId = "";
 let editingQuoteId = "";
@@ -448,7 +449,7 @@ function updateNavigationUi(item) {
     const allowed = canUseNavItem(config);
     button.classList.toggle("hide", !allowed);
     button.disabled = !allowed;
-    const active = item?.id === config?.id;
+    const active = (item?.navId || item?.id) === config?.id;
     button.classList.toggle("active", active);
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
@@ -460,8 +461,9 @@ function updateNavigationUi(item) {
 
 function authorizedWorkspaceForHash(hash = window.location.hash) {
   const normalized = normalizeWorkspaceHash(hash);
-  const exactItem = CRM_HASH_ROUTES[normalized];
-  return exactItem && canUseNavItem(exactItem) ? exactItem : CRM_HASH_ROUTES["#/overview"];
+  const item = workspaceForHash(normalized);
+  if (item.mainView === "customers" && !canUseNavItem(item)) return CRM_HASH_ROUTES["#/customers"];
+  return canUseNavItem(item) ? item : CRM_HASH_ROUTES["#/overview"];
 }
 
 function resolveWorkspaceRoute({replaceInvalid = true} = {}) {
@@ -470,7 +472,7 @@ function resolveWorkspaceRoute({replaceInvalid = true} = {}) {
   if (replaceInvalid && window.location.hash !== item.hash) {
     window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
   }
-  setMainView(item.mainView, {syncHash:false});
+  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace});
   updateNavigationUi(item);
   return item;
 }
@@ -478,10 +480,10 @@ function resolveWorkspaceRoute({replaceInvalid = true} = {}) {
 function navigateToWorkspace(target, {replace = false} = {}) {
   const normalized = typeof target === "string" ? normalizeWorkspaceHash(target) : "";
   const item = typeof target === "string"
-    ? CRM_NAV_ITEMS.find(entry => entry.id === target || entry.mainView === target || entry.hash === normalized)
+    ? (CRM_HASH_ROUTES[normalized] || CRM_NAV_ITEMS.find(entry => entry.id === target || entry.mainView === target))
     : target;
   if (!item || !canUseNavItem(item)) {
-    const fallback = CRM_HASH_ROUTES["#/overview"];
+    const fallback = item?.mainView === "customers" ? CRM_HASH_ROUTES["#/customers"] : CRM_HASH_ROUTES["#/overview"];
     window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${fallback.hash}`);
     setMobileNavigationOpen(false);
     return resolveWorkspaceRoute();
@@ -494,7 +496,7 @@ function navigateToWorkspace(target, {replace = false} = {}) {
     const method = replace ? "replaceState" : "pushState";
     window.history[method]({}, "", `${window.location.pathname}${window.location.search}${item.hash}`);
   }
-  setMainView(item.mainView, {syncHash:false});
+  setMainView(item.mainView, {syncHash:false, customerWorkspace:item.customerWorkspace});
   updateNavigationUi(item);
   setMobileNavigationOpen(false);
   return item;
@@ -2487,9 +2489,9 @@ function updateCareStatusVisual() {
   el.classList.add(customerStatusClass(el.value));
 }
 
-const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel"];
+const crmViewIds = ["executiveDashboard","pipelinePanel","needCarePanel","todayCarePanel","onlinePanel"];
 const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
-const customerViewIds = ["customerSearchPanel"];
+const customerViewIds = CUSTOMER_WORKSPACES.map(workspace => workspace.panelId);
 const kpiViewIds = ["kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
 const reportsViewIds = ["reportsPanel"];
 const productsViewIds = ["productsPanel"];
@@ -2502,7 +2504,32 @@ function renderCrmView() {
   renderNeedCare();
 }
 
-function setMainView(view, {syncHash = true} = {}) {
+function setCustomerPanelHidden(id, hidden) {
+  const panel = $(id);
+  if (!panel) return;
+  panel.classList.toggle("hide", hidden);
+  panel.toggleAttribute("inert", hidden);
+  panel.setAttribute("aria-hidden", String(hidden));
+}
+
+function applyCustomerWorkspaceVisibility(isCustomerView) {
+  document.querySelectorAll('[data-customer-workspace="#/customers/allocation"]').forEach(card => {
+    card.classList.toggle("hide", !isManager());
+    card.disabled = !isManager();
+  });
+  CUSTOMER_WORKSPACES.forEach(workspace => {
+    const visible = isCustomerView && workspace.customerWorkspace === activeCustomerWorkspace && canUseNavItem(workspace);
+    setCustomerPanelHidden(workspace.panelId, !visible);
+  });
+  if (!isCustomerView) setCustomerPanelHidden("needCarePanel", false);
+  document.querySelectorAll(".customer-care-back,.customer-care-context").forEach(element => {
+    element.classList.toggle("hide", !(isCustomerView && activeCustomerWorkspace === "care"));
+  });
+}
+
+function setMainView(view, {syncHash = true, customerWorkspace = null} = {}) {
+  const previousMainView = activeMainView;
+  const previousCustomerWorkspace = activeCustomerWorkspace;
   activeMainView = ["customers","kpi","reports","admin","products"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   if (activeMainView === "admin" && !canAccessAdminPanel()) activeMainView = "crm";
@@ -2512,11 +2539,15 @@ function setMainView(view, {syncHash = true} = {}) {
   const isAdminView = activeMainView === "admin";
   const isProductsView = activeMainView === "products";
   const isOtherView = isCustomerView || isKpiView || isReportsView || isAdminView || isProductsView;
+  if (isCustomerView) activeCustomerWorkspace = CUSTOMER_WORKSPACES.some(item => item.customerWorkspace === customerWorkspace) ? customerWorkspace : activeCustomerWorkspace || "hub";
+  if (previousMainView !== activeMainView || (isCustomerView && previousCustomerWorkspace !== activeCustomerWorkspace)) closeDrawer();
   crmViewIds.forEach(id => {
     if (isOtherView) $(id)?.classList.add("hide");
   });
   if (!isOtherView) {
     $("needCarePanel")?.classList.remove("hide");
+    $("todayCarePanel")?.classList.remove("hide");
+    $("onlinePanel")?.classList.toggle("hide", !isAdmin());
     $("executiveDashboard")?.classList.toggle("hide", !isManager());
     $("pipelinePanel")?.classList.toggle("hide", !isManager());
   }
@@ -2530,7 +2561,7 @@ function setMainView(view, {syncHash = true} = {}) {
     $("userAdminPanel")?.classList.toggle("hide", !canAccessAdminPanel());
     $("trashPanel")?.classList.toggle("hide", !canAccessAdminPanel());
   }
-  customerViewIds.forEach(id => $(id)?.classList.toggle("hide", !isCustomerView));
+  applyCustomerWorkspaceVisibility(isCustomerView);
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
   $("kpiTeamPanel")?.classList.toggle("hide", !isKpiView || !isManager());
@@ -2546,7 +2577,11 @@ function setMainView(view, {syncHash = true} = {}) {
   $("reportsViewBtn")?.classList.toggle("primary", isReportsView);
   $("adminViewBtn")?.classList.toggle("primary", isAdminView);
   if (!isOtherView) renderCrmView();
-  if (isCustomerView) renderCustomers();
+  if (isCustomerView) {
+    if (activeCustomerWorkspace === "list" || activeCustomerWorkspace === "allocation") renderCustomers();
+    if (activeCustomerWorkspace === "care") renderNeedCare();
+    if (activeCustomerWorkspace === "allocation") renderUnassignedPool();
+  }
   if (isProductsView) renderProducts();
   if (isKpiView) {
     if (isManager()) {
@@ -2568,7 +2603,9 @@ function setMainView(view, {syncHash = true} = {}) {
     renderTrash();
     renderAuditTrail();
   }
-  const workspace = workspaceByMainView(activeMainView) || CRM_HASH_ROUTES["#/overview"];
+  const workspace = isCustomerView
+    ? CUSTOMER_WORKSPACES.find(item => item.customerWorkspace === activeCustomerWorkspace)
+    : workspaceByMainView(activeMainView) || CRM_HASH_ROUTES["#/overview"];
   if (syncHash && canUseNavItem(workspace) && !isAdminRoute() && window.location.hash !== workspace.hash) {
     window.history.pushState({}, "", `${window.location.pathname}${window.location.search}${workspace.hash}`);
   }
@@ -3567,8 +3604,8 @@ function renderUnassignedPool(rows = customers.filter(c => !clean(c.ownerUserId)
   const panel = $("unassignedPoolPanel");
   const list = $("unassignedPoolList");
   if (!panel || !list) return;
-  const visible = isManager() && activeChannelQuickFilter === "unassigned";
-  panel.classList.toggle("hide", !visible);
+  const visible = isManager() && activeMainView === "customers" && activeCustomerWorkspace === "allocation";
+  setCustomerPanelHidden("unassignedPoolPanel", !visible);
   if (!visible) return;
 
   const validIds = new Set(rows.map(c => c.id));
@@ -8518,6 +8555,7 @@ function showApp() {
     window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${workspace.hash}`);
   }
   activeMainView = workspace.mainView;
+  activeCustomerWorkspace = workspace.customerWorkspace || "hub";
   hydrateSelects();
   renderAll();
   updateNavigationUi(workspace);
@@ -8625,9 +8663,18 @@ document.addEventListener("click", e => {
   const orderSummary = e.target.closest("[data-order-summary]")?.dataset.orderSummary;
   const careWorkDetail = e.target.closest("[data-care-work-detail]")?.dataset.careWorkDetail;
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
+  const customerWorkspaceHash = e.target.closest("[data-customer-workspace]")?.dataset.customerWorkspace;
   const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
+  if (customerWorkspaceHash) {
+    closeDrawer();
+    navigateToWorkspace(customerWorkspaceHash);
+  }
   if (loadMoreKey) loadMorePage(loadMoreKey);
   if (channelQuick) {
+    if (channelQuick === "unassigned") {
+      navigateToWorkspace("#/customers/allocation");
+      return;
+    }
     activeChannelQuickFilter = activeChannelQuickFilter === channelQuick ? "" : channelQuick;
     $("filterChannel").value = "";
     resetPaging("customers");
