@@ -331,10 +331,11 @@ function withActionTimeout(promise, label, ms=45000) {
 const dirtyCollections = new Set();
 const adminRoutes = {
   "/admin": {key:"dashboard", title:"Quản trị CRM", subtitle:"Quản trị người dùng, danh mục CRM, chăm sóc khách hàng và dữ liệu vận hành."},
-  "/admin/users": {key:"users", title:"Người dùng", subtitle:"Quản lý tài khoản, role, khóa/mở và thông tin nhân viên."},
+  "/admin/users": {key:"users", title:"Người dùng & vòng đời", subtitle:"Quản lý tài khoản, role và vòng đời nhân viên."},
   "/admin/categories": {key:"categories", title:"Danh mục CRM", subtitle:"Quản lý kênh chi tiết, trạng thái, tình trạng chăm sóc và dropdown CRM."},
-  "/admin/settings": {key:"settings", title:"Cấu hình công ty", subtitle:"Quản lý logo, hotline, email, showroom, mạng xã hội và thương hiệu."},
-  "/admin/audit-logs": {key:"audit-logs", title:"Nhật ký hoạt động", subtitle:"Theo dõi các thay đổi khách hàng, chăm sóc, KPI, user và cấu hình."}
+  "/admin/settings": {key:"settings", title:"Cấu hình công ty & chăm sóc", subtitle:"Quản lý thông tin công ty và truy cập quy tắc chăm sóc."},
+  "/admin/health": {key:"health", title:"Sức khỏe & an toàn dữ liệu", subtitle:"Kiểm tra dữ liệu, xuất snapshot và cô lập công cụ vận hành nhạy cảm."},
+  "/admin/audit-logs": {key:"audit-logs", title:"Nhật ký & thùng rác", subtitle:"Theo dõi thay đổi và khôi phục dữ liệu đã xóa mềm."}
 };
 const viewDependencies = {
   crm: ["customers", "careLogs", "deals", "settings"],
@@ -672,12 +673,10 @@ function hydrateSelects() {
   fillSelect("filterSource", settings.sources, "", "Tất cả nguồn");
   hydrateFilterChannelOptions();
   fillSelect("filterCustomerType", settings.customerTypes, "", "Tất cả phân loại");
-  renderDropdownSettingsForm();
   // Không tự lọc theo tháng hiện tại. Bộ lọc Tháng/Tuần để trống thì hiển thị tất cả dữ liệu.
   $("filterWeek").value ||= "";
   $("filterMonth").value ||= "";
   if (!$("potentialLevel").value) $("potentialLevel").value = "Bình thường";
-  $("careDueDays").value = careDueDays();
   togglePartnerFields();
   if (!isManager()) {
     $("owner").value = ownerEmail();
@@ -691,12 +690,7 @@ function hydrateSelects() {
     $("syncPhoneBtn").classList.add("hide");
     $("syncOwnerBtn").classList.add("hide");
     $("importBtn").classList.add("hide");
-    $("careSettingsPanel").classList.add("hide");
-    $("dropdownSettingsPanel").classList.add("hide");
-    $("userAdminPanel").classList.add("hide");
-    $("trashPanel").classList.add("hide");
-    $("proHealthPanel").classList.add("hide");
-    $("auditPanel").classList.add("hide");
+    ["careSettingsPanel","dropdownSettingsPanel","userAdminPanel","trashPanel","proHealthPanel","auditPanel"].forEach(id => $(id)?.classList.add("hide"));
     $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
     $("reportsViewBtn")?.classList.add("hide");
   } else {
@@ -709,12 +703,7 @@ function hydrateSelects() {
     $("syncPhoneBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("syncOwnerBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("importBtn").classList.toggle("hide", !canAccessAdminPanel());
-    $("careSettingsPanel").classList.toggle("hide", !canAccessAdminPanel());
-    $("dropdownSettingsPanel").classList.toggle("hide", !canAccessAdminPanel());
-    $("proHealthPanel").classList.toggle("hide", !canAccessAdminPanel());
-    $("auditPanel").classList.toggle("hide", !canAccessAdminPanel());
-    $("userAdminPanel").classList.toggle("hide", !canAccessAdminPanel());
-    $("trashPanel").classList.toggle("hide", !canAccessAdminPanel());
+    ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","auditPanel","userAdminPanel","trashPanel"].forEach(id => $(id)?.classList.toggle("hide", !canAccessAdminPanel()));
     $("adminViewBtn")?.classList.toggle("hide", !canAccessAdminPanel());
     $("reportsViewBtn")?.classList.remove("hide");
   }
@@ -2494,7 +2483,7 @@ function updateCareStatusVisual() {
 }
 
 const crmViewIds = ["overviewDashboard"];
-const adminViewIds = ["careSettingsPanel","dropdownSettingsPanel","proHealthPanel","dataSafetyPanel","userAdminPanel","trashPanel","auditPanel"];
+const adminViewIds = [];
 const customerViewIds = CUSTOMER_WORKSPACES.map(workspace => workspace.panelId);
 const kpiViewIds = ["kpiHubPanel","kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
 const reportsViewIds = ["reportsPanel"];
@@ -2572,15 +2561,6 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
     $("overviewDashboard")?.classList.remove("hide");
   }
   adminViewIds.forEach(id => $(id)?.classList.add("hide"));
-  if (isAdminView) {
-    $("careSettingsPanel")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("proHealthPanel")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("dataSafetyPanel")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("auditPanel")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("dropdownSettingsPanel")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("userAdminPanel")?.classList.toggle("hide", !canAccessAdminPanel());
-    $("trashPanel")?.classList.toggle("hide", !canAccessAdminPanel());
-  }
   applyCustomerWorkspaceVisibility(isCustomerView);
   productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
@@ -2630,13 +2610,6 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
     if (activeReportWorkspace === "summary") renderReportCenter();
     if (activeReportWorkspace === "sales") renderSaleActivityReport();
     if (activeReportWorkspace === "customers") renderPipelineReport();
-  }
-  if (isAdminView) {
-    renderHealthCheck();
-    renderDataSafetyPanel();
-    renderUserAdmin();
-    renderTrash();
-    renderAuditTrail();
   }
   const workspace = isCustomerView
     ? CUSTOMER_WORKSPACES.find(item => item.customerWorkspace === activeCustomerWorkspace)
@@ -8563,7 +8536,44 @@ function renderAdminDashboard() {
       <div class="muted">${esc(note)}</div>
     </div>
   `).join("");
+  if ($("adminHubCards")) {
+    const areas = [
+      ["Người dùng & vòng đời", "Tài khoản, role và trạng thái nhân viên.", "/admin/users"],
+      ["Danh mục CRM", "Dropdown nghiệp vụ và quy tắc chăm sóc.", "/admin/categories"],
+      ["Cấu hình công ty & chăm sóc", "Thông tin công ty và lối vào cấu hình chăm sóc.", "/admin/settings"],
+      ["Sức khỏe & an toàn dữ liệu", "Chẩn đoán, snapshot và công cụ vận hành nhạy cảm.", "/admin/health"],
+      ["Nhật ký & thùng rác", "Dấu vết thay đổi và khôi phục dữ liệu xóa mềm.", "/admin/audit-logs"]
+    ];
+    $("adminHubCards").innerHTML = areas.map(([title, description, route]) => `
+      <button class="admin-hub-card" type="button" data-admin-route="${esc(route)}">
+        <b>${esc(title)}</b><span>${esc(description)}</span><small>Mở khu vực →</small>
+      </button>
+    `).join("");
+  }
   if ($("adminUserText")) $("adminUserText").textContent = `${currentUser?.email || ""} · ${appUser?.role || ""}`;
+}
+
+function consolidateAdminDom() {
+  const healthHost = $("adminHealthPanels");
+  ["proHealthPanel", "dataSafetyPanel"].forEach(id => {
+    const panel = $(id);
+    if (!panel || !healthHost) return;
+    panel.classList.remove("hide");
+    healthHost.append(panel);
+  });
+  const dangerHost = $("adminDangerTools");
+  ["seedBtn", "syncPhoneBtn", "syncOwnerBtn", "importBtn", "importFile"].forEach(id => {
+    const control = $(id);
+    if (!control || !dangerHost) return;
+    control.classList.remove("hide");
+    dangerHost.append(control);
+  });
+  const trashPanel = $("trashPanel");
+  if (trashPanel && $("adminTrashHost")) {
+    trashPanel.classList.remove("hide");
+    $("adminTrashHost").append(trashPanel);
+  }
+  ["careSettingsPanel", "dropdownSettingsPanel", "userAdminPanel", "auditPanel"].forEach(id => $(id)?.remove());
 }
 
 function renderAdminShell() {
@@ -8585,9 +8595,21 @@ function renderAdminShell() {
     refreshEmployeeIdentityStatus();
   }
   if (meta.key === "categories") renderAdminCategorySettingsForm();
-  if (meta.key === "settings") renderCompanySettingsForm();
-  if (meta.key === "audit-logs") renderAdminAuditPage();
+  if (meta.key === "settings") {
+    renderCompanySettingsForm();
+    if ($("adminCareRuleSummary")) $("adminCareRuleSummary").textContent = `${careDueDays()} ngày cảnh báo`;
+  }
+  if (meta.key === "health") {
+    renderHealthCheck();
+    renderDataSafetyPanel();
+  }
+  if (meta.key === "audit-logs") {
+    renderAdminAuditPage();
+    renderTrash();
+  }
 }
+
+consolidateAdminDom();
 
 function showLogin() {
   stopPresence();
@@ -9022,8 +9044,9 @@ on("adminLogoutBtn", "click", async () => {
   try { await updatePresence(false); } catch {}
   await signOut(auth);
 });
-document.querySelectorAll("[data-admin-route]").forEach(btn => {
-  btn.addEventListener("click", () => goToRoute(btn.dataset.adminRoute || "/admin"));
+$("adminAppView")?.addEventListener("click", event => {
+  const button = event.target.closest("[data-admin-route]");
+  if (button) goToRoute(button.dataset.adminRoute || "/admin");
 });
 on("kpiRuleTarget", "input", () => {
   document.querySelectorAll("[data-kpi-target-email]").forEach(input => {

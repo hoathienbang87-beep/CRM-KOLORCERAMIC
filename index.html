@@ -700,10 +700,11 @@
       </div>
       <nav class="admin-menu" aria-label="Admin menu">
         <button class="active" type="button" data-admin-route="/admin">Tổng quan</button>
-        <button type="button" data-admin-route="/admin/users">Người dùng</button>
+        <button type="button" data-admin-route="/admin/users">Người dùng &amp; vòng đời</button>
         <button type="button" data-admin-route="/admin/categories">Danh mục CRM</button>
-        <button type="button" data-admin-route="/admin/settings">Cấu hình</button>
-        <button type="button" data-admin-route="/admin/audit-logs">Nhật ký</button>
+        <button type="button" data-admin-route="/admin/settings">Cấu hình công ty &amp; chăm sóc</button>
+        <button type="button" data-admin-route="/admin/health">Sức khỏe &amp; an toàn dữ liệu</button>
+        <button type="button" data-admin-route="/admin/audit-logs">Nhật ký &amp; thùng rác</button>
       </nav>
       <div class="admin-sidebar-note">Khu quản trị chỉ phục vụ CRM: nhân viên, danh mục, cấu hình chăm sóc và nhật ký hoạt động.</div>
     </aside>
@@ -732,13 +733,14 @@
               <span id="adminRouteGuardText" class="admin-status-pill">owner/admin only</span>
             </div>
             <div id="adminDashboardGrid" class="admin-dashboard-grid"></div>
+            <div id="adminHubCards" class="admin-hub-grid" aria-label="Khu vực quản trị"></div>
           </div>
         </section>
 
         <section id="adminUsersPage" class="admin-page admin-panel hide" data-admin-page="users">
           <div class="admin-section-title">
             <div>
-              <h2>Người dùng</h2>
+              <h2>Người dùng &amp; vòng đời</h2>
               <p>Quản lý user, role, trạng thái khóa/mở và thông tin nhân viên từ khu admin riêng.</p>
             </div>
           </div>
@@ -791,8 +793,8 @@
         <section id="adminSettingsPage" class="admin-page admin-panel hide" data-admin-page="settings">
           <div class="admin-section-title">
             <div>
-              <h2>Cấu hình công ty</h2>
-              <p>Quản lý tên công ty, logo, hotline, email, showroom, mạng xã hội và màu thương hiệu.</p>
+              <h2>Cấu hình công ty &amp; chăm sóc</h2>
+              <p>Quản lý thông tin công ty; quy tắc chăm sóc và dropdown nghiệp vụ được liên kết rõ sang Danh mục CRM.</p>
             </div>
             <div class="admin-header-actions">
               <button id="resetCompanySettingsBtn" type="button">Hủy thay đổi</button>
@@ -818,12 +820,28 @@
               <p class="muted">Chưa có thông tin liên hệ.</p>
             </div>
           </div>
+          <div class="admin-empty-state admin-care-link">
+            <b>Quy tắc chăm sóc hiện tại: <span id="adminCareRuleSummary"></span></b>
+            <span>Hình thức, kết quả, tình trạng chăm và số ngày cảnh báo được quản lý cùng các danh mục nghiệp vụ.</span>
+            <button type="button" data-admin-route="/admin/categories">Mở cấu hình chăm sóc</button>
+          </div>
+        </section>
+
+        <section id="adminHealthPage" class="admin-page hide" data-admin-page="health">
+          <div class="admin-section-title admin-panel">
+            <div><h2>Sức khỏe &amp; an toàn dữ liệu</h2><p>Chẩn đoán read-only, snapshot và các công cụ vận hành nhạy cảm đã được tách khỏi CRM topbar.</p></div>
+          </div>
+          <div id="adminHealthPanels"></div>
+          <section class="admin-panel admin-danger-zone" aria-labelledby="adminDangerTitle">
+            <div class="admin-section-title"><div><h2 id="adminDangerTitle">Công cụ vận hành nhạy cảm</h2><p>Chỉ Owner/Admin. Các thao tác có ghi dữ liệu giữ nguyên xác nhận và role guard hiện hữu.</p></div></div>
+            <div id="adminDangerTools" class="admin-danger-tools"></div>
+          </section>
         </section>
 
         <section id="adminAuditPage" class="admin-page admin-panel hide" data-admin-page="audit-logs">
           <div class="admin-section-title">
             <div>
-              <h2>Nhật ký hoạt động</h2>
+              <h2>Nhật ký &amp; thùng rác</h2>
               <p>Theo dõi ai đã sửa khách hàng, chăm sóc, KPI, đổi quyền user hoặc thay đổi cấu hình CRM.</p>
             </div>
           </div>
@@ -839,6 +857,7 @@
             </table>
           </div>
           <div id="adminAuditPager" class="list-pager"></div>
+          <div id="adminTrashHost"></div>
         </section>
 
         <section class="admin-panel">
