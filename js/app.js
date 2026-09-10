@@ -4,7 +4,7 @@ import { MAINTENANCE_CONFIG } from "./config/maintenance.generated.js";
 import { renderAppShell } from "./components/app-shell.js";
 
 const SUPABASE_CDN_URLS = [
-  "./js/vendor/supabase/supabase.js",
+  "/js/vendor/supabase/supabase.js",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"
 ];
 
