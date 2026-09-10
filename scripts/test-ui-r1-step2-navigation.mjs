@@ -20,8 +20,12 @@ assert.equal(shell.workspaceForHash("#/unknown").id, "overview");
 assert.equal(shell.CRM_HASH_ROUTES["#/reports"].mainView, "reports");
 assert.equal(shell.CRM_NAV_ITEMS.find(item => item.id === "admin").path, "/admin");
 assert.ok(
-  vercelConfig.rewrites.some(route => route.source === "/admin" && route.destination === "/index.html"),
+  vercelConfig.rewrites.some(route => route.source === "/admin" && route.destination === "/"),
   "Vercel phải phục vụ canonical /admin route"
+);
+assert.ok(
+  vercelConfig.rewrites.some(route => route.source === "/admin/:path*" && route.destination === "/"),
+  "Vercel phải phục vụ các route con /admin/*"
 );
 
 assert.match(shellSource, /desktopNavItems/);
