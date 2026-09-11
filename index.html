@@ -279,7 +279,7 @@
             <div id="productImportDropzone" class="product-import-dropzone">
               <div>
                 <b>Chọn bảng giá PDF</b>
-                <p>PDF được đọc ngay trong trình duyệt, tối đa 20 MiB. File gốc không được tải lên máy chủ.</p>
+                <p>PDF được đọc ngay trong trình duyệt, tối đa 20 MiB. Sau khi staging, file gốc chỉ được lưu trong kho riêng để xác minh provenance.</p>
               </div>
               <div class="actions">
                 <label class="button primary" for="productImportFile">Chọn file PDF</label>
@@ -295,6 +295,10 @@
                 <button id="refreshProductImport" type="button">Làm mới so sánh</button>
               </div>
               <div id="productImportReadyState" class="product-import-ready"></div>
+              <div id="productImportSourceStatus" class="product-import-source-status">Cần xác minh file PDF gốc trước khi áp dụng.</div>
+              <button id="retryProductImportSource" type="button">Chọn lại / xác minh file gốc</button>
+              <button id="confirmProductImportBtn" class="primary" type="button" disabled>Xác nhận áp dụng</button>
+              <p id="productImportAppliedMeta" class="muted"></p>
               <div id="productImportSummary" class="product-import-summary"></div>
               <label class="product-import-candidate"><input id="productImportOriginAccept" type="checkbox"> Áp dụng “Indonesia” làm xuất xứ cho các sản phẩm trong batch này <small>(mặc định tắt)</small></label>
               <div id="productImportFilters" class="product-import-filters" aria-label="Lọc kết quả">
@@ -306,7 +310,7 @@
                 <div class="drawer-head"><h4 id="productImportDetailTitle" style="margin:0">Chi tiết</h4><button id="closeProductImportDetail" type="button">Đóng</button></div>
                 <div id="productImportDetailBody"></div>
               </aside>
-              <p class="muted">Bước xác nhận áp dụng vào sản phẩm sẽ chỉ được triển khai ở phase tiếp theo.</p>
+              <p class="muted">Chỉ khi file gốc đã xác minh và mọi quyết định đã READY, bạn mới có thể xác nhận áp dụng.</p>
             </div>
           </section>
         </div>

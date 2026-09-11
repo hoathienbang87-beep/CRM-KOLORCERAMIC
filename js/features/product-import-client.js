@@ -23,6 +23,17 @@ export async function sha256Hex(bytes){
   return [...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,"0")).join("");
 }
 
+export async function uploadProductImportSource({supabaseClient,batchId,file,functionUrl=window.PRODUCT_IMPORT_SOURCE_FUNCTION_URL}){
+  if(!supabaseClient?.auth?.getSession) throw new Error("Chưa có phiên đăng nhập để lưu file gốc.");
+  const {data,error}=await supabaseClient.auth.getSession();
+  if(error||!data?.session?.access_token) throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+  const base=functionUrl||`${window.CRM_SUPABASE_CONFIG?.url||""}/functions/v1/product-import-source`;
+  const response=await fetch(`${base}?batch_id=${encodeURIComponent(batchId)}`,{method:"POST",headers:{Authorization:`Bearer ${data.session.access_token}`,"Content-Type":"application/pdf","X-Product-Import-Batch-Id":batchId},body:file});
+  const payload=await response.json().catch(()=>null);
+  if(!response.ok) throw new Error(payload?.error?.message||"Không thể xác minh file PDF gốc.");
+  return payload;
+}
+
 export function parserResultToStagePayload(file,result,sourceSha256){
   if(!result?.ok||!Array.isArray(result.rows)) throw new Error(result?.error?.message||"Kết quả parser không hợp lệ.");
   const effectiveDate=result.metadata?.effective_date;

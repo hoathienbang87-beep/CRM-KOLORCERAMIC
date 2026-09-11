@@ -1,0 +1,4 @@
+project_id = "local-product-r2"
+
+[functions.product-import-source]
+verify_jwt = false

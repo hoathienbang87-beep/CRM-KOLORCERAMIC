@@ -33,7 +33,7 @@ assert.match(worker,/vendor\/pdfjs\/pdf\.mjs/);assert.match(worker,/vendor\/pdfj
 for(const forbidden of ["supabase","firebase","auth.uid","crm_stage_product_import","https://","http://"])assert.equal(worker.toLowerCase().includes(forbidden),false,`Worker isolation: ${forbidden}`);
 const html=read("index.html"),ui=read("js/features/product-import-ui.js"),sql=read("supabase-phase-product-r2-import-preview.sql");
 for(const required of ["Import bảng giá","productImportFile","productImportRows","Làm mới so sánh"])assert.ok(html.includes(required));
-assert.equal(/Áp dụng vào sản phẩm/.test(html),false,"No apply Product button in STEP 5");
+assert.match(html,/Xác nhận áp dụng/);assert.match(html,/disabled/);
 assert.match(ui,/crm_stage_product_import/);assert.match(ui,/crm_update_product_import_review/);assert.match(ui,/crm_refresh_product_import/);
 assert.equal(/\b(?:insert\s+into|update|delete\s+from)\s+public\.products\b/i.test(sql),false);
 assert.equal(/\b(?:insert\s+into|update|delete\s+from)\s+public\.product_price_history\b/i.test(sql),false);

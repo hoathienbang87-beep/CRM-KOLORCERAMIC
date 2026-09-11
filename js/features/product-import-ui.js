@@ -8,9 +8,9 @@ export function summarizeImportRows(rows=[]){
   return rows.reduce((out,row)=>{out.total++;out[row.classification]=(out[row.classification]||0)+1;if(row.selected_action==="CREATE")out.create++;if(row.selected_action==="UPDATE")out.update++;return out;},{total:0,create:0,update:0});
 }
 
-export function createProductImportController({rpc,notice=()=>{}}){
+export function createProductImportController({rpc,notice=()=>{},sourceUploader=null}){
   const worker=new ProductImportWorkerClient();
-  const state={batch:null,rows:[],filter:"ALL",busy:false,detailId:null};
+  const state={batch:null,rows:[],filter:"ALL",busy:false,confirming:false,detailId:null,confirmKey:null,lastFile:null};
   const el=id=>document.getElementById(id);
   const setStatus=(text,bad=false)=>{const target=el("productImportStatus");if(target){target.textContent=text;target.classList.toggle("bad",bad);}};
   const visibleRows=()=>state.rows.filter(row=>state.filter==="ALL"||row.classification===state.filter);
@@ -32,6 +32,11 @@ export function createProductImportController({rpc,notice=()=>{}}){
       <td><button type="button" class="small" data-import-detail="${esc(row.id)}">Chi tiết</button></td></tr>`).join(""):`<tr><td colspan="7" class="muted">Không có dòng phù hợp.</td></tr>`;
     el("productImportCards").innerHTML=rows.map(row=>`<article class="product-import-card"><div><b>${esc(row.code||"—")}</b><span class="pill">${esc(labels[row.classification]||row.classification)}</span></div><p>${esc(row.name||"—")}</p><button type="button" data-import-detail="${esc(row.id)}">Xem chi tiết</button></article>`).join("");
     el("productImportOriginAccept").checked=!!batch.origin_accepted;
+    const verified=!!batch.source_verified_sha256&&batch.source_verified_sha256===batch.source_sha256&&Number(batch.source_verified_size_bytes)===Number(batch.source_file_size_bytes);
+    if(el("productImportSourceStatus"))el("productImportSourceStatus").textContent=verified?"Đã lưu và xác minh file gốc":"Cần xác minh file PDF gốc trước khi áp dụng.";
+    if(el("productImportSourceStatus"))el("productImportSourceStatus").className=`product-import-source-status ${verified?"is-verified":""}`;
+    const confirmButton=el("confirmProductImportBtn");if(confirmButton){confirmButton.disabled=!verified||batch.status!=="READY"||state.confirming||batch.status==="APPLIED";confirmButton.classList.toggle("hide",batch.status==="APPLIED");}
+    if(el("productImportAppliedMeta"))el("productImportAppliedMeta").textContent=batch.status==="APPLIED"?`Người tải: ${batch.created_by_name||"—"} · Người xác nhận: ${batch.confirmed_by_name||"—"} · Áp dụng: ${batch.applied_at?new Date(batch.applied_at).toLocaleString("vi-VN"):"—"}`:"";
     const drawer=el("productImportDetail");
     const row=state.rows.find(item=>item.id===state.detailId);
     if(drawer&&row){drawer.classList.remove("hide");drawer.removeAttribute("inert");el("productImportDetailTitle").textContent=`${row.code||"Dòng"} · ${labels[row.classification]||row.classification}`;el("productImportDetailBody").innerHTML=`${row.is_stale?'<p class="maintenance-note">Dữ liệu sản phẩm đã thay đổi sau khi bảng giá được tải lên.</p>':''}<dl class="product-import-diff"><dt>Dữ liệu nguồn</dt><dd><pre>${esc(JSON.stringify(row.source_values||{},null,2))}</pre></dd><dt>So sánh hiện tại</dt><dd><pre>${esc(JSON.stringify(row.diff||{},null,2))}</pre></dd><dt>Cảnh báo</dt><dd>${esc((row.warnings||[]).map(w=>w.code||w).join(", ")||"Không có")}</dd></dl>${row.surface_candidate?`<label><input type="checkbox" data-import-surface="${esc(row.id)}" ${row.surface_accepted?'checked':''}> Áp dụng bề mặt đề xuất: ${esc(row.surface_candidate)}</label>`:""}${row.classification==='DUPLICATE_IN_FILE'?`<div class="actions"><button type="button" data-import-duplicate="${esc(row.duplicate_group_id)}" data-import-resolution="COLLAPSE" data-import-representative="${esc(row.id)}" ${row.duplicate_kind!=='IDENTICAL'?'disabled':''}>Giữ dòng này, gộp bản trùng</button><button type="button" data-import-duplicate="${esc(row.duplicate_group_id)}" data-import-resolution="SKIP_GROUP">Bỏ qua cả nhóm</button></div>`:""}`;}
@@ -46,8 +51,20 @@ export function createProductImportController({rpc,notice=()=>{}}){
       setStatus("Đang gửi dữ liệu chuẩn hóa lên vùng staging...");
       const payload=parserResultToStagePayload(file,parserResult,hash);
       const staged=await rpc("crm_stage_product_import",{p_batch:payload.batch,p_rows:payload.rows,p_request_id:crypto.randomUUID()});
-      await reload(staged.batch_id);setStatus("Đã tạo bản xem trước. PDF gốc vẫn chỉ ở máy của bạn.");notice("Đã tạo bản xem trước bảng giá.");
+      await reload(staged.batch_id);setStatus("Đang lưu file gốc...");
+      if(sourceUploader){try{await sourceUploader({batchId:staged.batch_id,file});await reload(staged.batch_id);setStatus("Đã lưu và xác minh file gốc.");}catch(sourceError){setStatus("Không thể xác minh file gốc. Preview vẫn được giữ để bạn thử lại.",true);}}
+      else setStatus("Đã tạo bản xem trước. Cần xác minh file PDF gốc trước khi áp dụng.");
+      state.lastFile=file;notice("Đã tạo bản xem trước bảng giá.");
     }catch(error){if(error?.name!=="AbortError")setStatus(error?.message||"Không thể xử lý PDF.",true);}finally{state.busy=false;}
+  }
+  async function verifySource(){if(!state.batch||!sourceUploader)return;if(!state.lastFile){el("productImportFile")?.click();return;}setStatus("Đang lưu file gốc...");try{await sourceUploader({batchId:state.batch.id,file:state.lastFile});await reload(state.batch.id);setStatus("Đã lưu và xác minh file gốc.");}catch(error){setStatus(error?.message||"Không thể xác minh file gốc.",true);}}
+  async function confirmImport(){
+    if(!state.batch||state.batch.status!=="READY"||state.confirming)return;
+    const verified=!!state.batch.source_verified_sha256&&state.batch.source_verified_sha256===state.batch.source_sha256&&Number(state.batch.source_verified_size_bytes)===Number(state.batch.source_file_size_bytes);
+    if(!verified)return setStatus("Cần xác minh file PDF gốc trước khi áp dụng.",true);
+    if(!state.confirmKey)state.confirmKey=crypto.randomUUID();state.confirming=true;render();
+    try{const result=await rpc("crm_confirm_product_import",{p_batch_id:state.batch.id,p_idempotency_key:state.confirmKey});await reload(state.batch.id);notice(`Đã áp dụng: tạo ${result.summary?.created||0}, cập nhật ${result.summary?.updated||0}.`);setStatus("Đã áp dụng thành công.");state.confirmKey=null;}
+    catch(error){const message=String(error?.message||"");if(/STALE|VERSION|PRODUCT_APPEARED/i.test(message)){setStatus("Danh mục sản phẩm đã thay đổi kể từ lúc bạn xem trước bảng giá. Hãy làm mới so sánh.",true);}else setStatus(message||"Không thể xác nhận áp dụng.",true);}finally{state.confirming=false;render();}
   }
   async function save(decisions){if(!state.batch)return;setStatus("Đang lưu quyết định...");try{await rpc("crm_update_product_import_review",{p_batch_id:state.batch.id,p_decisions:decisions});await reload(state.batch.id);setStatus("Đã lưu quyết định.");}catch(error){setStatus(error?.message||"Không lưu được quyết định.",true);}}
   function bind(){
@@ -62,11 +79,12 @@ export function createProductImportController({rpc,notice=()=>{}}){
       if(importing)el("productImportFile")?.focus();
     }));
     el("productImportFile")?.addEventListener("change",event=>{const files=event.target.files;if(files?.length===1)stageFile(files[0]);else if(files?.length>1)setStatus("Mỗi batch chỉ nhận một file PDF.",true);});
+    el("retryProductImportSource")?.addEventListener("click",verifySource);
     const drop=el("productImportDropzone");["dragenter","dragover"].forEach(type=>drop?.addEventListener(type,event=>{event.preventDefault();drop.classList.add("is-dragging");}));["dragleave","drop"].forEach(type=>drop?.addEventListener(type,event=>{event.preventDefault();drop.classList.remove("is-dragging");if(type==="drop"){const files=event.dataTransfer?.files;if(files?.length===1)stageFile(files[0]);else setStatus("Mỗi batch chỉ nhận một file PDF.",true);}}));
     el("cancelProductImportParse")?.addEventListener("click",()=>{worker.cancel();setStatus("Đã hủy phân tích PDF.");});
     el("productImportFilters")?.addEventListener("click",event=>{const button=event.target.closest("[data-import-filter]");if(button){state.filter=button.dataset.importFilter;render();}});
     el("productImportPreview")?.addEventListener("change",event=>{const action=event.target.closest("[data-import-action]");if(action)save({rows:[{row_id:action.dataset.importAction,selected_action:action.value}]});const surface=event.target.closest("[data-import-surface]");if(surface)save({rows:[{row_id:surface.dataset.importSurface,surface_accepted:surface.checked}]});if(event.target.id==="productImportOriginAccept")save({origin_accepted:event.target.checked});});
-    el("productImportPreview")?.addEventListener("click",async event=>{const detail=event.target.closest("[data-import-detail]");if(detail){state.detailId=detail.dataset.importDetail;render();el("closeProductImportDetail")?.focus();}if(event.target.closest("#closeProductImportDetail")){state.detailId=null;el("productImportDetail")?.classList.add("hide");el("productImportDetail")?.setAttribute("inert","");}const duplicate=event.target.closest("[data-import-duplicate]");if(duplicate){await save({duplicates:[{duplicate_group_id:duplicate.dataset.importDuplicate,resolution:duplicate.dataset.importResolution,representative_row_id:duplicate.dataset.importRepresentative||null}]});state.detailId=null;}if(event.target.closest("#refreshProductImport")){await rpc("crm_refresh_product_import",{p_batch_id:state.batch.id});await reload(state.batch.id);}});
+    el("productImportPreview")?.addEventListener("click",async event=>{const detail=event.target.closest("[data-import-detail]");if(detail){state.detailId=detail.dataset.importDetail;render();el("closeProductImportDetail")?.focus();}if(event.target.closest("#closeProductImportDetail")){state.detailId=null;el("productImportDetail")?.classList.add("hide");el("productImportDetail")?.setAttribute("inert","");}const duplicate=event.target.closest("[data-import-duplicate]");if(duplicate){await save({duplicates:[{duplicate_group_id:duplicate.dataset.importDuplicate,resolution:duplicate.dataset.importResolution,representative_row_id:duplicate.dataset.importRepresentative||null}]});state.detailId=null;}if(event.target.closest("#confirmProductImportBtn")){const summary=state.batch?.summary||{};const message=`Bạn sắp áp dụng bảng giá này.\\n\\nTạo mới: ${summary.create||summary.selected_create||0}\\nCập nhật: ${summary.update||summary.selected_update||0}\\nBỏ qua: ${summary.skip||summary.selected_skip||0}\\n\\nFile gốc đã được xác minh. Mọi thay đổi sẽ được áp dụng cùng lúc; nếu có xung đột, toàn bộ giao dịch sẽ bị hủy.`;if(confirm(message))await confirmImport();}if(event.target.closest("#refreshProductImport")){await rpc("crm_refresh_product_import",{p_batch_id:state.batch.id});await reload(state.batch.id);}});
   }
-  return {state,bind,render,reload,stageFile,cancel:()=>worker.cancel()};
+  return {state,bind,render,reload,stageFile,cancel:()=>worker.cancel(),confirm:confirmImport,verifySource};
 }

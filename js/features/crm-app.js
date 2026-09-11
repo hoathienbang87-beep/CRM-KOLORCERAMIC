@@ -1,5 +1,6 @@
 import { productQuantity, productMoney, productSizeLabel, productFromCanonical, productChanges, productError } from "./product-catalog.js";
 import { createProductImportController } from "./product-import-ui.js";
+import { uploadProductImportSource } from "./product-import-client.js";
 import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, REPORT_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
@@ -423,7 +424,7 @@ function goToRoute(path) {
   showApp();
 }
 
-const productImportController=createProductImportController({rpc:callCrmRpc,notice});
+const productImportController=createProductImportController({rpc:callCrmRpc,notice,sourceUploader:({batchId,file})=>uploadProductImportSource({supabaseClient:supabase,batchId,file})});
 productImportController.bind();
 
 const workspaceByMainView = view => CRM_NAV_ITEMS.find(item => item.mainView === view);

@@ -25,6 +25,6 @@ try{
   const payload=await page.evaluate(()=>window.__stagePayload);assert.equal(payload.rows.length,76);assert.equal(new Set(payload.rows.map(row=>row.code_normalized).filter(Boolean)).size,75);assert.equal(payload.rows.filter(row=>row.client_classification==='INVALID').length,0);
   fs.mkdirSync(path.dirname(outputPath),{recursive:true});fs.writeFileSync(outputPath,JSON.stringify(payload));
   for(const width of [360,390,768,1366,1440]){await page.setViewportSize({width,height:900});const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:document.documentElement.clientWidth,visible:!document.getElementById('productImportView').classList.contains('hide')}));assert.equal(dimensions.visible,true);assert.ok(dimensions.scroll<=dimensions.client,`overflow at ${width}: ${dimensions.scroll}/${dimensions.client}`);}
-  assert.equal(await page.locator('button:has-text("Áp dụng vào sản phẩm")').count(),0);assert.equal(external.length,0);assert.deepEqual(errors,[]);
+  assert.equal(await page.locator('button:has-text("Xác nhận áp dụng")').isDisabled(),true);assert.equal(external.length,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({browser_worker:{file_size_bytes:fs.statSync(pdfPath).size,physical_rows:payload.rows.length,unique_codes:75,total_parse_stage_preview_ms:elapsed,external_requests:0,viewports:[360,390,768,1366,1440]}}));
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
