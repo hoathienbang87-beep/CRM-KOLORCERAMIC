@@ -365,13 +365,25 @@ function rowFor(ref, input) {
     case "products":
       return {
         ...rowBase(ref, data),
+        code: first(data.code, null),
         name: first(data.name, null),
-        sku: first(data.sku, data.code, null),
-        price: first(data.price, null),
-        unit: first(data.unit, data.size, null),
+        width_cm: first(data.widthCm, data.width_cm, null),
+        height_cm: first(data.heightCm, data.height_cm, null),
+        price_per_m2: first(data.pricePerM2, data.price_per_m2, null),
+        price_per_box: first(data.pricePerBox, data.price_per_box, null),
+        price_per_piece: first(data.pricePerPiece, data.price_per_piece, null),
+        pieces_per_box: first(data.piecesPerBox, data.pieces_per_box, null),
+        sqm_per_box: first(data.sqmPerBox, data.sqm_per_box, null),
+        surface: first(data.surface, null),
+        origin: first(data.origin, null),
+        stock_quantity: first(data.stockQuantity, data.stock_quantity, null),
+        price_effective_date: first(data.priceEffectiveDate, data.price_effective_date, null),
         active: first(data.active, true),
+        version: first(data.version, 1),
         created_at: first(data.createdAt, data.created_at, null),
-        updated_at: first(data.updatedAt, data.updated_at, null)
+        created_by_user_id: first(data.createdByUserId, data.created_by_user_id, null),
+        updated_at: first(data.updatedAt, data.updated_at, null),
+        updated_by_user_id: first(data.updatedByUserId, data.updated_by_user_id, null)
       };
     case "kpiRules":
       return {

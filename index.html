@@ -261,7 +261,7 @@
             <table class="admin-table">
               <thead>
                 <tr>
-                  <th>Mã SP</th><th>Tên SP</th><th>Kích thước</th><th>Bề mặt</th><th>Xuất xứ</th><th>Giá</th><th>Tồn kho</th><th>Cập nhật cuối</th><th>Người cập nhật</th>
+                  <th>Mã SP</th><th>Tên SP</th><th>Quy cách</th><th>Giá/m²</th><th>Giá/hộp</th><th>Tồn kho</th><th>Cập nhật</th>
                 </tr>
               </thead>
               <tbody id="productRows"></tbody>
@@ -967,17 +967,34 @@
       <div class="grid2">
         <div class="field"><label>Mã SP</label><input id="productCodeInput" placeholder="VD: STP90-MN98105"></div>
         <div class="field"><label>Tên SP</label><input id="productNameInput" placeholder="Tên sản phẩm"></div>
-        <div class="field"><label>Kích thước</label><input id="productSizeInput" placeholder="VD: 900x900"></div>
+        <div class="field"><label>Chiều rộng (cm)</label><input id="productWidthCmInput" inputmode="decimal" placeholder="VD: 60 hoặc 7.5"></div>
+        <div class="field"><label>Chiều cao (cm)</label><input id="productHeightCmInput" inputmode="decimal" placeholder="VD: 120 hoặc 30"></div>
         <div class="field"><label>Bề mặt</label><input id="productSurfaceInput" placeholder="VD: POLISH, MATT..."></div>
         <div class="field"><label>Xuất xứ</label><input id="productOriginInput" placeholder="VD: SPAIN, INDONESIA..."></div>
-        <div class="field"><label>Giá</label><input id="productPriceInput" inputmode="decimal" placeholder="325000.50"><small>Nhập số, dùng dấu chấm cho phần thập phân.</small></div>
+        <div class="field"><label>Giá/m² (VND)</label><input id="productPricePerM2Input" inputmode="numeric" placeholder="VD: 760000"></div>
+        <div class="field"><label>Ngày hiệu lực giá</label><input id="productPriceEffectiveDateInput" type="date"><small>Ngày này được lưu riêng với thời gian cập nhật.</small></div>
+        <div class="field"><label>Giá/hộp (VND, tùy chọn)</label><input id="productPricePerBoxInput" inputmode="numeric" placeholder="Để trống nếu chưa có"></div>
+        <div class="field"><label>Giá/viên (VND, tùy chọn)</label><input id="productPricePerPieceInput" inputmode="numeric" placeholder="Để trống nếu chưa có"></div>
+        <div class="field"><label>Số viên/hộp</label><input id="productPiecesPerBoxInput" inputmode="numeric" placeholder="Để trống nếu chưa có"></div>
+        <div class="field"><label>m²/hộp</label><input id="productSqmPerBoxInput" inputmode="decimal" placeholder="VD: 1.44"></div>
         <div class="field"><label>Tồn kho</label><input id="productStockInput" inputmode="decimal" placeholder="Chưa cập nhật"><small>Để trống nếu chưa cập nhật tồn kho.</small></div>
       </div>
       <div class="muted">Tồn kho là số lượng tham khảo do nhân viên tự cập nhật, không tự động trừ theo đơn hàng.</div>
     </div>
+    <div id="productAuditMeta" class="section product-audit-meta" aria-label="Thông tin tạo và cập nhật">
+      <div><span>Tạo bởi</span><b id="productCreatedByText">—</b></div>
+      <div><span>Ngày tạo</span><b id="productCreatedAtText">—</b></div>
+      <div><span>Cập nhật bởi</span><b id="productUpdatedByText">—</b></div>
+      <div><span>Cập nhật lúc</span><b id="productUpdatedAtText">—</b></div>
+    </div>
+    <div id="productHistorySection" class="section">
+      <div class="pro-section-title"><h3>Lịch sử giá</h3></div>
+      <div id="productHistoryList" class="product-history-list muted">Chọn một sản phẩm để xem lịch sử giá.</div>
+    </div>
     <div class="actions">
       <button id="editProductBtn" class="primary" type="button">Chỉnh sửa</button>
       <button id="saveProductBtn" class="primary" type="button">Lưu</button>
+      <button id="archiveProductBtn" class="danger hide" type="button">Ngừng sử dụng</button>
     </div>
   </aside>
 

@@ -1,4 +1,4 @@
-import { productQuantity, productMoney, productFromCanonical, productChanges, productError } from "./product-catalog.js";
+import { productQuantity, productMoney, productSizeLabel, productFromCanonical, productChanges, productError } from "./product-catalog.js";
 import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, REPORT_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
@@ -151,7 +151,6 @@ let activeKpiWorkspace = "hub";
 let activeChannelQuickFilter = "";
 let editingDealId = "";
 let editingQuoteId = "";
-let inventoryQtyCache = new Map();
 let renderQueuedWhileHidden = false;
 const pagingState = {
   customers: {limit: 40, step: 40},
@@ -1222,27 +1221,27 @@ async function handleImportFile(event) {
 }
 
 function productLabel(p) {
-  return [p.code, p.name, p.size].filter(Boolean).join(" - ");
+  return [p.code, p.name, productSizeLabel(p)].filter(Boolean).join(" - ");
 }
 
 function productByAnyValue(value) {
   const key = normalizeKey(value);
   if (!key) return null;
-  return products.find(item =>
+  return products.find(item => item.active && (
     normalizeKey(productLabel(item)) === key ||
     normalizeKey(item.id) === key ||
     normalizeKey(item.code) === key ||
     normalizeKey(item.name) === key
-  ) || null;
+  )) || null;
 }
 
 function productSearchText(p) {
-  return normalizeKey([p.code, p.name, p.size, p.surface, p.origin, p.color, p.description, p.priceText || p.price].join(" "));
+  return normalizeKey([p.code, p.name, productSizeLabel(p), p.surface, p.origin, p.pricePerM2, p.pricePerBox, p.pricePerPiece].join(" "));
 }
 
 function hydrateProductFilters() {
   if (!$("productFilterSize")) return;
-  fillSelect("productFilterSize", uniq(products.map(p => p.size)).sort(), "", "Tất cả kích thước");
+  fillSelect("productFilterSize", uniq(products.map(productSizeLabel).filter(value => value !== "—")).sort(), "", "Tất cả kích thước");
   fillSelect("productFilterSurface", uniq(products.map(p => p.surface)).sort(), "", "Tất cả bề mặt");
   fillSelect("productFilterOrigin", uniq(products.map(p => p.origin)).sort(), "", "Tất cả xuất xứ");
 }
@@ -1254,7 +1253,7 @@ function visibleProducts() {
   const origin = clean($("productFilterOrigin")?.value);
   return products.filter(p => {
     if (q && !productSearchText(p).includes(q)) return false;
-    if (size && clean(p.size) !== size) return false;
+    if (size && productSizeLabel(p) !== size) return false;
     if (surface && clean(p.surface) !== surface) return false;
     if (origin && clean(p.origin) !== origin) return false;
     return true;
@@ -1264,31 +1263,17 @@ function visibleProducts() {
 function renderProductOptions() {
   const el = $("productOptions");
   if (!el) return;
-  el.innerHTML = products.map(p => `<option value="${esc(productLabel(p))}">${esc([p.surface, p.origin, p.priceText || money(p.price || 0)].filter(Boolean).join(" · "))}</option>`).join("");
+  el.innerHTML = products.filter(p => p.active).map(p => `<option value="${esc(productLabel(p))}">${esc([p.surface, p.origin, `Giá/m² ${productMoney(p.pricePerM2)}`].filter(Boolean).join(" · "))}</option>`).join("");
 }
 
 function productSku(p) {
-  return clean(p?.code || p?.sku);
+  return clean(p?.code);
 }
 
 function productInventoryQty(product) {
-  const cacheKey = clean(product?.id) || normalizeKey([productSku(product), product?.name].join("|"));
-  if (cacheKey && inventoryQtyCache.has(cacheKey)) return inventoryQtyCache.get(cacheKey);
-  const keys = new Set([
-    clean(product?.id),
-    normalizeKey(productSku(product)),
-    normalizeKey(product?.name)
-  ].filter(Boolean));
-  const qty = inventoryMovements.reduce((sum,m) => {
-    const movementKeys = [
-      clean(m.productId),
-      normalizeKey(m.productSku),
-      normalizeKey(m.productName)
-    ].filter(Boolean);
-    return movementKeys.some(k => keys.has(k)) ? sum + Number(m.qty || 0) : sum;
-  }, 0);
-  if (cacheKey) inventoryQtyCache.set(cacheKey, qty);
-  return qty;
+  if (product?.stockQuantity === null || product?.stockQuantity === undefined || product?.stockQuantity === "") return null;
+  const qty = Number(product.stockQuantity);
+  return Number.isFinite(qty) ? qty : null;
 }
 
 function inventoryTypeLabel(type) {
@@ -1307,8 +1292,7 @@ function hydrateInventoryProductOptions() {
   if (!el) return;
   const current = el.value;
   el.innerHTML = `<option value="">-- Chọn sản phẩm --</option>` + products.map(p => {
-    const stock = productInventoryQty(p);
-    return `<option value="${esc(p.id)}">${esc([productSku(p), p.name, `Tồn ${stock}`].filter(Boolean).join(" · "))}</option>`;
+    return `<option value="${esc(p.id)}">${esc([productSku(p), p.name, `Tồn ${productStockText(p)}`].filter(Boolean).join(" · "))}</option>`;
   }).join("");
   if (products.some(p => p.id === current)) el.value = current;
 }
@@ -1339,10 +1323,11 @@ function renderInventory() {
   $("inventoryFormPanel")?.classList.toggle("hide", !isManager());
   hydrateInventoryProductOptions();
   const visible = visibleProducts();
-  const totalStock = visible.reduce((sum,p) => sum + productInventoryQty(p), 0);
-  const inStock = visible.filter(p => productInventoryQty(p) > 0).length;
-  const zeroStock = visible.filter(p => productInventoryQty(p) === 0).length;
-  const negativeStock = visible.filter(p => productInventoryQty(p) < 0).length;
+  const knownStock = visible.map(productInventoryQty).filter(qty => qty !== null);
+  const totalStock = knownStock.reduce((sum,qty) => sum + qty, 0);
+  const inStock = knownStock.filter(qty => qty > 0).length;
+  const zeroStock = knownStock.filter(qty => qty === 0).length;
+  const negativeStock = knownStock.filter(qty => qty < 0).length;
   $("inventorySummaryGrid").innerHTML = [
     ["Sản phẩm đang lọc", visible.length, ""],
     ["Có tồn", inStock, ""],
@@ -1391,7 +1376,7 @@ async function saveInventoryMovement() {
     productName: p.name || productSku(p),
     movementType,
     qty,
-    unit: p.unit || p.size || "",
+    unit: "m²",
     refType: clean($("inventoryRefType")?.value),
     refId: clean($("inventoryRefId")?.value),
     warehouse: clean($("inventoryWarehouse")?.value) || "main",
@@ -1432,14 +1417,15 @@ async function softDeleteInventoryMovement(id) {
   notice("Đã xóa mềm phiếu kho.");
 }
 
-// CRM-PRODUCTS-R1: catalog nhẹ + giá + tồn kho tham khảo. Không badge tồn
-// kho, không ERP. Mọi thay đổi đi qua crm_update_product/crm_create_product
-// (server ghi updated_at/updated_by_user_id, client không tự gửi được).
+// PRODUCT-R2: clean typed catalog. Product stock is a nullable manual reference;
+// inventory_movements is not the Product stock authority. All mutations use RPC.
 let productDrawerEditingId = null;
 let productDrawerOriginal = null;
 let productsLoading = true;
 let productsLoadError = false;
 let productsReadGeneration = 0;
+let productHistoryGeneration = 0;
+const canEditProduct = () => ["sale","manager","admin","owner"].includes(roleKey());
 async function reloadProducts() {
   const generation = ++productsReadGeneration;
   try {
@@ -1471,9 +1457,58 @@ function productStockText(p) {
   return productQuantity(p?.stockQuantity);
 }
 
+function productActorLabel(id, name) {
+  if (!id) return "Chưa có thông tin";
+  return clean(name) || "Nhân viên không còn tên hiển thị";
+}
+
+function productTimeLabel(value) {
+  const date = value ? toDate(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString("vi-VN") : "Chưa có thông tin";
+}
+
+function renderProductAuditMeta(p) {
+  $("productCreatedByText").textContent = p ? productActorLabel(p.createdByUserId, p.createdByName) : "Sẽ ghi khi lưu";
+  $("productCreatedAtText").textContent = p ? productTimeLabel(p.createdAt) : "Sẽ ghi khi lưu";
+  $("productUpdatedByText").textContent = p ? productActorLabel(p.updatedByUserId, p.updatedByName) : "Sẽ ghi khi lưu";
+  $("productUpdatedAtText").textContent = p ? productTimeLabel(p.updatedAt) : "Sẽ ghi khi lưu";
+}
+
+function renderProductHistory(rows, loading = false, failed = false) {
+  const target = $("productHistoryList");
+  if (!target) return;
+  if (loading) return void (target.innerHTML = `<div class="muted">Đang tải lịch sử giá...</div>`);
+  if (failed) return void (target.innerHTML = `<div class="muted">Không tải được lịch sử giá.</div>`);
+  target.innerHTML = rows.length ? rows.map(row => {
+    const effective = row.effective_date ? new Date(`${row.effective_date}T00:00:00`).toLocaleDateString("vi-VN") : "—";
+    const source = row.source_type === "PDF_IMPORT" ? "PDF Import" : "Thủ công";
+    return `<article class="product-history-item">
+      <b>Hiệu lực ${esc(effective)}</b>
+      <div class="product-history-prices">
+        <span>Giá/m²: ${esc(productMoney(row.price_per_m2))}</span>
+        ${row.price_per_box == null ? "" : `<span>Giá/hộp: ${esc(productMoney(row.price_per_box))}</span>`}
+        ${row.price_per_piece == null ? "" : `<span>Giá/viên: ${esc(productMoney(row.price_per_piece))}</span>`}
+      </div>
+      <div class="product-history-meta">Nguồn: ${esc(source)} · Cập nhật bởi ${esc(productActorLabel(row.changed_by_user_id, row.changed_by_name))} · ${esc(productTimeLabel(row.changed_at))}</div>
+    </article>`;
+  }).join("") : `<div class="muted">Chưa có lịch sử giá.</div>`;
+}
+
+async function reloadProductHistory(productId) {
+  const generation = ++productHistoryGeneration;
+  renderProductHistory([], true);
+  try {
+    const rows = await callCrmRpc("crm_list_product_price_history", {p_product_id:productId});
+    if (generation !== productHistoryGeneration || productDrawerEditingId !== productId) return;
+    renderProductHistory(rows || []);
+  } catch {
+    if (generation === productHistoryGeneration && productDrawerEditingId === productId) renderProductHistory([], false, true);
+  }
+}
+
 function renderProducts() {
   if (!$("productsPanel")) return;
-  $("addProductBtn")?.classList.toggle("hide", !isManager());
+  $("addProductBtn")?.classList.toggle("hide", !canEditProduct());
   hydrateProductFilters();
   renderProductOptions();
   const rows = visibleProducts();
@@ -1482,24 +1517,22 @@ function renderProducts() {
   const empty = `<div class="muted" role="status" style="padding:14px">${message}</div>`;
 
   $("productRows").innerHTML = page.length ? page.map(p => `
-      <tr data-open-product="${esc(p.id)}" style="cursor:pointer">
+      <tr data-open-product="${esc(p.id)}" style="cursor:pointer" class="${p.active ? "" : "row-fail"}">
         <td>${esc(productSku(p) || "—")}</td>
-        <td>${esc(p.name || "—")}</td>
-        <td>${esc(p.size || "—")}</td>
-        <td>${esc(p.surface || "—")}</td>
-        <td>${esc(p.origin || "—")}</td>
-        <td><b>${esc(productMoney(p.price))}</b></td>
+        <td>${esc(p.name || "—")}${p.active ? "" : `<div><span class="pill red">Ngừng sử dụng</span></div>`}</td>
+        <td>${esc(productSizeLabel(p))}</td>
+        <td><b>${esc(productMoney(p.pricePerM2))}</b></td>
+        <td>${esc(productMoney(p.pricePerBox))}</td>
         <td>${esc(productStockText(p))}</td>
-        <td>${esc(p.updatedAt ? toDate(p.updatedAt).toLocaleString("vi-VN") : "—")}</td>
-        <td>${esc((p.updatedByUserId && clean(p.updatedByName)) || "Chưa có thông tin người cập nhật")}</td>
+        <td>${esc(productTimeLabel(p.updatedAt))}<div class="muted">${esc(productActorLabel(p.updatedByUserId, p.updatedByName))}</div></td>
       </tr>
-    `).join("") : `<tr><td colspan="9">${empty}</td></tr>`;
+    `).join("") : `<tr><td colspan="7">${empty}</td></tr>`;
 
   $("productCardList").innerHTML = page.length ? page.map(p => `
       <div class="product-card" data-open-product="${esc(p.id)}">
         <div class="product-card-main">
-          <div><b>${esc(p.name || productSku(p) || "Sản phẩm")}</b><div class="muted">${esc(productSku(p) || "Chưa có mã")}</div></div>
-          <div class="product-card-price"><b>${esc(productMoney(p.price))}</b><div class="muted">Tồn: ${esc(productStockText(p))}</div></div>
+          <div><b>${esc(p.name || productSku(p) || "Sản phẩm")}</b><div class="muted">${esc(productSku(p) || "Chưa có mã")} · ${esc(productSizeLabel(p))}${p.active ? "" : " · Ngừng sử dụng"}</div></div>
+          <div class="product-card-price"><b>Giá/m² ${esc(productMoney(p.pricePerM2))}</b><div class="muted">Tồn: ${esc(productStockText(p))}</div></div>
         </div>
       </div>
     `).join("") : empty;
@@ -1510,22 +1543,32 @@ function renderProducts() {
 function openProductDrawer(id) {
   const p = id ? products.find(x => x.id === id) : null;
   if (id && !p) return notice("Không tìm thấy sản phẩm.", true);
-  if (!id && !isManager()) return notice("Bạn không có quyền tạo sản phẩm.", true);
+  if (!id && !canEditProduct()) return notice("Bạn không có quyền tạo sản phẩm.", true);
   productDrawerOriginal = p ? { ...p } : null;
   productDrawerEditingId = id || null;
   $("productDrawerTitle").textContent = p ? (p.name || productSku(p) || "Sản phẩm") : "Thêm sản phẩm";
   $("productDrawerMeta").textContent = p ? productUpdatedByLabel(p) : "Sản phẩm mới";
   $("productCodeInput").value = p ? (productSku(p) || "") : "";
   $("productNameInput").value = p ? (p.name || "") : "";
-  $("productSizeInput").value = p ? (p.size || "") : "";
+  $("productWidthCmInput").value = p?.widthCm ?? "";
+  $("productHeightCmInput").value = p?.heightCm ?? "";
   $("productSurfaceInput").value = p ? (p.surface || "") : "";
   $("productOriginInput").value = p ? (p.origin || "") : "";
-  $("productPriceInput").value = p?.price ?? "";
+  $("productPricePerM2Input").value = p?.pricePerM2 ?? "";
+  $("productPricePerBoxInput").value = p?.pricePerBox ?? "";
+  $("productPricePerPieceInput").value = p?.pricePerPiece ?? "";
+  $("productPiecesPerBoxInput").value = p?.piecesPerBox ?? "";
+  $("productSqmPerBoxInput").value = p?.sqmPerBox ?? "";
+  $("productPriceEffectiveDateInput").value = p?.priceEffectiveDate || todayIso();
   $("productStockInput").value = p && p.stockQuantity !== null && p.stockQuantity !== undefined ? String(p.stockQuantity) : "";
   const editing = !p;
   $("productDrawer").querySelectorAll("input").forEach(input => input.disabled = !editing);
   $("editProductBtn").classList.toggle("hide", editing);
   $("saveProductBtn").classList.toggle("hide", !editing);
+  $("archiveProductBtn").classList.toggle("hide", !p || !isManager());
+  $("archiveProductBtn").textContent = p?.active ? "Ngừng sử dụng" : "Kích hoạt lại";
+  renderProductAuditMeta(p);
+  if (p) reloadProductHistory(p.id); else renderProductHistory([]);
   rememberOverlayFocus("productDrawer");
   setViewHidden("productDrawerBackdrop", false);
   setViewHidden("productDrawer", false);
@@ -1533,6 +1576,7 @@ function openProductDrawer(id) {
 }
 
 function closeProductDrawer() {
+  productHistoryGeneration++;
   setViewHidden("productDrawerBackdrop", true);
   setViewHidden("productDrawer", true);
   productDrawerEditingId = null;
@@ -1544,17 +1588,23 @@ async function saveProductDrawer() {
   try {
     changes = productChanges({
       code: $("productCodeInput").value, name: $("productNameInput").value,
-      size: $("productSizeInput").value, surface: $("productSurfaceInput").value,
-      origin: $("productOriginInput").value, price: $("productPriceInput").value,
-      stock_quantity: $("productStockInput").value
+      width_cm: $("productWidthCmInput").value, height_cm: $("productHeightCmInput").value,
+      surface: $("productSurfaceInput").value, origin: $("productOriginInput").value,
+      price_per_m2: $("productPricePerM2Input").value,
+      price_per_box: $("productPricePerBoxInput").value,
+      price_per_piece: $("productPricePerPieceInput").value,
+      pieces_per_box: $("productPiecesPerBoxInput").value,
+      sqm_per_box: $("productSqmPerBoxInput").value,
+      stock_quantity: $("productStockInput").value,
+      price_effective_date: $("productPriceEffectiveDateInput").value
     }, productDrawerOriginal);
   } catch (error) { return notice(error.message, true); }
-  if (!clean($("productNameInput").value) && !clean($("productCodeInput").value)) return notice("Sản phẩm cần có mã hoặc tên.", true);
   try {
     const id = productDrawerEditingId;
-    if (!id && !isManager()) return notice("Bạn không có quyền tạo sản phẩm.", true);
+    if (!id && !canEditProduct()) return notice("Bạn không có quyền tạo sản phẩm.", true);
+    if (id && !Object.keys(changes).length) return notice("Không có thay đổi để lưu.");
     const result = id
-      ? await callCrmRpc("crm_update_product", {p_product_id: id, p_changes: changes})
+      ? await callCrmRpc("crm_update_product", {p_product_id: id, p_expected_version:productDrawerOriginal.version, p_changes: changes})
       : await callCrmRpc("crm_create_product", {p_product: changes});
     const saved = productFromCanonical(result);
     productsReadGeneration++;
@@ -1563,6 +1613,24 @@ async function saveProductDrawer() {
     renderProducts();
     openProductDrawer(saved.id);
     notice("Đã lưu sản phẩm.");
+  } catch (error) { notice(productError(error), true); }
+}
+
+async function toggleProductActive() {
+  const p = productDrawerOriginal;
+  if (!p || !isManager()) return notice("Bạn không có quyền thay đổi trạng thái sản phẩm.", true);
+  const next = !p.active;
+  if (!confirm(`${next ? "Kích hoạt lại" : "Ngừng sử dụng"} sản phẩm “${p.name}”?`)) return;
+  try {
+    const result = await callCrmRpc("crm_set_product_active", {
+      p_product_id:p.id,p_expected_version:p.version,p_active:next
+    });
+    const saved = productFromCanonical(result);
+    const index = products.findIndex(item => item.id === saved.id);
+    if (index >= 0) products[index] = saved;
+    renderProducts();
+    openProductDrawer(saved.id);
+    notice(next ? "Đã kích hoạt lại sản phẩm." : "Đã ngừng sử dụng sản phẩm.");
   } catch (error) { notice(productError(error), true); }
 }
 
@@ -1620,7 +1688,7 @@ function hydrateQuoteSelects() {
 function quoteItemTemplate(item={}) {
   const product = item.productId ? productByAnyValue(item.productId) : productByAnyValue(item.productName || item.productSku || item.product || "");
   const productText = item.productLabel || item.productName || item.product || (product ? productLabel(product) : "");
-  const unitPrice = Number(item.unitPrice ?? item.price ?? product?.price ?? 0);
+  const unitPrice = Number(item.unitPrice ?? item.price ?? product?.pricePerM2 ?? 0);
   return `<div class="quote-item-row" data-quote-item>
     <input type="hidden" data-quote-product-id value="${esc(item.productId || product?.id || "")}">
     <div class="field"><label>Sản phẩm</label><input data-quote-product list="productOptions" value="${esc(productText)}" placeholder="Gõ tên/mã sản phẩm"></div>
@@ -1657,15 +1725,15 @@ function collectQuoteItems() {
     const productValue = clean(row.querySelector("[data-quote-product]").value);
     const selected = productByAnyValue(clean(row.querySelector("[data-quote-product-id]").value) || productValue);
     const qty = Number(row.querySelector("[data-quote-qty]").value || 0);
-    const unitPrice = Number(row.querySelector("[data-quote-price]").value || selected?.price || 0);
+    const unitPrice = Number(row.querySelector("[data-quote-price]").value || selected?.pricePerM2 || 0);
     const discountAmount = Number(row.querySelector("[data-quote-discount]").value || 0);
     const lineTotal = Math.max(0, qty * unitPrice - discountAmount);
     return {
       productId: selected?.id || clean(row.querySelector("[data-quote-product-id]").value),
-      productSku: selected?.code || selected?.sku || "",
+      productSku: selected?.code || "",
       productName: selected?.name || productValue,
       productLabel: selected ? productLabel(selected) : productValue,
-      unit: selected?.unit || selected?.size || "",
+      unit: selected ? "m²" : "",
       qty,
       unitPrice,
       discountAmount,
@@ -1709,7 +1777,7 @@ function applyProductToQuoteInput(input) {
   }
   input.value = productLabel(p);
   row.querySelector("[data-quote-product-id]").value = p.id || "";
-  row.querySelector("[data-quote-price]").value = Number(p.price || 0);
+  row.querySelector("[data-quote-price]").value = Number(p.pricePerM2 || 0);
   updateQuoteTotals();
 }
 
@@ -2012,7 +2080,7 @@ function applyProductToDealInput(input) {
   input.value = productLabel(p);
   row.querySelector("[data-deal-product-id]").value = p.id || "";
   row.querySelector("[data-deal-code]").value = p.code || "";
-  if (meta) meta.textContent = [p.surface, p.origin, p.color, p.priceText || (p.price ? money(p.price) : "")].filter(Boolean).join(" · ");
+  if (meta) meta.textContent = [productSizeLabel(p), p.surface, p.origin, `Giá/m² ${productMoney(p.pricePerM2)}`].filter(Boolean).join(" · ");
 }
 
 function stopWatchers() {
@@ -2079,11 +2147,6 @@ function setCollectionState(targetName, docs) {
   else if (targetName === "inventoryMovements") {
     allInventoryMovements = docs;
     inventoryMovements = docs.filter(m => !m.isDeleted).sort(byDateDesc);
-    inventoryQtyCache = new Map();
-  }
-  else if (targetName === "products") {
-    products = docs.filter(d => !d.isDeleted).sort((a,b) => clean(a.name).localeCompare(clean(b.name), "vi"));
-    inventoryQtyCache = new Map();
   }
   else if (targetName === "kpiPeriods") {
     kpiPeriods = docs.sort((a,b) => clean(b.periodMonth).localeCompare(clean(a.periodMonth)));
@@ -3147,9 +3210,9 @@ function quoteProductSuggestions(c) {
     .filter(part => part.length >= 3);
   if (!terms.length) return [];
   return products
-    .filter(p => !p.isDeleted)
+    .filter(p => p.active)
     .filter(p => {
-      const text = normalizeKey([p.name, p.code, p.sku, p.size, p.surface, p.color, p.description].filter(Boolean).join(" "));
+      const text = normalizeKey([p.name, p.code, productSizeLabel(p), p.surface, p.origin].filter(Boolean).join(" "));
       return terms.some(part => text.includes(part));
     })
     .slice(0, 8);
@@ -3188,7 +3251,7 @@ function openQuoteProposal(customerId) {
   const productRows = suggestions.length ? suggestions.map(p => `
     <div class="detail-row">
       <b>${esc(p.name || p.code || "Sản phẩm")}</b>
-      <div class="muted">${esc([p.code || p.sku, p.size, p.surface, p.color, p.priceText || (p.price ? money(p.price) : "")].filter(Boolean).join(" · "))}</div>
+      <div class="muted">${esc([p.code, productSizeLabel(p), p.surface, p.origin, `Giá/m² ${productMoney(p.pricePerM2)}`].filter(Boolean).join(" · "))}</div>
     </div>
   `).join("") : `<div class="muted">Chưa gợi ý được sản phẩm từ nhu cầu hiện tại.</div>`;
   openDetailModal(
@@ -5813,13 +5876,13 @@ function collectDealItems() {
       product: selected?.name || productValue,
       productLabel: selected ? productLabel(selected) : productValue,
       code,
-      size: selected?.size || "",
+      size: selected ? productSizeLabel(selected) : "",
       surface: selected?.surface || "",
       origin: selected?.origin || "",
-      color: selected?.color || "",
-      price: selected?.price || 0,
-      priceText: selected?.priceText || "",
-      description: selected?.description || "",
+      color: "",
+      price: selected?.pricePerM2 || 0,
+      priceText: selected ? `Giá/m² ${productMoney(selected.pricePerM2)}` : "",
+      description: "",
       qty: clean(row.querySelector("[data-deal-qty]").value)
     };
   }).filter(item => item.product || item.code || item.qty);
@@ -7837,7 +7900,7 @@ function erpRiskRows(dealRows) {
     note: `Còn giao ${deliveryStats(d).remaining}`,
     action: d.id
   }));
-  products.filter(p => productInventoryQty(p) <= 0).slice(0, 20).forEach(p => rows.push({
+  products.filter(p => productInventoryQty(p) !== null && productInventoryQty(p) <= 0).slice(0, 20).forEach(p => rows.push({
     type: productInventoryQty(p) < 0 ? "Âm kho" : "Hết tồn",
     title: p.name || productSku(p) || "Sản phẩm",
     note: `Tồn ${productInventoryQty(p)}`,
@@ -7884,13 +7947,13 @@ function renderErpReport() {
     <table class="admin-table">
       <thead><tr><th>Sản phẩm</th><th>SL bán</th><th>Đã giao</th><th>Số đơn</th><th>Tồn hiện tại</th></tr></thead>
       <tbody>${topProducts.map(p => {
-        const product = products.find(item => item.id === p.productId || normalizeKey(productSku(item)) === normalizeKey(p.sku) || normalizeKey(item.name) === normalizeKey(p.name));
+        const product = products.find(item => item.id === p.productId || (!!p.sku && normalizeKey(productSku(item)) === normalizeKey(p.sku)));
         return `<tr>
           <td><b>${esc(p.name)}</b><div class="muted">${esc(p.sku || "")}</div></td>
           <td>${esc(p.qty)}</td>
           <td>${esc(p.delivered)}</td>
           <td>${esc(p.deals)}</td>
-          <td>${esc(product ? productInventoryQty(product) : "")}</td>
+          <td>${esc(product ? productStockText(product) : "")}</td>
         </tr>`;
       }).join("")}</tbody>
     </table>
@@ -8183,8 +8246,8 @@ async function exportErpReport() {
   const productRows = [
     ["Sản phẩm", "Mã", "SL bán", "Đã giao", "Số đơn", "Tồn hiện tại"],
     ...productSalesRows(dealRows).map(p => {
-      const product = products.find(item => item.id === p.productId || normalizeKey(productSku(item)) === normalizeKey(p.sku) || normalizeKey(item.name) === normalizeKey(p.name));
-      return [p.name, p.sku, p.qty, p.delivered, p.deals, product ? productInventoryQty(product) : ""];
+      const product = products.find(item => item.id === p.productId || (!!p.sku && normalizeKey(productSku(item)) === normalizeKey(p.sku)));
+      return [p.name, p.sku, p.qty, p.delivered, p.deals, product ? productStockText(product) : ""];
     })
   ];
   const riskRows = [
@@ -8872,10 +8935,12 @@ on("kpi2SelectAllEvents", "change", e => document.querySelectorAll("[data-kpi2-r
 on("addProductBtn", "click", () => openProductDrawer(null));
 on("saveProductBtn", "click", () => runAction("saveProductBtn", "saveProduct", "Đang lưu...", saveProductDrawer));
 on("editProductBtn", "click", () => {
+  if (!canEditProduct()) return notice("Bạn không có quyền cập nhật sản phẩm.", true);
   $("productDrawer").querySelectorAll("input").forEach(input => input.disabled = false);
   $("editProductBtn").classList.add("hide");
   $("saveProductBtn").classList.remove("hide");
 });
+on("archiveProductBtn", "click", () => runAction("archiveProductBtn", "archiveProduct", "Đang xử lý...", toggleProductActive));
 on("closeProductDrawerBtn", "click", closeProductDrawer);
 on("productDrawerBackdrop", "click", closeProductDrawer);
 on("resetProductFilterBtn", "click", () => {
