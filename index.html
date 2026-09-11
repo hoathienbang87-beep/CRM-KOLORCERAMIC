@@ -250,6 +250,11 @@
             <h3>Sản phẩm</h3>
             <button id="addProductBtn" class="small primary hide" type="button">Thêm sản phẩm</button>
           </div>
+          <div class="product-section-tabs" role="tablist" aria-label="Khu vực sản phẩm">
+            <button id="productCatalogTab" type="button" role="tab" aria-selected="true" aria-controls="productCatalogView" data-product-tab="catalog">Danh sách sản phẩm</button>
+            <button id="productImportTab" type="button" role="tab" aria-selected="false" aria-controls="productImportView" data-product-tab="import">Import bảng giá</button>
+          </div>
+          <div id="productCatalogView" role="tabpanel" aria-labelledby="productCatalogTab">
           <div class="toolbar product-toolbar">
             <div class="toolbar-search"><label>Tìm sản phẩm</label><input id="productSearchBox" placeholder="Mã SP, tên sản phẩm..."></div>
             <div><label>Kích thước</label><select id="productFilterSize"></select></div>
@@ -269,6 +274,41 @@
           </div>
           <div id="productCardList" class="product-card-list"></div>
           <div id="productPager" class="list-pager"></div>
+          </div>
+          <section id="productImportView" class="product-import-view hide" role="tabpanel" aria-labelledby="productImportTab" inert>
+            <div id="productImportDropzone" class="product-import-dropzone">
+              <div>
+                <b>Chọn bảng giá PDF</b>
+                <p>PDF được đọc ngay trong trình duyệt, tối đa 20 MiB. File gốc không được tải lên máy chủ.</p>
+              </div>
+              <div class="actions">
+                <label class="button primary" for="productImportFile">Chọn file PDF</label>
+                <input id="productImportFile" class="visually-hidden" type="file" accept="application/pdf,.pdf">
+                <button id="cancelProductImportParse" type="button">Hủy phân tích</button>
+              </div>
+            </div>
+            <p id="productImportStatus" class="product-import-status" role="status" aria-live="polite">Chưa chọn file.</p>
+            <div id="productImportEmpty" class="muted product-import-empty">Sau khi phân tích, kết quả so sánh sẽ xuất hiện tại đây. Chưa có thao tác nào ghi vào sản phẩm.</div>
+            <div id="productImportPreview" class="hide">
+              <div class="product-import-head">
+                <div><h4 style="margin:0">Bản xem trước</h4><p id="productImportBatchMeta" class="muted"></p></div>
+                <button id="refreshProductImport" type="button">Làm mới so sánh</button>
+              </div>
+              <div id="productImportReadyState" class="product-import-ready"></div>
+              <div id="productImportSummary" class="product-import-summary"></div>
+              <label class="product-import-candidate"><input id="productImportOriginAccept" type="checkbox"> Áp dụng “Indonesia” làm xuất xứ cho các sản phẩm trong batch này <small>(mặc định tắt)</small></label>
+              <div id="productImportFilters" class="product-import-filters" aria-label="Lọc kết quả">
+                <button type="button" data-import-filter="ALL">Tất cả</button><button type="button" data-import-filter="NEW">Mới</button><button type="button" data-import-filter="PRICE_CHANGED">Đổi giá</button><button type="button" data-import-filter="REVIEW">Cần xem</button><button type="button" data-import-filter="DUPLICATE_IN_FILE">Trùng</button><button type="button" data-import-filter="INVALID">Không hợp lệ</button>
+              </div>
+              <div class="table-wrap product-import-table-wrap"><table class="admin-table"><thead><tr><th>Dòng</th><th>Sản phẩm</th><th>Quy cách</th><th>Giá/m²</th><th>Phân loại</th><th>Quyết định</th><th></th></tr></thead><tbody id="productImportRows"></tbody></table></div>
+              <div id="productImportCards" class="product-import-cards"></div>
+              <aside id="productImportDetail" class="product-import-detail hide" inert aria-labelledby="productImportDetailTitle">
+                <div class="drawer-head"><h4 id="productImportDetailTitle" style="margin:0">Chi tiết</h4><button id="closeProductImportDetail" type="button">Đóng</button></div>
+                <div id="productImportDetailBody"></div>
+              </aside>
+              <p class="muted">Bước xác nhận áp dụng vào sản phẩm sẽ chỉ được triển khai ở phase tiếp theo.</p>
+            </div>
+          </section>
         </div>
 
         <div id="needCarePanel" class="customer-workspace panel hide" inert aria-hidden="true" style="margin-top:14px">

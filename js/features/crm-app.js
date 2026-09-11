@@ -1,4 +1,5 @@
 import { productQuantity, productMoney, productSizeLabel, productFromCanonical, productChanges, productError } from "./product-catalog.js";
+import { createProductImportController } from "./product-import-ui.js";
 import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, REPORT_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
@@ -421,6 +422,9 @@ function goToRoute(path) {
   window.history.pushState({}, "", path);
   showApp();
 }
+
+const productImportController=createProductImportController({rpc:callCrmRpc,notice});
+productImportController.bind();
 
 const workspaceByMainView = view => CRM_NAV_ITEMS.find(item => item.mainView === view);
 const canUseNavItem = item => item?.capability === "crm"
@@ -1538,6 +1542,7 @@ function renderProducts() {
     `).join("") : empty;
 
   renderPager("productPager", "products", rows.length, "sản phẩm");
+  if(typeof productImportController!=="undefined") productImportController.render();
 }
 
 function openProductDrawer(id) {
