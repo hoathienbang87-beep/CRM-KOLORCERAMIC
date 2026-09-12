@@ -573,17 +573,32 @@
             <div class="pro-section-title"><h3 id="kpi2ClaimTitle">Gửi event KPI</h3><button id="kpi2CloseClaimBtn" class="small" type="button">Đóng</button></div>
             <input id="kpi2ClaimAssignmentId" type="hidden">
             <input id="kpi2RevisionEventId" type="hidden">
-            <div id="kpi2HybridCandidateArea" class="hide"><div class="table-title">Candidate từ CRM</div><div id="kpi2CandidateRows" class="kpi2-candidate-list"></div></div>
-            <div id="kpi2ManualEventArea">
-              <div class="grid2">
-                <div class="field"><label>Tiêu đề / Nội dung</label><textarea id="kpi2ManualDescription" placeholder="Mô tả việc đã thực hiện..."></textarea></div>
-                <div class="field"><label>Ngày giờ event</label><input id="kpi2ManualEventAt" type="datetime-local"></div>
-                <div class="field"><label>Giá trị</label><input id="kpi2ManualValue" type="number" min="0.01" step="0.01" value="1"></div>
-                <div class="field"><label>Ảnh minh chứng (tối đa 2)</label><input id="kpi2EvidenceFiles" type="file" accept="image/jpeg,image/webp,image/png" multiple><div id="kpi2StagedEvidenceList" class="kpi2-staged-evidence-list"><span class="muted">Chưa chọn ảnh.</span></div></div>
-              </div><div id="kpi2LocationStatus" class="muted"></div>
+            <div id="kpi2ClaimAssignmentArea" class="field hide">
+              <label for="kpi2ClaimAssignmentSelect">KPI áp dụng</label>
+              <select id="kpi2ClaimAssignmentSelect"></select>
+              <small id="kpi2ClaimAssignmentHint" class="muted"></small>
             </div>
-            <div class="field"><label>Ghi chú submission</label><textarea id="kpi2SaleNote" placeholder="Thông tin bổ sung cho Manager..."></textarea></div>
-            <button id="kpi2SubmitBtn" class="primary" type="button">Gửi để duyệt</button>
+            <section id="kpi2CustomerArea" class="kpi2-customer-area hide" aria-labelledby="kpi2CustomerLabel">
+              <label id="kpi2CustomerLabel" for="kpi2CustomerSearchInput">Khách hàng</label>
+              <div id="kpi2CustomerSearchWrap" class="kpi2-customer-search">
+                <input id="kpi2CustomerSearchInput" type="search" autocomplete="off" placeholder="Tên, công ty hoặc số điện thoại" aria-controls="kpi2CustomerSearchResults">
+                <div id="kpi2CustomerSearchResults" class="kpi2-customer-results" aria-live="polite"></div>
+              </div>
+              <div id="kpi2SelectedCustomer" class="hide"></div>
+            </section>
+            <div id="kpi2EventFields">
+              <div id="kpi2HybridCandidateArea" class="hide"><div class="table-title">Candidate từ CRM</div><div id="kpi2CandidateRows" class="kpi2-candidate-list"></div></div>
+              <div id="kpi2ManualEventArea">
+                <div class="grid2">
+                  <div class="field"><label for="kpi2ManualDescription">Tiêu đề / Nội dung</label><textarea id="kpi2ManualDescription" placeholder="Mô tả việc đã thực hiện..."></textarea></div>
+                  <div class="field"><label for="kpi2ManualEventAt">Ngày giờ event</label><input id="kpi2ManualEventAt" type="datetime-local"></div>
+                  <div class="field"><label for="kpi2ManualValue">Giá trị</label><input id="kpi2ManualValue" type="number" min="0.01" step="0.01" value="1"></div>
+                  <div class="field"><label for="kpi2EvidenceFiles">Ảnh minh chứng (tối đa 2)</label><input id="kpi2EvidenceFiles" type="file" accept="image/jpeg,image/webp,image/png" multiple><div id="kpi2StagedEvidenceList" class="kpi2-staged-evidence-list"><span class="muted">Chưa chọn ảnh.</span></div></div>
+                </div><div id="kpi2LocationStatus" class="muted"></div>
+              </div>
+              <div class="field"><label for="kpi2SaleNote">Ghi chú submission</label><textarea id="kpi2SaleNote" placeholder="Thông tin bổ sung cho Manager..."></textarea></div>
+              <button id="kpi2SubmitBtn" class="primary kpi2-submit" type="button">Gửi để duyệt</button>
+            </div>
           </section>
           <section id="kpi2ManagerReviewPanel" class="kpi2-workspace hide">
             <div class="pro-section-title"><h3>Hàng đợi review event</h3><span id="kpi2ReviewCount" class="pill orange">0 pending</span></div>
@@ -868,7 +883,10 @@
     <section id="customerInfoSection" class="section">
       <div class="actions" style="justify-content:space-between;margin-bottom:12px">
         <h3 style="margin:0">Thông tin KH</h3>
-        <button id="editCustomerInfoBtn" class="small">Sửa thông tin</button>
+        <div class="actions">
+          <button id="kpi2CustomerEntryBtn" class="small primary hide" type="button">Đề xuất KPI</button>
+          <button id="editCustomerInfoBtn" class="small">Sửa thông tin</button>
+        </div>
       </div>
       <div class="field"><label>Trạng thái</label><select id="careStatus" class="status-select"></select></div>
       <div id="customerInfoView" class="info-grid"></div>

@@ -589,8 +589,18 @@
 .kpi2-staged-evidence-item .evidence-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .kpi2-staged-evidence-item.is-pending{border-color:#f59e0b;background:#fffbeb}
 .kpi2-review-toolbar{display:grid;grid-template-columns:180px 210px minmax(220px,1fr) auto;gap:8px;margin:10px 0}.kpi2-review-limit{max-height:520px;overflow:auto}
+.kpi2-customer-area{display:grid;gap:8px;margin:12px 0;padding:12px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fbff}
+.kpi2-customer-area>label{font-weight:700}.kpi2-customer-search{display:grid;gap:8px;min-width:0}
+.kpi2-customer-results{display:grid;gap:6px;max-height:280px;overflow:auto;overscroll-behavior:contain}
+.kpi2-customer-result{display:grid;gap:3px;width:100%;min-height:54px;padding:9px 11px;text-align:left;border:1px solid #d8e2ef;border-radius:6px;background:#fff;color:inherit}
+.kpi2-customer-result:hover,.kpi2-customer-result:focus-visible{border-color:#168876;background:#f0fdfa}.kpi2-customer-result span{color:#526276;font-size:12px;overflow-wrap:anywhere}
+.kpi2-customer-search-state{padding:10px;border:1px dashed #cbd5e1;border-radius:6px;background:#fff}.kpi2-customer-search-state.error{color:#9f1239;border-color:#fecdd3;background:#fff1f2}
+.kpi2-selected-customer-card{padding:11px;border:1px solid #99d5ca;border-radius:7px;background:#fff}.kpi2-selected-customer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.kpi2-selected-customer-card dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin:10px 0 0}.kpi2-selected-customer-card dl div{min-width:0}.kpi2-selected-customer-card dt{font-size:12px;color:#64748b}.kpi2-selected-customer-card dd{margin:2px 0 0;font-weight:600;overflow-wrap:anywhere}
+.kpi2-submit{min-height:44px}
 @media(max-width:900px){.kpi1-foundation-grid{grid-template-columns:1fr}.kpi1-summary-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}}
 @media(max-width:900px){.kpi2-review-toolbar{grid-template-columns:1fr}.kpi2-candidate-row{grid-template-columns:28px 1fr}}
+@media(max-width:600px){.kpi2-selected-customer-card dl{grid-template-columns:1fr}.kpi2-selected-customer-head{display:grid}.kpi2-selected-customer-head .actions{justify-content:flex-start}.kpi2-customer-results{max-height:220px}.kpi2-submit{width:100%}}
 
 /* KPI-2.1B employee-centric Manager workspace. */
 .kpi-team-panel{border-top:3px solid var(--brand)}
