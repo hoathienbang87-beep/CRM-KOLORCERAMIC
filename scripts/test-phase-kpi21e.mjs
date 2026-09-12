@@ -7,6 +7,7 @@ const read = file => fs.readFileSync(path.join(root, file), "utf8");
 const sql = read("supabase-phase-kpi21e-september-cutover.sql");
 const app = read("js/features/crm-app.js");
 const html = read("index.html");
+const r3 = read("supabase-phase-kpi-r3-active-flexibility.sql");
 const helperPath = pathToFileURL(path.join(root, "js/features/kpi-cutover.js")).href;
 const cutover = await import(`${helperPath}?test=${Date.now()}`);
 
@@ -35,14 +36,16 @@ check(!/(delete\s+from|truncate\s+table|drop\s+table)\s+public\.(kpi_rules|kpi_p
 check(!/insert\s+into\s+public\.(kpi_periods|kpi_definitions|kpi_assignments|kpi_submission_events)/i.test(sql), "Migration must not fabricate canonical configuration/data.");
 check(!/15\/08|2026-08-15/.test(sql + app + html), "Cancelled August cutover must not exist in runtime or migration.");
 
-check(/from "\.\/kpi-cutover\.js"/.test(app), "Frontend must import centralized cutover helper.");
+// KPI-2.1E remains the historical, server-enforced September cutover artifact.
+// CRM-KPI-R3 later retired the legacy runtime surface, so the current frontend
+// must not restore the old cutover helper or legacy proposal controls.
+check(!/from ["']\.\/kpi-cutover\.js["']/.test(app), "Post-R3 frontend must not import the retired cutover helper.");
 check(!/2026-09-01T00:00:00\+07:00/.test(app), "crm-app must not duplicate the cutover literal.");
 check(/operationalKpiPendingCount/.test(app), "Dashboard/report must use operational KPI pending source.");
-check(/legacy-pending-kpi/.test(app), "Legacy pending must have a separate action/source.");
-check(/KPI cũ đang đóng sổ/.test(app), "Legacy pending must be clearly labelled.");
-check(/legacyKpiPreCutover\(\) \? `<button class="small primary" data-open-kpi-proposal-customer/.test(app), "Customer legacy proposal button must hide post-cutover.");
-check(/KPI cũ — Đang đóng sổ/.test(html), "Legacy close-out panel must be labelled.");
-check(/id="kpiCutoverStatus"/.test(html), "Cutover status banner must exist.");
+check(!/legacy-pending-kpi|KPI cũ đang đóng sổ/.test(app), "Post-R3 runtime must not expose the retired legacy queue.");
+check(!/KPI cũ|kpiCutoverStatus|kpiProposalModal|kpiApprovalPanel/.test(html), "Post-R3 DOM must not expose legacy KPI controls.");
+check(/revoke execute on function public\.crm_submit_kpi_proposal/.test(r3), "R3 must fail-close the legacy submit RPC.");
+check(/revoke insert,update,delete[^;]+public\.kpi_proposals/.test(r3), "R3 must leave the legacy table read-only.");
 
 const before = {createdAt:"2026-08-31T16:59:59Z", status:"pending", isDeleted:false};
 const at = {createdAt:"2026-08-31T17:00:00Z", status:"pending", isDeleted:false};
@@ -51,4 +54,4 @@ check(!cutover.legacyCloseoutEligible(at, true), "Proposal created at boundary m
 check(!cutover.legacyCloseoutEligible({...before, isDeleted:true}, true), "Deleted proposal must not be close-out eligible.");
 check(!cutover.legacyCloseoutEligible(before, false), "Closed proposal must not be close-out eligible.");
 
-console.log(`KPI-2.1E static/boundary checks PASS (${checks} checks).`);
+console.log(`KPI-2.1E historical cutover + post-R3 disposition PASS (${checks} checks).`);
