@@ -1,4 +1,22 @@
 project_id = "local-product-r2"
 
+# Keep the disposable database outside Windows/Hyper-V's commonly reserved
+# 54232-54431 range. This is local-only and does not affect the linked project.
+[db]
+port = 55432
+shadow_port = 55430
+
+[api]
+port = 55321
+
+[studio]
+port = 55323
+
+[local_smtp]
+port = 55324
+
+[analytics]
+enabled = false
+
 [functions.product-import-source]
 verify_jwt = false
