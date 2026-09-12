@@ -109,9 +109,9 @@ check('revision never coalesces a client Customer ID', !has(revision, "coalesce(
 check('revision preserves append-only linkage', /supersedes_event_id, root_event_id, revision_no/.test(revision));
 check('revision audit identifies link without Customer PII', has(revisionAudit, "'customerId'") && has(revisionAudit, "'customerRelationMode'") && has(revisionAudit, "'customerLinked'") && !/phone|address/i.test(revisionAudit));
 
-check('search RPC is SECURITY INVOKER', has(search, 'security invoker'));
+check('search RPC has explicit definer/invoker posture', has(search, 'security definer') || has(search, 'security invoker'));
 check('search checks active user', has(search, 'crm_is_active_user()'));
-check('search applies current Customer access', has(search, 'crm_can_access_customer_id(c.id)'));
+check('search applies explicit manager/assignment access', has(search, 'crm_kpi_is_business_manager()') && has(search, 'crm_can_access_customer_id(c.id)'));
 check('search excludes archived Customer', has(search, 'not coalesce(c.is_deleted, false)'));
 check('search clamps limit to 50', has(search, 'greatest(1, least(coalesce(p_limit, 20), 50))'));
 check('search returns only least-data fields', /returns table\([\s\S]*id text,[\s\S]*name text,[\s\S]*company_name text,[\s\S]*phone_raw text,[\s\S]*phone_normalized text,[\s\S]*address text[\s\S]*\)/.test(search));
@@ -129,7 +129,11 @@ for (const label of 'ABCDEFGHIJKLMNO') {
   check(`integration contains Test ${label}`, has(integration, `Test ${label}`));
 }
 check('integration Test B asserts 42501', /Test B[\s\S]*when sqlstate '42501'/.test(integration));
-check('integration proves batch row counts unchanged', /Test L[\s\S]*count\(\*\) from public\.kpi_submissions[\s\S]*count\(\*\) from public\.kpi_submission_events/.test(integration));
+check('integration proves batch row counts unchanged', /Test M[\s\S]*count\(\*\) from public\.kpi_submissions[\s\S]*count\(\*\) from public\.kpi_submission_events/.test(integration));
+check('integration proves assignment snapshot freeze', /Assignment snapshot freeze/.test(integration) && /definition_snapshot->>'customer_relation_mode'/.test(integration) && /snapshot runtime did not stay REQUIRED/.test(integration));
+check('integration proves revision gets fresh snapshot', /Test L: revision receives a fresh Customer snapshot[\s\S]*old\/new revision snapshots incorrect/.test(integration));
+check('integration proves Owner search access', /Owner cannot search all active Customers/.test(integration));
+check('integration proves Customer FK restrict', /FK behavior:[\s\S]*referenced Customer hard-delete unexpectedly succeeded/.test(integration));
 check('integration is rollback-only', /^begin;[\s\S]*rollback;\s*$/m.test(integration));
 
 if (failures.length) {

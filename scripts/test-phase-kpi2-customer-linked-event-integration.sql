@@ -4,11 +4,12 @@
 
 begin;
 
-insert into public.app_users(id, supabase_auth_id, email, name, role, active, lifecycle_status)
+insert into public.app_users(id, email, name, role, active, lifecycle_status)
 values
-  ('k2cl-manager', '20000000-0000-4000-8000-000000000001', 'k2cl-manager@example.invalid', 'K2CL Manager', 'manager', true, 'active'),
-  ('k2cl-sale-a',  '20000000-0000-4000-8000-000000000002', 'k2cl-sale-a@example.invalid',  'K2CL Sale A',  'sale', true, 'active'),
-  ('k2cl-sale-b',  '20000000-0000-4000-8000-000000000003', 'k2cl-sale-b@example.invalid',  'K2CL Sale B',  'sale', true, 'active');
+  ('k2cl-manager', 'k2cl-manager@example.invalid', 'K2CL Manager', 'manager', true, 'active'),
+  ('k2cl-owner',   'k2cl-owner@example.invalid',   'K2CL Owner',   'owner',   true, 'active'),
+  ('k2cl-sale-a',  'k2cl-sale-a@example.invalid',  'K2CL Sale A',  'sale', true, 'active'),
+  ('k2cl-sale-b',  'k2cl-sale-b@example.invalid',  'K2CL Sale B',  'sale', true, 'active');
 
 select set_config('crm.kpi_write', 'on', true);
 select set_config('crm.allow_assignment_write', 'on', true);
@@ -21,6 +22,8 @@ values
   ('k2cl-x', 'Real X', 'Company X', '0901000001', '0901000001', 'Address X', 'k2cl-sale-a@example.invalid', 'k2cl-sale-a', 'k2cl-sale-a', false),
   ('k2cl-y', 'Real Y', 'Company Y', '0902000002', '0902000002', 'Address Y', 'k2cl-sale-b@example.invalid', 'k2cl-sale-b', 'k2cl-sale-b', false),
   ('k2cl-t', 'Transfer T', null, '0903000003', '0903000003', null, 'k2cl-sale-a@example.invalid', 'k2cl-sale-a', 'k2cl-sale-a', false),
+  ('k2cl-r', 'Revision R', 'Company R', '0905000005', '0905000005', 'Address R', 'k2cl-sale-a@example.invalid', 'k2cl-sale-a', 'k2cl-sale-a', false),
+  ('k2cl-fk', 'FK Customer', null, '0906000006', '0906000006', null, 'k2cl-sale-a@example.invalid', 'k2cl-sale-a', null, false),
   ('k2cl-archived', 'Archived C', null, '0904000004', '0904000004', null, 'k2cl-sale-a@example.invalid', 'k2cl-sale-a', 'k2cl-sale-a', true);
 
 insert into public.customer_assignments(
@@ -31,6 +34,7 @@ values
   ('k2cl-ca-x', 'k2cl-x', 'k2cl-sale-a', 'k2cl-sale-a@example.invalid', 'K2CL Sale A', 'k2cl-manager', 'fixture', true),
   ('k2cl-ca-y', 'k2cl-y', 'k2cl-sale-b', 'k2cl-sale-b@example.invalid', 'K2CL Sale B', 'k2cl-manager', 'fixture', true),
   ('k2cl-ca-t', 'k2cl-t', 'k2cl-sale-a', 'k2cl-sale-a@example.invalid', 'K2CL Sale A', 'k2cl-manager', 'fixture', true),
+  ('k2cl-ca-r', 'k2cl-r', 'k2cl-sale-a', 'k2cl-sale-a@example.invalid', 'K2CL Sale A', 'k2cl-manager', 'fixture', true),
   ('k2cl-ca-c', 'k2cl-archived', 'k2cl-sale-a', 'k2cl-sale-a@example.invalid', 'K2CL Sale A', 'k2cl-manager', 'fixture', true);
 
 insert into public.kpi_periods(
@@ -105,6 +109,83 @@ begin
   ) then raise exception 'A/H failed: authoritative Customer snapshot mismatch'; end if;
 end;
 $$;
+
+-- Assignment snapshot freeze: live Definition changes do not change an existing period.
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"20000000-0000-4000-8000-000000000001","email":"k2cl-manager@example.invalid","role":"authenticated"}', true);
+select public.crm_kpi_create_definition_v3(
+  'K2CL_FREEZE', 'Freeze', null, 'MANUAL', null, 'event', 'EVENT_CLAIM',
+  false, 'COUNT', 2, false, true, 'REQUIRED'
+);
+reset role;
+select set_config('crm.kpi_write', 'on', true);
+insert into public.kpi_assignments(
+  id, period_id, definition_id, employee_id, target, effective_at,
+  definition_snapshot, assigned_by_user_id
+)
+select '23000000-0000-4000-8000-000000000004',
+  '21000000-0000-4000-8000-000000000001', d.id, 'k2cl-sale-a', 10,
+  '2000-12-31T17:00:00Z', public.crm_kpi_definition_snapshot(d), 'k2cl-manager'
+from public.kpi_definitions d where d.code = 'K2CL_FREEZE';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"20000000-0000-4000-8000-000000000001","email":"k2cl-manager@example.invalid","role":"authenticated"}', true);
+select public.crm_kpi_update_definition_v2(
+  (select id from public.kpi_definitions where code = 'K2CL_FREEZE'), 1,
+  '{"customerRelationMode":"NONE"}'::jsonb
+);
+do $$ begin
+  if (select definition_snapshot->>'customer_relation_mode' from public.kpi_assignments
+      where id = '23000000-0000-4000-8000-000000000004') <> 'REQUIRED' then
+    raise exception 'Assignment snapshot freeze failed';
+  end if;
+end $$;
+select set_config('request.jwt.claims', '{"sub":"20000000-0000-4000-8000-000000000002","email":"k2cl-sale-a@example.invalid","role":"authenticated"}', true);
+do $$ begin
+  begin
+    perform public.crm_kpi_submit_events(
+      '23000000-0000-4000-8000-000000000004', '24000000-0000-4000-8000-000000000013', null,
+      '[{"sourceType":"MANUAL","sourceEventKey":"manual:25000000-0000-4000-8000-000000000013","eventAt":"2001-01-15T09:13:00+07:00","eventSnapshot":{"title":"freeze"},"evidenceIds":[]}]'::jsonb
+    );
+    raise exception 'Assignment snapshot runtime did not stay REQUIRED';
+  exception when sqlstate '22023' then null;
+  end;
+end $$;
+
+-- Test L: revision receives a fresh Customer snapshot while preserving the old row.
+select public.crm_kpi_submit_events(
+  '23000000-0000-4000-8000-000000000001', '24000000-0000-4000-8000-000000000012', null,
+  '[{"sourceType":"MANUAL","sourceEventKey":"manual:25000000-0000-4000-8000-000000000012","eventAt":"2001-01-15T09:12:00+07:00","customerId":"k2cl-r","eventSnapshot":{"title":"revision source"},"evidenceIds":[]}]'::jsonb
+);
+reset role;
+update public.customers set phone_raw = '0988000000', phone_normalized = '0988000000', address = 'Address R2' where id = 'k2cl-r';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"20000000-0000-4000-8000-000000000001","email":"k2cl-manager@example.invalid","role":"authenticated"}', true);
+select public.crm_kpi_review_events(
+  '26000000-0000-4000-8000-000000000003',
+  jsonb_build_array(jsonb_build_object(
+    'eventId', (select id from public.kpi_submission_events where source_event_key = 'manual:25000000-0000-4000-8000-000000000012'),
+    'expectedVersion', 1
+  )), 'NEEDS_REVISION', 'INCOMPLETE_INFORMATION', 'Please revise R'
+);
+select set_config('request.jwt.claims', '{"sub":"20000000-0000-4000-8000-000000000002","email":"k2cl-sale-a@example.invalid","role":"authenticated"}', true);
+select public.crm_kpi_submit_revision(
+  (select id from public.kpi_submission_events where source_event_key = 'manual:25000000-0000-4000-8000-000000000012'),
+  '27000000-0000-4000-8000-000000000003', null,
+  '{"customerId":"k2cl-r","eventSnapshot":{"title":"fresh revision"},"evidenceIds":[]}'::jsonb
+);
+do $$ begin
+  if not exists (
+    select 1 from public.kpi_submission_events
+    where source_event_key = 'manual:25000000-0000-4000-8000-000000000012'
+      and customer_phone_snapshot = '0905000005'
+  ) or not exists (
+    select 1 from public.kpi_submission_events
+    where supersedes_event_id = (select id from public.kpi_submission_events where source_event_key = 'manual:25000000-0000-4000-8000-000000000012' and revision_no = 1)
+      and customer_phone_snapshot = '0988000000'
+      and customer_address_snapshot = 'Address R2'
+  ) then raise exception 'Test L failed: old/new revision snapshots incorrect'; end if;
+end $$;
 
 -- Test B: knowing Sale B's Customer ID is insufficient (SQLSTATE 42501).
 do $$
@@ -205,7 +286,7 @@ do $$ begin
   ) then raise exception 'I failed: historical snapshot changed with Customer'; end if;
 end $$;
 
--- Test N: Manager/Owner business-manager read path includes dedicated snapshots.
+-- Test O: Manager/Owner business-manager read path includes dedicated snapshots.
 -- Test O continuation: normal review accepts the NULL legacy-compatible row.
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"20000000-0000-4000-8000-000000000001","email":"k2cl-manager@example.invalid","role":"authenticated"}', true);
@@ -263,7 +344,7 @@ do $$ begin
   end;
 end $$;
 
--- Test L: one unauthorized Customer rolls back the entire two-event batch.
+-- Test M: one unauthorized Customer rolls back the entire two-event batch.
 do $$
 declare v_submissions bigint; v_events bigint;
 begin
@@ -277,16 +358,16 @@ begin
         {"sourceType":"MANUAL","sourceEventKey":"manual:25000000-0000-4000-8000-000000000009","eventAt":"2001-01-15T09:08:00+07:00","customerId":"k2cl-y","eventSnapshot":{"title":"unauthorized second"},"evidenceIds":[]}
       ]'::jsonb
     );
-    raise exception 'L failed: mixed-authority batch succeeded';
+    raise exception 'M failed: mixed-authority batch succeeded';
   exception when sqlstate '42501' then null;
   end;
   if (select count(*) from public.kpi_submissions) <> v_submissions
      or (select count(*) from public.kpi_submission_events) <> v_events then
-    raise exception 'L failed: partial batch rows survived';
+    raise exception 'M failed: partial batch rows survived';
   end if;
 end $$;
 
--- Test M: exact retry returns the stored response; changed payload conflicts.
+-- Test N: exact retry returns the stored response; changed payload conflicts.
 do $$
 declare v_first jsonb; v_retry jsonb;
 begin
@@ -309,14 +390,55 @@ begin
   end;
 end $$;
 
--- Search stays on the current assignment boundary and exposes only six fields.
-do $$ begin
+-- Search RPC runtime tests: all four searchable fields, assignment boundary,
+-- manager/owner access, clamped limit and unauthenticated denial.
+do $$
+begin
+  if (select count(*) from public.crm_kpi_search_accessible_customers('Revision R', 999) where id = 'k2cl-r') <> 1
+     or (select count(*) from public.crm_kpi_search_accessible_customers('Company R', 999) where id = 'k2cl-r') <> 1
+     or (select count(*) from public.crm_kpi_search_accessible_customers('0988000000', 999) where id = 'k2cl-r') <> 1
+     or (select count(*) from public.crm_kpi_search_accessible_customers('0988000000', 999) where id = 'k2cl-r') <> 1 then
+    raise exception 'Search failed: Sale A field lookup did not return assigned Customer';
+  end if;
   if exists(select 1 from public.crm_kpi_search_accessible_customers(null, 999) where id in ('k2cl-x','k2cl-y')) then
     raise exception 'Search failed: Sale A saw Customer assigned to Sale B';
   end if;
-  if has_function_privilege('anon', 'public.crm_kpi_search_accessible_customers(text,integer)', 'execute') then
-    raise exception 'Search ACL failed: anon can execute';
+end $$;
+select set_config('request.jwt.claims', '{"sub":"20000000-0000-4000-8000-000000000003","email":"k2cl-owner@example.invalid","role":"authenticated"}', true);
+do $$ begin
+  if (select count(*) from public.crm_kpi_search_accessible_customers('Real Y', 999) where id = 'k2cl-y') <> 1 then
+    raise exception 'Search failed: Owner cannot search all active Customers';
   end if;
+end $$;
+reset role;
+set local role anon;
+do $$ begin
+  begin
+    perform public.crm_kpi_search_accessible_customers('Revision R', 20);
+    raise exception 'Search ACL failed: anon unexpectedly executed RPC';
+  exception when sqlstate '42501' then null;
+  end;
+end $$;
+reset role;
+
+-- FK behavior: a referenced Customer cannot be hard-deleted. This fixture has
+-- no customer_assignments row, so the event FK is the only blocker.
+select set_config('crm.kpi_write', 'on', true);
+insert into public.kpi_submission_events(
+  submission_id, assignment_id, source_type, source_event_key, event_at,
+  actor_user_id, customer_id, customer_name_snapshot, claimed_value, event_snapshot
+)
+select s.id, s.assignment_id, 'MANUAL', 'manual:25000000-0000-4000-8000-000000000014',
+  '2001-01-15T09:14:00+07:00', 'k2cl-sale-a', 'k2cl-fk', 'FK Customer', 1,
+  '{"title":"fk"}'::jsonb
+from public.kpi_submissions s
+where s.request_id = '24000000-0000-4000-8000-000000000007';
+do $$ begin
+  begin
+    delete from public.customers where id = 'k2cl-fk';
+    raise exception 'FK failed: referenced Customer hard-delete unexpectedly succeeded';
+  exception when sqlstate '23503' then null;
+  end;
 end $$;
 
 rollback;

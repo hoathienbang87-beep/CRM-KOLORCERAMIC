@@ -472,7 +472,7 @@ returns table(
 )
 language plpgsql
 stable
-security invoker
+security definer
 set search_path = public
 as $$
 declare
@@ -487,7 +487,10 @@ begin
   select c.id, c.name, c.company_name, c.phone_raw, c.phone_normalized, c.address
   from public.customers c
   where not coalesce(c.is_deleted, false)
-    and public.crm_can_access_customer_id(c.id)
+    and (
+      public.crm_kpi_is_business_manager()
+      or public.crm_can_access_customer_id(c.id)
+    )
     and (
       v_query is null
       or c.name ilike '%' || v_query || '%'
