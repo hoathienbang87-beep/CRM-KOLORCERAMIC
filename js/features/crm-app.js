@@ -71,7 +71,9 @@ import {
   filterKpiEmployeeSummaries,
   filterKpiEvents,
   groupEvidenceCount,
-  kpiValue as kpiTeamValue
+  kpiValue as kpiTeamValue,
+  managerKpiEventCardHtml,
+  managerKpiEventViewModel
 } from "./kpi-team.js";
 import {
   buildKpiCustomerEventPayload,
@@ -140,6 +142,7 @@ const kpiTeamState = {
   duplicateDetails: [],
   globalQueueOpen: false,
   globalQueueEvents: [],
+  globalQueueEvidence: [],
   focusedEventId: "",
   historyProgress: [],
   historyPeriods: [],
@@ -4542,21 +4545,6 @@ function kpiTeamProgressWidth(summary) {
   return summary?.hasScore ? Math.max(0, Math.min(100, Number(summary.monthlyScore || 0))) : 0;
 }
 
-function kpiTeamStatusLabel(status) {
-  const value = clean(status).toUpperCase();
-  if (value === "APPROVED") return "Đã duyệt";
-  if (value === "REJECTED") return "Từ chối";
-  if (value === "NEEDS_REVISION") return "Cần sửa";
-  return "Chờ duyệt";
-}
-
-function kpiTeamStatusClass(status) {
-  const value = clean(status).toUpperCase();
-  if (value === "APPROVED") return "green";
-  if (value === "REJECTED" || value === "NEEDS_REVISION") return "red";
-  return "orange";
-}
-
 function kpiTeamSkeleton(count = 4) {
   return `<div class="kpi-team-skeleton" aria-label="Đang tải KPI">${Array.from({length:count}, () => "<span></span>").join("")}</div>`;
 }
@@ -4880,11 +4868,11 @@ function renderKpiTeamProposalTab(summary) {
   $("kpiTeamDetailStatus").textContent = `${kpiTeamState.employeeEvents.length} đề xuất · ${pendingCount} chờ duyệt`;
   target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "CLOSED"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
     const assignment = kpiTeamEventAssignment(event);
-    const snapshot = event.event_snapshot || {};
     const evidenceCount = evidenceCounts.get(clean(event.id)) || 0;
     const duplicateCount = kpiTeamState.duplicateDetails.filter(row => clean(kpiTeamValue(row, "eventId", "event_id")) === clean(event.id)).length;
     const focused = clean(kpiTeamState.focusedEventId) === clean(event.id);
-    return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}"><div class="kpi-team-event-head"><div>${clean(event.status).toUpperCase()==="PENDING" && !periodFrozen?`<input type="checkbox" data-kpi2-review-event="${esc(event.id)}" data-version="${esc(event.lock_version)}" aria-label="Chọn đề xuất ${esc(snapshot.title || kpiTeamDefinitionName(assignment))}">`:""}<b>${esc(kpiTeamDefinitionName(assignment))}</b></div><span class="pill ${kpiTeamStatusClass(event.status)}">${esc(kpiTeamStatusLabel(event.status))}</span></div><div class="kpi-team-event-body"><b>${esc(snapshot.title || snapshot.description || snapshot.customer_name || event.source_type || "Đề xuất KPI")}</b><span>${esc(fmtDate(event.event_at))} · Giá trị ${esc(kpiTeamNumber(event.claimed_value, 2))}</span><span>${evidenceCount} ảnh minh chứng${event.location ? " · Có vị trí" : ""}${event.event_at ? " · Có thời gian" : ""}</span>${event.possible_duplicate ? `<span class="pill orange">Có thể trùng${duplicateCount ? ` · ${esc(duplicateCount)} kết quả` : ""}</span>` : ""}${event.manager_note ? `<div class="detail-note">${esc(event.manager_note)}</div>` : ""}</div><div class="actions">${evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${esc(event.id)}">Xem ${esc(evidenceCount)} ảnh</button>` : ""}</div></article>`;
+    const viewModel=managerKpiEventViewModel({event,assignment,saleName:summary.name,evidenceCount,duplicateCount});
+    return managerKpiEventCardHtml(viewModel,{selectable:clean(event.status).toUpperCase()==='PENDING'&&!periodFrozen,focused});
   }).join("") : `<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${summary.name} chưa có dữ liệu phù hợp.</span></div>`}</div>`;
 }
 
@@ -4900,6 +4888,7 @@ async function loadKpiTeamGlobalQueue({force = false} = {}) {
   renderKpiTeamShell();
   if (!ids.length) {
     kpiTeamState.globalQueueEvents = [];
+    kpiTeamState.globalQueueEvidence = [];
     kpiTeamState.loading.queue = false;
     renderKpiTeamShell();
     return;
@@ -4912,7 +4901,16 @@ async function loadKpiTeamGlobalQueue({force = false} = {}) {
     renderKpiTeamShell();
     throw result.error;
   }
-  kpiTeamState.globalQueueEvents = result.data || [];
+  const events=result.data||[],eventIds=events.map(row=>row.id).filter(Boolean);let evidence=[];
+  if(eventIds.length){
+    kpiTeamState.requests.queue+=1;
+    const evidenceResult=await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,status").in("event_id",eventIds).eq("status","ATTACHED").limit(1000);
+    if(evidenceResult.error){kpiTeamState.loading.queue=false;kpiTeamState.errors.queue="Không tải được minh chứng trong hàng đợi.";renderKpiTeamShell();throw evidenceResult.error;}
+    evidence=evidenceResult.data||[];
+  }
+  kpiTeamState.globalQueueEvents = events;
+  kpiTeamState.globalQueueEvidence = evidence;
+  kpi2Evidence=evidence;
   kpiTeamState.loading.queue = false;
   renderKpiTeamShell();
 }
@@ -4924,11 +4922,11 @@ function renderKpiTeamGlobalQueue() {
   if (kpiTeamState.loading.queue) return void (target.innerHTML = kpiTeamSkeleton(3));
   if (kpiTeamState.errors.queue) return void (target.innerHTML = `<div class="kpi-team-empty"><b>${esc(kpiTeamState.errors.queue)}</b><button class="small primary" type="button" data-kpi-team-retry="queue">Thử lại</button></div>`);
   const progressByAssignment = new Map(kpiTeamState.assignmentProgress.map(row => [kpiTeamAssignmentId(row), row]));
+  const evidenceCounts=groupEvidenceCount(kpiTeamState.globalQueueEvidence);
   target.innerHTML = `<div class="pro-section-title"><h3>Cần duyệt</h3><button class="small" type="button" data-kpi-team-close-queue>Quay lại nhân viên</button></div><div class="kpi-team-event-list">${kpiTeamState.globalQueueEvents.length ? kpiTeamState.globalQueueEvents.map(event => {
     const progress = progressByAssignment.get(clean(event.assignment_id));
-    const employeeId = clean(kpiTeamValue(progress, "employeeId", "employee_id"));
-    const snapshot = event.event_snapshot || {};
-    return `<article class="kpi-team-event-card"><div class="kpi-team-event-head"><div><b>${esc(kpiTeamValue(progress, "employeeName", "employee_name") || "Nhân viên")}</b><span>${esc(kpiTeamDefinitionName(progress))}</span></div><span class="pill orange">Chờ duyệt</span></div><div class="kpi-team-event-body"><b>${esc(snapshot.title || snapshot.description || event.source_type || "Đề xuất KPI")}</b><span>${esc(fmtDate(event.event_at))} · Giá trị ${esc(kpiTeamNumber(event.claimed_value, 2))}</span></div><div class="actions"><button class="small primary" type="button" data-kpi-team-open-event="${esc(event.id)}" data-employee-id="${esc(employeeId)}">Mở đề xuất</button></div></article>`;
+    const viewModel=managerKpiEventViewModel({event,assignment:progress,saleName:kpiTeamValue(progress,"employeeName","employee_name"),evidenceCount:evidenceCounts.get(clean(event.id))||0});
+    return managerKpiEventCardHtml(viewModel,{openAction:true});
   }).join("") : `<div class="kpi-team-empty"><b>Không có event chờ duyệt.</b></div>`}</div>`;
 }
 
@@ -4940,6 +4938,16 @@ async function openKpiTeamGlobalEvent(eventId, employeeId) {
   await loadKpiTeamEmployeeProposals({force:true});
   renderKpiTeamEmployeeDetail();
   requestAnimationFrame(() => $("kpiTeamDetailDrawer")?.querySelector(".kpi-team-event-card.is-focused")?.scrollIntoView({behavior:"smooth", block:"center"}));
+}
+
+function openKpiManagerCurrentCustomer(customerId){
+  if(!isManager())return notice("Bạn không có quyền mở hồ sơ khách hàng này.",true);
+  const id=clean(customerId),customer=customers.find(row=>clean(row.id)===id);
+  if(!customer){
+    const archived=deletedCustomers.some(row=>clean(row.id)===id);
+    return notice(archived?"Hồ sơ khách hàng hiện tại đã được lưu trữ. Thông tin lịch sử trên Event vẫn được giữ nguyên.":"Không thể mở hồ sơ khách hàng hiện tại. Khách hàng có thể không còn tồn tại hoặc bạn không có quyền truy cập.",true);
+  }
+  closeKpiTeamEmployee();navigateToWorkspace("#/customers/list");openDrawer(customer.id,"care");
 }
 
 async function loadKpiTeamEmployeeHistory({force = false} = {}) {
@@ -5437,7 +5445,7 @@ async function reviewSelectedKpi2Events(){
   await refreshCanonicalKpiPendingCount();
   if(teamReviewVisible){
     kpiTeamState.summaryCacheKey='';
-    kpiTeamState.globalQueueEvents=[];
+    kpiTeamState.globalQueueEvents=[];kpiTeamState.globalQueueEvidence=[];
     await Promise.all([reloadKpiTeamSummary({force:true}),loadKpiTeamEmployeeProposals({force:true})]);
   }else await reloadKpi2Data();
   notice(`Đã xử lý ${selected.length} event và tải lại dữ liệu.`);
@@ -8778,6 +8786,7 @@ document.addEventListener("click", e => {
   const kpiTeamEmployeeTab = e.target.closest("[data-kpi-employee-tab]")?.dataset.kpiEmployeeTab;
   const kpiTeamEventFilter = e.target.closest("[data-kpi-team-event-filter]")?.dataset.kpiTeamEventFilter;
   const kpiTeamOpenEventBtn = e.target.closest("[data-kpi-team-open-event]");
+  const kpiCurrentCustomerId = e.target.closest("[data-kpi-current-customer]")?.dataset.kpiCurrentCustomer;
   const kpiTeamRetry = e.target.closest("[data-kpi-team-retry]")?.dataset.kpiTeamRetry;
   const kpiTeamDetailKpi = e.target.closest("[data-kpi-team-detail-kpi]")?.dataset.kpiTeamDetailKpi;
   const kpiTeamReviewBtn = e.target.closest("#kpiTeamReviewBtn");
@@ -8869,6 +8878,7 @@ document.addEventListener("click", e => {
   if (kpiTeamEmployeeTab) setKpiTeamEmployeeTab(kpiTeamEmployeeTab);
   if (kpiTeamEventFilter) { kpiTeamState.eventStatus = kpiTeamEventFilter; renderKpiTeamEmployeeDetail(); }
   if (kpiTeamOpenEventBtn) runAction("", `kpiTeamEvent:${kpiTeamOpenEventBtn.dataset.kpiTeamOpenEvent}`, "Đang mở đề xuất...", () => openKpiTeamGlobalEvent(kpiTeamOpenEventBtn.dataset.kpiTeamOpenEvent, kpiTeamOpenEventBtn.dataset.employeeId));
+  if (kpiCurrentCustomerId) openKpiManagerCurrentCustomer(kpiCurrentCustomerId);
   if (kpiTeamRetry === "summary") runAction("kpiTeamReloadBtn", "kpiTeamSummary", "Đang tải...", () => reloadKpiTeamSummary({force:true}));
   if (kpiTeamRetry === "proposals") runAction("", "kpiTeamProposals", "Đang tải...", () => loadKpiTeamEmployeeProposals({force:true}));
   if (kpiTeamRetry === "queue") runAction("", "kpiTeamQueue", "Đang tải...", () => loadKpiTeamGlobalQueue({force:true}));
@@ -8998,6 +9008,7 @@ on("kpiTeamPeriod", "change", e => {
   kpiTeamState.monthlyScores = [];
   kpiTeamState.employeeEvents = [];
   kpiTeamState.globalQueueEvents = [];
+  kpiTeamState.globalQueueEvidence = [];
   kpiTeamState.historyProgress = [];
   kpiTeamState.historyPeriods = [];
   kpiTeamState.historyScoresByPeriod = new Map();

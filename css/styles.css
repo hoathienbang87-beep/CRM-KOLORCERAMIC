@@ -662,6 +662,11 @@
 .kpi-team-review-controls{display:grid;grid-template-columns:160px 200px minmax(190px,1fr) auto;gap:8px;margin:10px 0;padding:10px;border:1px solid #f2d08a;border-radius:8px;background:#fffbeb}
 .kpi-team-event-body{display:grid;gap:5px;margin-bottom:9px}
 .kpi-team-event-body>span{font-size:13px;color:var(--muted)}
+.kpi-manager-customer{display:grid;gap:8px;margin:0 0 10px;padding:10px;border:1px solid #b9dcd5;border-radius:7px;background:#f3fbf8}
+.kpi-manager-customer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.kpi-manager-customer-head>div{display:grid;gap:2px}.kpi-manager-customer-head span{font-size:11px;color:var(--muted)}.kpi-manager-customer-head button{max-width:100%;white-space:normal}
+.kpi-manager-customer dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:0}.kpi-manager-customer dl div{min-width:0}.kpi-manager-customer dt{font-size:11px;color:var(--muted);font-weight:700}.kpi-manager-customer dd{margin:2px 0 0;font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.kpi-manager-event-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:4px 0}.kpi-manager-event-meta>div{display:grid;gap:2px;min-width:0;padding:8px;border-radius:6px;background:#f5f9fd}.kpi-manager-event-meta span{font-size:11px;color:var(--muted);font-weight:700}.kpi-manager-event-meta b{font-size:13px;overflow-wrap:anywhere}
+.kpi-manager-review-history{display:grid;gap:3px;padding:8px;border-left:3px solid #94a3b8;background:#f8fafc}.kpi-manager-review-history span{font-size:12px;color:#475569;overflow-wrap:anywhere}
 .kpi-team-history-row{display:grid;grid-template-columns:1fr .65fr auto;gap:12px;align-items:center;padding:12px;border:1px solid #d8e5f2;border-radius:8px;background:#fff}
 .kpi-team-history-detail{border:1px solid #d8e5f2;border-radius:8px;background:#fff;overflow:hidden}
 .kpi-team-history-detail summary{display:grid;grid-template-columns:1fr .7fr;gap:12px;cursor:pointer;padding:12px}
@@ -694,6 +699,7 @@
   .kpi-team-detail-tabs{top:64px}
   .kpi-team-review-controls,.kpi-team-assignment-metrics,.kpi-team-history-row,.kpi-team-history-detail summary{grid-template-columns:1fr}
   .kpi-team-review-controls button{width:100%}
+  .kpi-manager-customer dl,.kpi-manager-event-meta{grid-template-columns:1fr}.kpi-manager-customer-head{display:grid}.kpi-manager-customer-head button{justify-self:start}
   .kpi-team-history-assignments>div{display:grid}
   .kpi-team-assign-actions{display:grid;grid-template-columns:1fr 1fr}
 }
