@@ -5455,7 +5455,7 @@ async function viewKpi2Evidence(eventId){
   let rows=kpi2Evidence.filter(e=>clean(e.event_id||e.eventId)===clean(eventId));
   if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
   const urls=[];for(const e of rows){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;urls.push(data.signedUrl);}
-  openDetail('Minh chứng KPI','URL ký tạm thời trong 2 phút',urls.length?`<div class="evidence-grid">${urls.map(url=>`<img src="${esc(url)}" alt="Minh chứng KPI">`).join('')}</div>`:'<div class="muted">Không có ảnh.</div>');
+  openDetailModal('Minh chứng KPI','URL ký tạm thời trong 2 phút',urls.length?`<div class="evidence-grid">${urls.map(url=>`<img src="${esc(url)}" alt="Minh chứng KPI">`).join('')}</div>`:'<div class="muted">Không có ảnh.</div>');
 }
 
 function renderHealthCheck() {

@@ -73,5 +73,8 @@ check(/if\(!customer\)[\s\S]*return notice[\s\S]*closeKpiTeamEmployee/.test(app)
 check(/crm_kpi_review_events[\s\S]*expectedVersion:Number\(x\.dataset\.version\)/.test(app)||/expectedVersion:Number\(x\.dataset\.version\)[\s\S]*crm_kpi_review_events/.test(app),"review RPC still carries expected lock version");
 check((app.match(/crm_kpi_review_events/g)||[]).length===1,"review RPC implementation remains singular");
 check(/globalQueueEvidence/.test(app)&&/groupEvidenceCount\(kpiTeamState\.globalQueueEvidence\)/.test(app),"global queue loads and renders evidence consistently");
+check(/function viewKpi2Evidence\([\s\S]*openDetailModal\(/.test(app),"Manager evidence viewer reuses canonical detail modal");
+check(!/\bopenDetail\(/.test(app),"stale undefined openDetail handler is absent from production app");
+check(/urls\.map\(url=>`<img src=/.test(app),"one or two signed evidence URLs render as images");
 
 console.log(`KPI-2 Phase 4 Manager Customer snapshot static: ${checks} checks PASS`);
