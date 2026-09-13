@@ -4947,7 +4947,7 @@ function openKpiManagerCurrentCustomer(customerId){
     const archived=deletedCustomers.some(row=>clean(row.id)===id);
     return notice(archived?"Hồ sơ khách hàng hiện tại đã được lưu trữ. Thông tin lịch sử trên Event vẫn được giữ nguyên.":"Không thể mở hồ sơ khách hàng hiện tại. Khách hàng có thể không còn tồn tại hoặc bạn không có quyền truy cập.",true);
   }
-  closeKpiTeamEmployee();navigateToWorkspace("#/customers/list");openDrawer(customer.id,"care");
+  openDrawer(customer.id,"care",{inPlace:true});
 }
 
 async function loadKpiTeamEmployeeHistory({force = false} = {}) {
@@ -6987,7 +6987,7 @@ async function saveCustomerInfo() {
   }
 }
 
-function openDrawer(id, mode="care") {
+function openDrawer(id, mode="care", {inPlace = false} = {}) {
   const c = customers.find(x => x.id === id);
   if (!c) return notice("Không tìm thấy khách.", true);
   selectedCustomerId = id;
@@ -7045,6 +7045,10 @@ function openDrawer(id, mode="care") {
   $("dealListSection").classList.add("hide");
   renderHistories(id);
   rememberOverlayFocus("drawer");
+  $("drawer").classList.toggle("is-kpi-contextual", inPlace);
+  $("drawerBackdrop").classList.toggle("is-kpi-contextual", inPlace);
+  const kpiTeamDrawer = $("kpiTeamDetailDrawer");
+  if (inPlace && kpiTeamDrawer && !kpiTeamDrawer.classList.contains("hide")) kpiTeamDrawer.inert = true;
   setViewHidden("drawerBackdrop", false);
   setViewHidden("drawer", false);
   requestAnimationFrame(() => $("closeDrawerBtn")?.focus());
@@ -7064,6 +7068,9 @@ function closeDrawer() {
   selectedCustomerId = "";
   setViewHidden("drawerBackdrop", true);
   setViewHidden("drawer", true);
+  $("drawer")?.classList.remove("is-kpi-contextual");
+  $("drawerBackdrop")?.classList.remove("is-kpi-contextual");
+  if ($("kpiTeamDetailDrawer")?.inert) $("kpiTeamDetailDrawer").inert = false;
   restoreOverlayFocus("drawer");
 }
 
@@ -9077,8 +9084,8 @@ document.addEventListener("keydown", event => {
     if (!$('detailModal')?.classList.contains("hide")) return closeDetailModal();
     if (!$("productDrawer")?.classList.contains("hide")) return closeProductDrawer();
     if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) return closeKpiTeamAssign();
-    if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) return closeKpiTeamEmployee();
     if (!$("drawer")?.classList.contains("hide")) return closeDrawer();
+    if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) return closeKpiTeamEmployee();
     if (!$("mobileNavDrawer")?.classList.contains("hide")) return setMobileNavigationOpen(false);
     return;
   }

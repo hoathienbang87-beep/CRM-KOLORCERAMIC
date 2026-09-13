@@ -34,7 +34,7 @@ for(const panel of CUSTOMER_WORKSPACES) assert.match(html,new RegExp(`id="${pane
 assert.match(app,/setViewHidden\("appView"/);
 assert.match(app,/toggleAttribute\("inert", !open\)/);
 assert.match(app,/restoreOverlayFocus/);
-assert.match(app,/event\.key === "Escape"[\s\S]*?closeDetailModal[\s\S]*?closeProductDrawer[\s\S]*?closeKpiTeamAssign[\s\S]*?closeKpiTeamEmployee[\s\S]*?closeDrawer[\s\S]*?setMobileNavigationOpen/);
+assert.match(app,/event\.key === "Escape"[\s\S]*?closeDetailModal[\s\S]*?closeProductDrawer[\s\S]*?closeKpiTeamAssign[\s\S]*?closeDrawer[\s\S]*?closeKpiTeamEmployee[\s\S]*?setMobileNavigationOpen/);
 assert.match(html,/id="drawer"[^>]*role="dialog"[^>]*aria-modal="true"/);
 assert.match(css,/\.crm-sidebar\{[^}]*overflow-y:auto/);
 assert.match(css,/\.drawer-backdrop\{[^}]*z-index:20/);

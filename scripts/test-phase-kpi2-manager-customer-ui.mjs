@@ -68,7 +68,7 @@ check((app.match(/managerKpiEventCardHtml\(/g)||[]).length===2,"employee list an
 check((app.match(/managerKpiEventViewModel\(/g)||[]).length===2,"employee list and global queue use the same view-model");
 check(/customer_name_snapshot[\s\S]*customer_company_name_snapshot[\s\S]*customer_phone_snapshot[\s\S]*customer_address_snapshot/.test(team),"dedicated Customer snapshot fields are mapped centrally");
 check(!/event_snapshot\s*\?\?[^\n]*customer/i.test(team),"Customer snapshot helper does not source identity from event_snapshot");
-check(/openKpiManagerCurrentCustomer[\s\S]*customers\.find[\s\S]*navigateToWorkspace\("#\/customers\/list"\)[\s\S]*openDrawer\(customer\.id,"care"\)/.test(app),"current profile navigation reuses live Customer workflow");
+check(/openKpiManagerCurrentCustomer[\s\S]*customers\.find[\s\S]*openDrawer\(customer\.id,"care",\{inPlace:true\}\)/.test(app),"current profile action reuses live Customer drawer in place");
 check(/if\(!customer\)[\s\S]*return notice[\s\S]*closeKpiTeamEmployee/.test(app),"unavailable Customer leaves Event review context open");
 check(/crm_kpi_review_events[\s\S]*expectedVersion:Number\(x\.dataset\.version\)/.test(app)||/expectedVersion:Number\(x\.dataset\.version\)[\s\S]*crm_kpi_review_events/.test(app),"review RPC still carries expected lock version");
 check((app.match(/crm_kpi_review_events/g)||[]).length===1,"review RPC implementation remains singular");
@@ -76,5 +76,10 @@ check(/globalQueueEvidence/.test(app)&&/groupEvidenceCount\(kpiTeamState\.global
 check(/function viewKpi2Evidence\([\s\S]*openDetailModal\(/.test(app),"Manager evidence viewer reuses canonical detail modal");
 check(!/\bopenDetail\(/.test(app),"stale undefined openDetail handler is absent from production app");
 check(/urls\.map\(url=>`<img src=/.test(app),"one or two signed evidence URLs render as images");
+const currentCustomerFlow=app.match(/function openKpiManagerCurrentCustomer\([\s\S]*?\n}/)?.[0]||"";
+check(/openDrawer\(customer\.id,"care",\{inPlace:true\}\)/.test(currentCustomerFlow),"Manager opens live Customer drawer in place");
+check(!/navigateToWorkspace|closeKpiTeamEmployee/.test(currentCustomerFlow),"Manager Customer action does not navigate or close KPI context");
+check(/is-kpi-contextual/.test(app)&&/kpiTeamDetailDrawer[\s\S]*inert/.test(app),"contextual drawer stacks above and temporarily inerts KPI drawer");
+check(app.indexOf('rememberOverlayFocus("drawer")',app.indexOf("function openDrawer"))<app.indexOf("kpiTeamDrawer.inert = true",app.indexOf("function openDrawer")),"focus target is captured before KPI context becomes inert");
 
 console.log(`KPI-2 Phase 4 Manager Customer snapshot static: ${checks} checks PASS`);
