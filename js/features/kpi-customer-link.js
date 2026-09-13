@@ -1,6 +1,8 @@
 const CUSTOMER_MODES = new Set(["REQUIRED", "OPTIONAL", "NONE"]);
 const EMPTY_CUSTOMER_VALUE = "Chưa có thông tin";
 
+export const KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE = "Hiện bạn chưa có KPI phù hợp để đề xuất cho khách hàng này.";
+
 const text = value => String(value ?? "").trim();
 const html = value => text(value)
   .replaceAll("&", "&amp;")
@@ -8,6 +10,12 @@ const html = value => text(value)
   .replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#39;");
+
+export function customerKpiQuickActionHtml(customerId, canSubmitKpi) {
+  const id = text(customerId);
+  if (!canSubmitKpi || !id) return "";
+  return `<button class="small" type="button" data-kpi2-customer-entry="${html(id)}">Đề xuất KPI</button>`;
+}
 
 export function kpiCustomerRelationMode(assignment) {
   const snapshot = assignment?.definitionSnapshot ?? assignment?.definition_snapshot ?? {};
