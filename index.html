@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="vi">
 <head>
   <meta charset="utf-8">
@@ -875,7 +875,6 @@
         <div id="drawerInfo" class="muted"></div>
       </div>
       <div class="actions">
-        <button id="deleteCustomerBtn" class="danger small">Xóa khách</button>
         <button id="closeDrawerBtn" class="small">Đóng</button>
       </div>
     </div>
@@ -932,6 +931,23 @@
           <button id="cancelCustomerInfoBtn">Hủy</button>
         </div>
       </div>
+    </section>
+
+    <section id="customerLifecycleSection" class="section customer-lifecycle-section hide" aria-labelledby="customerLifecycleTitle">
+      <div class="customer-lifecycle-heading">
+        <div>
+          <h3 id="customerLifecycleTitle">Quản lý khách hàng</h3>
+          <p>Thao tác vòng đời dùng RPC nghiệp vụ và luôn giữ lại lịch sử.</p>
+        </div>
+        <span id="customerLifecycleStatus" class="pill">Đang hoạt động</span>
+      </div>
+      <div id="customerLifecycleSummary" class="customer-lifecycle-summary"></div>
+      <div class="customer-lifecycle-actions">
+        <button id="unassignCustomerBtn" class="small" type="button">Gỡ phân công</button>
+        <button id="archiveCustomerBtn" class="danger small" type="button">Lưu trữ khách hàng</button>
+        <button id="restoreCustomerBtn" class="primary small hide" type="button">Khôi phục khách hàng</button>
+      </div>
+      <p id="customerLifecycleHint" class="customer-lifecycle-hint"></p>
     </section>
 
     <section id="careSection" class="section">

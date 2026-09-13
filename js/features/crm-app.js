@@ -77,9 +77,11 @@ import {
 } from "./kpi-team.js";
 import {
   buildKpiCustomerEventPayload,
+  customerKpiQuickActionHtml,
   createKpiCustomerSearchAdapter,
   createKpiEventFormState,
   eligibleKpiCustomerAssignments,
+  KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,
   kpiCustomerSubmitError,
   normalizeKpiCustomer,
   renderKpiCustomerLinkUi,
@@ -317,12 +319,15 @@ async function runAction(buttonId, key, label, fn) {
   if (busyKeys.has(key)) return;
   busyKeys.add(key);
   const btn = $(buttonId);
-  const oldText = btn?.textContent || "";
+  const canLabel = btn?.tagName === "BUTTON";
+  const oldText = canLabel ? btn.textContent : "";
   if (btn) {
     btn.disabled = true;
     btn.classList.add("loading");
-    btn.dataset.oldText = oldText;
-    if (label) btn.textContent = label;
+    if (canLabel) {
+      btn.dataset.oldText = oldText;
+      if (label) btn.textContent = label;
+    }
   }
   setSavingMaskVisible(true);
   try {
@@ -334,7 +339,7 @@ async function runAction(buttonId, key, label, fn) {
     if (btn) {
       btn.disabled = false;
       btn.classList.remove("loading");
-      btn.textContent = btn.dataset.oldText || oldText;
+      if (canLabel) btn.textContent = btn.dataset.oldText || oldText;
     }
     setSavingMaskVisible(false);
   }
@@ -3745,6 +3750,7 @@ function renderCustomers() {
       <td class="action-col"><div class="row-actions">
         <button class="small primary" data-open-care="${esc(c.id)}">Chăm sóc KH</button>
         <button class="small" data-open-deal="${esc(c.id)}">Mua căn bản</button>
+        ${customerKpiQuickActionHtml(c.id,isSale())}
       </div></td>
     </tr>`;
   }).join("") : `<tr><td colspan="11" class="muted">Không có dữ liệu phù hợp.</td></tr>`;
@@ -4942,10 +4948,9 @@ async function openKpiTeamGlobalEvent(eventId, employeeId) {
 
 function openKpiManagerCurrentCustomer(customerId){
   if(!isManager())return notice("Bạn không có quyền mở hồ sơ khách hàng này.",true);
-  const id=clean(customerId),customer=customers.find(row=>clean(row.id)===id);
+  const id=clean(customerId),customer=customers.find(row=>clean(row.id)===id)||deletedCustomers.find(row=>clean(row.id)===id);
   if(!customer){
-    const archived=deletedCustomers.some(row=>clean(row.id)===id);
-    return notice(archived?"Hồ sơ khách hàng hiện tại đã được lưu trữ. Thông tin lịch sử trên Event vẫn được giữ nguyên.":"Không thể mở hồ sơ khách hàng hiện tại. Khách hàng có thể không còn tồn tại hoặc bạn không có quyền truy cập.",true);
+    return notice("Không thể mở hồ sơ khách hàng hiện tại. Khách hàng có thể không còn tồn tại hoặc bạn không có quyền truy cập.",true);
   }
   openDrawer(customer.id,"care",{inPlace:true});
 }
@@ -5304,7 +5309,7 @@ async function openKpi2EventForm({assignmentId='',customer=null,entryPoint='kpi'
   kpi2ClaimState.entryPoint=entryPoint;kpi2ClaimState.revision=!!revisionEvent;kpi2ClaimState.customerLocked=!!revisionEvent;
   if(customer)setKpiEventCustomer(kpi2ClaimState,customer);
   kpi2ClaimState.assignmentOptions=entryPoint==='customer'?eligibleKpiCustomerAssignments(kpi2Progress):[];
-  if(entryPoint==='customer'&&!kpi2ClaimState.assignmentOptions.length){$('kpi2SaleClaimPanel').classList.add('hide');return notice('Hiện bạn chưa có KPI nào có thể đề xuất cho khách hàng này.',true);}
+  if(entryPoint==='customer'&&!kpi2ClaimState.assignmentOptions.length){$('kpi2SaleClaimPanel').classList.add('hide');return notice(KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,true);}
   $('kpi2SaleClaimPanel').classList.remove('hide');$('kpi2ClaimTitle').textContent=revisionEvent?'Bổ sung event KPI':'Gửi event KPI';
   const selectedAssignmentId=assignmentId||(kpi2ClaimState.assignmentOptions.length===1?clean(kpi2Field(kpi2ClaimState.assignmentOptions[0],'assignmentId','assignment_id')):'');
   if(selectedAssignmentId)await configureKpi2ClaimAssignment(selectedAssignmentId,{preserveCustomer:true});else renderKpi2ClaimCustomerUi();
@@ -5328,7 +5333,7 @@ function openKpi2Revision(assignmentId){
 async function openKpi2ClaimFromCustomer(customerId){
   if(!isSale())return notice('Action này chỉ dành cho Sale.',true);
   const customer=normalizeKpiCustomer(customers.find(row=>clean(row.id)===clean(customerId)));if(!customer)return notice('Không tìm thấy khách hàng.',true);
-  await reloadKpi2Data();const eligible=eligibleKpiCustomerAssignments(kpi2Progress);if(!eligible.length)return notice('Hiện bạn chưa có KPI nào có thể đề xuất cho khách hàng này.',true);
+  await reloadKpi2Data();const eligible=eligibleKpiCustomerAssignments(kpi2Progress);if(!eligible.length)return notice(KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,true);
   closeDrawer();navigateToWorkspace('#/kpi/mine');return openKpi2EventForm({customer,entryPoint:'customer'});
 }
 async function runKpi2CustomerSearch(query){
@@ -5730,7 +5735,7 @@ function resetAdminAuditFilters() {
 }
 
 function renderTrash() {
-  if (!isAdmin()) return;
+  if (!canAccessAdminPanel()) return;
   $("trashList").innerHTML = deletedCustomers.length ? deletedCustomers
     .sort(byDateDesc)
     .map(c => {
@@ -5749,8 +5754,9 @@ function renderTrash() {
               </div>
             </div>
             <div class="trash-actions">
+              <button class="small" data-open-archived-customer="${esc(c.id)}">Mở hồ sơ</button>
               <button class="small primary" data-restore-customer="${esc(c.id)}">Khôi phục</button>
-              <button class="small danger" data-permanent-delete-customer="${esc(c.id)}">Xóa vĩnh viễn</button>
+              ${isAdmin() ? `<button class="small danger" data-permanent-delete-customer="${esc(c.id)}">Xóa vĩnh viễn</button>` : ""}
             </div>
           </div>
         </div>
@@ -6686,30 +6692,153 @@ function editDeal(dealId) {
   $("drawerTitle").textContent = `Sửa mua căn bản - ${orderCustomerName(d) || d.customerName || "Khách hàng"}`;
 }
 
-async function deleteCustomer() {
-  if (!isManager()) return notice("Chỉ admin/manager được xóa khách.", true);
-  const c = customers.find(x => x.id === selectedCustomerId);
-  if (!c) return;
-  const ok = confirm(`Ẩn khách "${c.name}"? Dữ liệu sẽ được lưu lại trong hệ thống/audit log và SĐT sẽ được giải phóng để nhập lại nếu cần.`);
-  if (!ok) return;
-  try {
-    await callCrmRpc("crm_set_customer_archived", {p_customer_id: c.id, p_archived: true});
-    closeDrawer();
-    notice("Đã ẩn khách an toàn. Dữ liệu vẫn còn trong audit log để truy lại khi cần.");
-  } catch (err) {
-    notice(authMessage(err), true);
+const drawerCustomerById = customerId => allCustomers.find(item => item.id === customerId)
+  || customers.find(item => item.id === customerId)
+  || deletedCustomers.find(item => item.id === customerId)
+  || null;
+
+const currentCustomerAssignment = customerId => customerAssignments.find(item => item.customerId === customerId && item.isCurrent) || null;
+
+function patchCustomerLifecycleState(customerId, changes = {}) {
+  const existing = drawerCustomerById(customerId);
+  const base = allCustomers.length ? allCustomers : [...customers, ...deletedCustomers];
+  allCustomers = base.map(item => item.id === customerId ? {...item, ...changes} : item);
+  if (existing && !allCustomers.some(item => item.id === customerId)) allCustomers.push({...existing, ...changes});
+  customers = allCustomers.filter(item => !item.isDeleted);
+  deletedCustomers = allCustomers.filter(item => item.isDeleted);
+}
+
+function renderCustomerLifecycle(c) {
+  const section = $("customerLifecycleSection");
+  if (!section) return;
+  const visible = !!c && isManager();
+  section.classList.toggle("hide", !visible);
+  if (!visible) return;
+
+  const assignment = currentCustomerAssignment(c.id);
+  const archived = !!c.isDeleted;
+  const assignee = assignment
+    ? clean(assignment.employeeNameSnapshot || assignment.employeeEmailSnapshot || customerOwnerName(c))
+    : "Chưa phân công";
+  $("customerLifecycleStatus").textContent = archived ? "Đã lưu trữ" : assignment ? "Đang được phụ trách" : "Chờ phân bổ";
+  $("customerLifecycleStatus").className = `pill ${archived ? "red" : assignment ? "green" : "orange"}`;
+  $("customerLifecycleSummary").innerHTML = `
+    <div><span>Khách hàng</span><b>${esc(c.name || c.id)}</b></div>
+    <div><span>Sale hiện tại</span><b>${esc(assignee)}</b></div>
+  `;
+
+  const unassignButton = $("unassignCustomerBtn");
+  const archiveButton = $("archiveCustomerBtn");
+  const restoreButton = $("restoreCustomerBtn");
+  unassignButton.classList.toggle("hide", archived);
+  archiveButton.classList.toggle("hide", archived);
+  restoreButton.classList.toggle("hide", !archived || !canAccessAdminPanel());
+  unassignButton.disabled = !assignment;
+  archiveButton.disabled = !!assignment;
+  unassignButton.title = assignment ? `Gỡ khỏi ${assignee}` : "Khách hàng hiện không có phân công";
+  archiveButton.title = assignment ? "Cần gỡ phân công trước khi lưu trữ" : "Lưu trữ mềm, không xóa lịch sử";
+
+  if (archived) {
+    $("customerLifecycleHint").textContent = canAccessAdminPanel()
+      ? "Khách đã bị ẩn khỏi danh sách hoạt động. Owner/Admin có thể khôi phục; lịch sử vẫn được giữ."
+      : "Khách đã bị ẩn khỏi danh sách hoạt động. Chỉ Owner/Admin có thể khôi phục. Lịch sử vẫn được giữ.";
+  } else if (assignment) {
+    $("customerLifecycleHint").textContent = "Cần Gỡ phân công trước khi Lưu trữ khách hàng.";
+  } else {
+    $("customerLifecycleHint").textContent = "Khách đang ở trạng thái chờ phân bổ và có thể được lưu trữ an toàn.";
   }
 }
 
-async function restoreCustomer(customerId) {
-  if (!isAdmin()) return notice("Chỉ admin được khôi phục khách.", true);
-  const c = deletedCustomers.find(x => x.id === customerId);
-  if (!c) return notice("Không tìm thấy khách trong thùng rác.", true);
-  try {
+function openUnassignCustomerModal() {
+  if (!isManager()) return notice("Chỉ Manager/Owner được gỡ phân công khách.", true);
+  const c = drawerCustomerById(selectedCustomerId);
+  const assignment = currentCustomerAssignment(c?.id);
+  if (!c || c.isDeleted) return notice("Không tìm thấy khách hàng đang hoạt động.", true);
+  if (!assignment) return notice("Khách hàng hiện không có phân công.");
+  const assignee = clean(assignment.employeeNameSnapshot || assignment.employeeEmailSnapshot || customerOwnerName(c)) || "Sale hiện tại";
+  openDetailModal(
+    "Gỡ phân công khách hàng",
+    `${c.name || c.id} · ${assignee}`,
+    `<div class="customer-lifecycle-confirm">
+      <div class="customer-lifecycle-consequence"><b>Gỡ khách hàng này khỏi nhân viên hiện tại?</b><br>Khách hàng sẽ không còn thuộc ${esc(assignee)} và được đưa về danh sách chờ phân bổ. Hồ sơ và lịch sử không bị xóa.</div>
+      <div class="field"><label for="customerUnassignReason">Lý do gỡ phân công</label><textarea id="customerUnassignReason" maxlength="300" placeholder="Ví dụ: Điều chỉnh phân công theo khu vực"></textarea></div>
+      <div class="actions"><button id="confirmCustomerLifecycleBtn" class="danger" type="button" data-confirm-customer-lifecycle="unassign" data-customer-id="${esc(c.id)}">Xác nhận gỡ phân công</button><button class="small" type="button" data-close-detail-modal>Hủy</button></div>
+    </div>`
+  );
+  requestAnimationFrame(() => $("customerUnassignReason")?.focus());
+}
+
+function openArchiveCustomerModal() {
+  if (!isManager()) return notice("Chỉ Manager/Owner được lưu trữ khách.", true);
+  const c = drawerCustomerById(selectedCustomerId);
+  if (!c || c.isDeleted) return notice("Không tìm thấy khách hàng đang hoạt động.", true);
+  if (currentCustomerAssignment(c.id)) return notice("Cần Gỡ phân công trước khi Lưu trữ khách hàng.", true);
+  openDetailModal(
+    "Lưu trữ khách hàng",
+    c.name || c.id,
+    `<div class="customer-lifecycle-confirm">
+      <div class="customer-lifecycle-consequence"><b>Lưu trữ khách hàng ${esc(c.name || c.id)}?</b><br>Khách hàng sẽ được ẩn khỏi danh sách hoạt động nhưng hồ sơ, lịch sử phân công và snapshot KPI vẫn được giữ.</div>
+      <div class="actions"><button id="confirmCustomerLifecycleBtn" class="danger" type="button" data-confirm-customer-lifecycle="archive" data-customer-id="${esc(c.id)}">Xác nhận lưu trữ</button><button class="small" type="button" data-close-detail-modal>Hủy</button></div>
+    </div>`
+  );
+}
+
+function restoreCustomer(customerId) {
+  if (!canAccessAdminPanel()) return notice("Chỉ Owner/Admin được khôi phục khách.", true);
+  const c = drawerCustomerById(customerId);
+  if (!c?.isDeleted) return notice("Không tìm thấy khách trong thùng rác.", true);
+  openDetailModal(
+    "Khôi phục khách hàng",
+    c.name || c.id,
+    `<div class="customer-lifecycle-confirm">
+      <div class="customer-lifecycle-consequence"><b>Khôi phục khách hàng ${esc(c.name || c.id)}?</b><br>Khách hàng sẽ trở lại danh sách hoạt động ở trạng thái chưa phân công. Việc khôi phục có thể bị chặn nếu số điện thoại đang thuộc một hồ sơ hoạt động khác.</div>
+      <div class="actions"><button id="confirmCustomerLifecycleBtn" class="primary" type="button" data-confirm-customer-lifecycle="restore" data-customer-id="${esc(c.id)}">Xác nhận khôi phục</button><button class="small" type="button" data-close-detail-modal>Hủy</button></div>
+    </div>`
+  );
+}
+
+async function confirmCustomerLifecycle(action, customerId) {
+  const c = drawerCustomerById(customerId);
+  if (!c) return notice("Không tìm thấy khách hàng.", true);
+  if (action === "unassign") {
+    if (!isManager()) return notice("Bạn không có quyền gỡ phân công khách.", true);
+    const reason = clean($("customerUnassignReason")?.value);
+    if (!reason) return notice("Vui lòng nhập lý do gỡ phân công.", true);
+    await callCrmRpc("crm_unassign_customer", {p_customer_id: c.id, p_reason: reason});
+    const endedAt = new Date();
+    customerAssignments = customerAssignments.map(item => item.customerId === c.id && item.isCurrent
+      ? {...item, isCurrent:false, endedAt, endReason:reason}
+      : item);
+    patchCustomerLifecycleState(c.id, {owner:null, ownerEmail:null, ownerUserId:null, updatedAt:endedAt});
+    closeDetailModal();
+    renderAll();
+    const current = drawerCustomerById(c.id);
+    if (selectedCustomerId === c.id && current) {
+      renderCustomerInfo(current);
+      renderCustomerLifecycle(current);
+    }
+    notice("Đã gỡ phân công. Khách hàng đang chờ phân bổ; lịch sử được giữ nguyên.");
+    return;
+  }
+  if (action === "archive") {
+    if (!isManager()) return notice("Bạn không có quyền lưu trữ khách.", true);
+    if (currentCustomerAssignment(c.id)) return notice("Cần Gỡ phân công trước khi Lưu trữ khách hàng.", true);
+    await callCrmRpc("crm_set_customer_archived", {p_customer_id: c.id, p_archived: true});
+    patchCustomerLifecycleState(c.id, {isDeleted:true, deletedAt:new Date(), updatedAt:new Date()});
+    closeDetailModal();
+    renderAll();
+    if (selectedCustomerId === c.id) openDrawer(c.id, "care");
+    notice("Đã lưu trữ khách hàng. Hồ sơ và lịch sử vẫn được giữ.");
+    return;
+  }
+  if (action === "restore") {
+    if (!canAccessAdminPanel()) return notice("Bạn không có quyền khôi phục khách.", true);
     await callCrmRpc("crm_set_customer_archived", {p_customer_id: c.id, p_archived: false});
-    notice("Đã khôi phục khách.");
-  } catch (err) {
-    notice("Không khôi phục được khách: " + authMessage(err), true);
+    patchCustomerLifecycleState(c.id, {isDeleted:false, deletedAt:null, deletedByEmail:null, updatedAt:new Date()});
+    closeDetailModal();
+    renderAll();
+    if (selectedCustomerId === c.id) openDrawer(c.id, "care");
+    notice("Đã khôi phục khách hàng về trạng thái chờ phân bổ.");
   }
 }
 
@@ -6918,8 +7047,9 @@ function fillCustomerInfoEdit(c) {
 }
 
 function toggleCustomerInfoEdit(show) {
-  const c = customers.find(x => x.id === selectedCustomerId);
+  const c = drawerCustomerById(selectedCustomerId);
   if (!c) return;
+  if (c.isDeleted && show) return notice("Hãy khôi phục khách hàng trước khi sửa hồ sơ.", true);
   $("customerInfoView").classList.toggle("hide", show);
   $("customerActivityPreview").classList.toggle("hide", show);
   $("customerInfoEdit").classList.toggle("hide", !show);
@@ -6965,7 +7095,7 @@ async function saveCustomerInfo() {
   if (!data.name) return notice("Vui lòng nhập tên khách.", true);
   if (!data.channel) return notice("Vui lòng chọn kênh chi tiết.", true);
   if (isPartnerChannel(data.channel) && !data.companyName) return notice("Vui lòng nhập tên công ty.", true);
-  if (!data.ownerEmail && !data.owner) return notice("Vui lòng chọn nhân viên phụ trách.", true);
+  if (currentCustomerAssignment(c.id) && !data.ownerEmail && !data.owner) return notice("Vui lòng chọn nhân viên phụ trách.", true);
   try {
     const ownerChanged = isManager() && !sameIdentity(data.ownerEmail, c.ownerEmail || c.owner);
     const profileChanges = {...data};
@@ -6980,7 +7110,17 @@ async function saveCustomerInfo() {
     } else {
       await callCrmRpc("crm_update_customer_profile", {p_customer_id: c.id, p_changes: profileChanges});
     }
+    patchCustomerLifecycleState(c.id, {
+      ...profileChanges,
+      ...(ownerChanged ? {owner:data.owner, ownerEmail:data.ownerEmail} : {}),
+      updatedAt:new Date()
+    });
     toggleCustomerInfoEdit(false);
+    const updated = drawerCustomerById(c.id);
+    if (updated) {
+      renderCustomerInfo(updated);
+      renderCustomerLifecycle(updated);
+    }
     notice("Đã cập nhật thông tin khách.");
   } catch (err) {
     notice(authMessage(err), true);
@@ -6988,9 +7128,11 @@ async function saveCustomerInfo() {
 }
 
 function openDrawer(id, mode="care", {inPlace = false} = {}) {
-  const c = customers.find(x => x.id === id);
+  const c = drawerCustomerById(id);
   if (!c) return notice("Không tìm thấy khách.", true);
+  if (c.isDeleted && !isManager()) return notice("Bạn không có quyền mở khách hàng đã lưu trữ.", true);
   selectedCustomerId = id;
+  const archived = !!c.isDeleted;
   const drawerTitle = c.name || "Khách hàng";
   const drawerMeta = [
     c.phoneRaw || c.phoneNormalized || "Không SĐT",
@@ -7003,6 +7145,7 @@ function openDrawer(id, mode="care", {inPlace = false} = {}) {
   $("drawerTitle").textContent = drawerTitle;
   $("drawerInfo").innerHTML = drawerMeta.map(item => `<span>${esc(item)}</span>`).join("");
   $("careStatus").value = clean(c.status);
+  $("careStatus").disabled = archived;
   updateCareStatusVisual();
   $("careChannel").value = "";
   $("careResult").value = "";
@@ -7029,19 +7172,20 @@ function openDrawer(id, mode="care", {inPlace = false} = {}) {
   $("dealAmount").value = "";
   resetDealItems(clean(c.need));
   $("dealNote").value = "";
-  $("deleteCustomerBtn").classList.toggle("hide", !isManager());
-  $("kpi2CustomerEntryBtn").classList.toggle("hide", !isSale() || mode !== "care");
+  $("kpi2CustomerEntryBtn").classList.toggle("hide", archived || !isSale() || mode !== "care");
+  $("editCustomerInfoBtn").classList.toggle("hide", archived || !canEditCustomer(c));
   renderCustomerInfo(c);
   toggleCustomerInfoEdit(false);
   const titleMap = {
     care: `Chăm sóc KH - ${c.name || "Khách hàng"}`,
     deal: `Đơn hàng - ${c.name || "Khách hàng"}`
   };
-  $("drawerTitle").textContent = titleMap[mode] || titleMap.care;
+  $("drawerTitle").textContent = archived ? `Khách đã lưu trữ - ${c.name || "Khách hàng"}` : (titleMap[mode] || titleMap.care);
   $("customerInfoSection").classList.toggle("hide", mode !== "care");
-  $("careSection").classList.toggle("hide", mode !== "care");
+  renderCustomerLifecycle(c);
+  $("careSection").classList.toggle("hide", archived || mode !== "care");
   $("logHistorySection").classList.add("hide");
-  $("dealSection").classList.toggle("hide", mode !== "deal");
+  $("dealSection").classList.toggle("hide", archived || mode !== "deal");
   $("dealListSection").classList.add("hide");
   renderHistories(id);
   rememberOverlayFocus("drawer");
@@ -8766,6 +8910,7 @@ function resetFilters() {
 document.addEventListener("click", e => {
   const careId = e.target.closest("[data-open-care]")?.dataset.openCare || e.target.closest("[data-care-open]")?.dataset.careOpen;
   const dealId = e.target.closest("[data-open-deal]")?.dataset.openDeal;
+  const kpi2CustomerEntryId = e.target.closest("[data-kpi2-customer-entry]")?.dataset.kpi2CustomerEntry;
   const taskSnoozeBtn = e.target.closest("[data-task-snooze]");
   const completeDealId = e.target.closest("[data-complete-deal]")?.dataset.completeDeal;
   const cancelDealId = e.target.closest("[data-cancel-deal]")?.dataset.cancelDeal;
@@ -8807,6 +8952,9 @@ document.addEventListener("click", e => {
   const editCareLogId = e.target.closest("[data-edit-care-log]")?.dataset.editCareLog;
   const deleteCareLogId = e.target.closest("[data-delete-care-log]")?.dataset.deleteCareLog;
   const restoreCustomerId = e.target.closest("[data-restore-customer]")?.dataset.restoreCustomer;
+  const openArchivedCustomerId = e.target.closest("[data-open-archived-customer]")?.dataset.openArchivedCustomer;
+  const confirmCustomerLifecycleButton = e.target.closest("[data-confirm-customer-lifecycle]");
+  const closeDetailModalAction = e.target.closest("[data-close-detail-modal]");
   const permanentDeleteCustomerId = e.target.closest("[data-permanent-delete-customer]")?.dataset.permanentDeleteCustomer;
   const saveUserId = e.target.closest("[data-save-user]")?.dataset.saveUser;
   const toggleUserId = e.target.closest("[data-toggle-user]")?.dataset.toggleUser;
@@ -8857,6 +9005,7 @@ document.addEventListener("click", e => {
     openDrawer(careId, "care");
   }
   if (dealId) openDrawer(dealId, "deal");
+  if (kpi2CustomerEntryId) runAction("", `kpi2CustomerEntry:${kpi2CustomerEntryId}`, "Đang tải KPI...", () => openKpi2ClaimFromCustomer(kpi2CustomerEntryId));
   if (taskSnoozeBtn) snoozeTask(taskSnoozeBtn.dataset.taskSnooze, Number(taskSnoozeBtn.dataset.days || 1));
   if (copyPhone) { navigator.clipboard?.writeText(copyPhone); notice("Đã copy SĐT."); }
   if (completeDealId) completeDeal(completeDealId);
@@ -8903,7 +9052,15 @@ document.addEventListener("click", e => {
   if (kpi2DiscardEvidenceId) runAction(`kpi2Discard:${kpi2DiscardEvidenceId}`, "kpi2DiscardEvidence", "Đang xóa ảnh...", () => discardKpi2StagedEvidence(kpi2DiscardEvidenceId));
   if (editCareLogId) editCareLog(editCareLogId);
   if (deleteCareLogId) deleteCareLog(deleteCareLogId);
+  if (openArchivedCustomerId) openDrawer(openArchivedCustomerId, "care");
   if (restoreCustomerId) restoreCustomer(restoreCustomerId);
+  if (confirmCustomerLifecycleButton) runAction(
+    "confirmCustomerLifecycleBtn",
+    `customerLifecycle:${confirmCustomerLifecycleButton.dataset.confirmCustomerLifecycle}`,
+    "Đang xử lý...",
+    () => confirmCustomerLifecycle(confirmCustomerLifecycleButton.dataset.confirmCustomerLifecycle, confirmCustomerLifecycleButton.dataset.customerId)
+  );
+  if (closeDetailModalAction) closeDetailModal();
   if (permanentDeleteCustomerId) permanentlyDeleteCustomer(permanentDeleteCustomerId);
   if (saveUserId) runAction(`saveUser:${saveUserId}`, "saveUser", "Đang lưu...", () => saveUserAdmin(saveUserId));
   if (toggleUserId) runAction(`toggleUser:${toggleUserId}`, "toggleUser", "Đang cập nhật...", () => toggleUserAdmin(toggleUserId));
@@ -9169,7 +9326,9 @@ on("closeDealListBtn", "click", () => $("dealListSection").classList.add("hide")
 on("editCustomerInfoBtn", "click", () => toggleCustomerInfoEdit(true));
 on("cancelCustomerInfoBtn", "click", () => toggleCustomerInfoEdit(false));
 on("saveCustomerInfoBtn", "click", () => runAction("saveCustomerInfoBtn", "saveCustomerInfo", "Đang lưu...", saveCustomerInfo));
-on("deleteCustomerBtn", "click", () => runAction("deleteCustomerBtn", "deleteCustomer", "Đang xóa...", deleteCustomer));
+on("unassignCustomerBtn", "click", openUnassignCustomerModal);
+on("archiveCustomerBtn", "click", openArchiveCustomerModal);
+on("restoreCustomerBtn", "click", () => restoreCustomer(selectedCustomerId));
 window.addEventListener("resize", scheduleRenderChart);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden || !renderQueuedWhileHidden) return;
