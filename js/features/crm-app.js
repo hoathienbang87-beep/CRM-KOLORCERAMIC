@@ -182,6 +182,7 @@ const pagingState = {
   adminAudit: {limit: 80, step: 80}
 };
 let pendingLoginSuccessNotice = false;
+let authBootstrapGeneration = 0;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI2_EVIDENCE_BUCKET = "kpi2-evidence";
 const KPI_EVIDENCE_MAX_FILES = 6;
@@ -9361,23 +9362,75 @@ on("resetChannelReportFilterBtn", "click", resetChannelReportFilters);
 on("channelReportChart", "click", handleChannelReportClick);
 on("channelReportChart", "mousemove", handleChannelReportPointer);
 
-onAuthStateChanged(auth, async user => {
-  currentUser = user;
-  if (!user) return showLogin();
+function logBootstrapError(stage, err) {
+  console.error(`[CRM bootstrap:${stage}]`, {
+    code: clean(err?.code),
+    message: clean(err?.message),
+    details: clean(err?.details),
+    hint: clean(err?.hint)
+  });
+}
+
+async function loadOptionalBootstrapStep(stage, task, fallback, warnings) {
+  try {
+    await task();
+  } catch (err) {
+    logBootstrapError(stage, err);
+    fallback?.();
+    warnings.push(stage);
+  }
+}
+
+async function bootstrapAuthenticatedUser(user, generation) {
   try {
     appUser = await loadAppUser(user);
     if (appUser.active === false) throw new Error("Tài khoản đã bị khóa.");
-    await loadSettings();
-    if (canAccessAdminPanel()) await loadCompanySettings();
-    await refreshCanonicalKpiPendingCount();
-    startPresence();
-    showApp();
-    watchData();
-    if (pendingLoginSuccessNotice) notice("Đăng nhập thành công.");
-    pendingLoginSuccessNotice = false;
   } catch (err) {
+    if (generation !== authBootstrapGeneration) return;
     pendingLoginSuccessNotice = false;
+    logBootstrapError("profile", err);
     $("loginError").textContent = authMessage(err);
     await signOut(auth);
+    return;
   }
+
+  if (generation !== authBootstrapGeneration) return;
+  const warnings = [];
+  await loadOptionalBootstrapStep("settings", loadSettings, () => {
+    applySettings({});
+    hydrateSelects();
+  }, warnings);
+  if (generation !== authBootstrapGeneration) return;
+
+  if (canAccessAdminPanel()) {
+    await loadOptionalBootstrapStep("company-settings", loadCompanySettings, () => {
+      companySettings = normalizeCompanySettings({});
+    }, warnings);
+  }
+  if (generation !== authBootstrapGeneration) return;
+
+  await loadOptionalBootstrapStep("kpi-pending", refreshCanonicalKpiPendingCount, () => {
+    canonicalKpiPendingCount = 0;
+  }, warnings);
+  if (generation !== authBootstrapGeneration) return;
+
+  startPresence();
+  showApp();
+  watchData();
+  if (warnings.length) {
+    notice(`Đã đăng nhập. Một số dữ liệu phụ chưa tải được (${warnings.join(", ")}); ứng dụng đang dùng giá trị an toàn.`, true);
+  } else if (pendingLoginSuccessNotice) {
+    notice("Đăng nhập thành công.");
+  }
+  pendingLoginSuccessNotice = false;
+}
+
+onAuthStateChanged(auth, user => {
+  const generation = ++authBootstrapGeneration;
+  currentUser = user;
+  if (!user) {
+    appUser = null;
+    return showLogin();
+  }
+  void bootstrapAuthenticatedUser(user, generation);
 });
