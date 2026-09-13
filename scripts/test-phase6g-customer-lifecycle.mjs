@@ -12,6 +12,7 @@ check(html.includes('id="customerLifecycleSection"'), "Customer Detail drawer co
 check(html.includes('id="unassignCustomerBtn"') && html.includes("Gỡ phân công"), "Unassign action is present.");
 check(html.includes('id="archiveCustomerBtn"') && html.includes("Lưu trữ khách hàng"), "Archive action is presented as soft lifecycle storage.");
 check(html.includes('id="restoreCustomerBtn"'), "Restore action is available in the lifecycle surface.");
+check(!html.includes('id="deleteCustomerBtn"') && /\$\("deleteCustomerBtn"\)\?\.classList/.test(app), "Removed legacy delete button cannot crash select hydration.");
 check(/const visible = !!c && isManager\(\)/.test(lifecycle), "Lifecycle visibility reuses the manager capability helper.");
 check(/restoreButton\.classList\.toggle\("hide", !archived \|\| !canAccessAdminPanel\(\)\)/.test(lifecycle), "Restore visibility follows the existing Owner/Admin capability.");
 check(/if \(currentCustomerAssignment\(c\.id\)\) return notice\("Cần Gỡ phân công/.test(lifecycle), "Archive refuses an assigned Customer in the UI handler.");

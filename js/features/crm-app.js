@@ -727,7 +727,7 @@ function hydrateSelects() {
     $("filterOwner").value = ownerEmail();
     $("filterOwner").disabled = true;
     $("exportBtn").classList.toggle("hide", !canExportData());
-    $("deleteCustomerBtn").classList.add("hide");
+    $("deleteCustomerBtn")?.classList.add("hide");
     $("seedBtn").classList.add("hide");
     $("syncPhoneBtn").classList.add("hide");
     $("syncOwnerBtn").classList.add("hide");
@@ -737,7 +737,7 @@ function hydrateSelects() {
     $("editOwner").disabled = false;
     $("filterOwner").disabled = false;
     $("exportBtn").classList.remove("hide");
-    $("deleteCustomerBtn").classList.remove("hide");
+    $("deleteCustomerBtn")?.classList.remove("hide");
     $("seedBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("syncPhoneBtn").classList.toggle("hide", !canAccessAdminPanel());
     $("syncOwnerBtn").classList.toggle("hide", !canAccessAdminPanel());
