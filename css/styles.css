@@ -297,7 +297,11 @@
 .detail-row-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .detail-meta{display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);font-size:12px}
 .detail-note{white-space:pre-wrap;color:var(--ink)}
-.evidence-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:8px}
+.evidence-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,220px));justify-content:start;gap:12px;margin-top:8px}
+.evidence-preview{display:flex;width:100%;aspect-ratio:4/3;align-items:center;justify-content:center;overflow:hidden;border:1px solid #d8e2ef;border-radius:8px;background:#f8fafc;cursor:zoom-in}
+.evidence-preview img{display:block;width:100%;height:100%;max-height:220px;object-fit:contain;background:#fff;transition:transform .15s ease}
+.evidence-preview:hover img,.evidence-preview:focus-visible img{transform:scale(1.025)}
+.evidence-preview:focus-visible{outline:3px solid rgba(20,122,104,.24);outline-offset:2px}
 .evidence-card{border:1px solid var(--line);border-radius:8px;background:#f8fafc;padding:8px;display:grid;gap:8px}
 .evidence-card img{display:block;width:100%;max-height:360px;object-fit:contain;background:#fff;border:1px solid #e6edf6;border-radius:6px}
 .evidence-card .muted{font-size:12px;word-break:break-all}
@@ -604,6 +608,7 @@
 .kpi2-staged-evidence-item img{width:48px;height:48px;object-fit:cover;border-radius:4px;background:#e8eef5}
 .kpi2-staged-evidence-item .evidence-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .kpi2-staged-evidence-item.is-pending{border-color:#f59e0b;background:#fffbeb}
+.kpi2-sale-history-list{margin-top:8px}
 .kpi2-review-toolbar{display:grid;grid-template-columns:180px 210px minmax(220px,1fr) auto;gap:8px;margin:10px 0}.kpi2-review-limit{max-height:520px;overflow:auto}
 .kpi2-customer-area{display:grid;gap:8px;margin:12px 0;padding:12px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fbff}
 .kpi2-customer-area>label{font-weight:700}.kpi2-customer-search{display:grid;gap:8px;min-width:0}
@@ -616,7 +621,7 @@
 .kpi2-submit{min-height:44px}
 @media(max-width:900px){.kpi1-foundation-grid{grid-template-columns:1fr}.kpi1-summary-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}}
 @media(max-width:900px){.kpi2-review-toolbar{grid-template-columns:1fr}.kpi2-candidate-row{grid-template-columns:28px 1fr}}
-@media(max-width:600px){.kpi2-selected-customer-card dl{grid-template-columns:1fr}.kpi2-selected-customer-head{display:grid}.kpi2-selected-customer-head .actions{justify-content:flex-start}.kpi2-customer-results{max-height:220px}.kpi2-submit{width:100%}}
+@media(max-width:600px){.evidence-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.evidence-preview img{max-height:180px}.kpi2-selected-customer-card dl{grid-template-columns:1fr}.kpi2-selected-customer-head{display:grid}.kpi2-selected-customer-head .actions{justify-content:flex-start}.kpi2-customer-results{max-height:220px}.kpi2-submit{width:100%}}
 
 /* KPI-2.1B employee-centric Manager workspace. */
 .kpi-team-panel{border-top:3px solid var(--brand)}

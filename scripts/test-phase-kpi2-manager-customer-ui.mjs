@@ -61,11 +61,12 @@ check(vm.customer.customerId!==second.customer.customerId&&second.customer.name=
 const reviewed=managerKpiEventViewModel({event:{...event,status:"REJECTED",review_reason_code:"OUT_OF_SCOPE",manager_note:"Ngoài phạm vi",reviewed_at:"2026-09-06T03:00:00Z"},assignment});
 const reviewedCard=managerKpiEventCardHtml(reviewed);
 check(reviewedCard.includes("Từ chối")&&reviewedCard.includes("OUT_OF_SCOPE")&&reviewedCard.includes("Ngoài phạm vi"),"review status, reason and Manager note render together");
+check(!managerKpiEventCardHtml(vm,{customerAction:false}).includes("data-kpi-current-customer"),"Sale history can hide the Manager-only current Customer action");
 
 const app=fs.readFileSync("js/features/crm-app.js","utf8");
 const team=fs.readFileSync("js/features/kpi-team.js","utf8");
-check((app.match(/managerKpiEventCardHtml\(/g)||[]).length===2,"employee list and global queue use the same card renderer");
-check((app.match(/managerKpiEventViewModel\(/g)||[]).length===2,"employee list and global queue use the same view-model");
+check((app.match(/managerKpiEventCardHtml\(/g)||[]).length===3,"employee list, global queue and Sale history use the same card renderer");
+check((app.match(/managerKpiEventViewModel\(/g)||[]).length===3,"employee list, global queue and Sale history use the same view-model");
 check(/customer_name_snapshot[\s\S]*customer_company_name_snapshot[\s\S]*customer_phone_snapshot[\s\S]*customer_address_snapshot/.test(team),"dedicated Customer snapshot fields are mapped centrally");
 check(!/event_snapshot\s*\?\?[^\n]*customer/i.test(team),"Customer snapshot helper does not source identity from event_snapshot");
 check(/openKpiManagerCurrentCustomer[\s\S]*customers\.find[\s\S]*openDrawer\(customer\.id,"care",\{inPlace:true\}\)/.test(app),"current profile action reuses live Customer drawer in place");
@@ -75,7 +76,7 @@ check((app.match(/crm_kpi_review_events/g)||[]).length===1,"review RPC implement
 check(/globalQueueEvidence/.test(app)&&/groupEvidenceCount\(kpiTeamState\.globalQueueEvidence\)/.test(app),"global queue loads and renders evidence consistently");
 check(/function viewKpi2Evidence\([\s\S]*openDetailModal\(/.test(app),"Manager evidence viewer reuses canonical detail modal");
 check(!/\bopenDetail\(/.test(app),"stale undefined openDetail handler is absent from production app");
-check(/urls\.map\(url=>`<img src=/.test(app),"one or two signed evidence URLs render as images");
+check(/urls\.map\(\(url,index\)=>`<a class="evidence-preview"[\s\S]*?<img src=/.test(app),"one or two signed evidence URLs render as bounded clickable previews");
 const currentCustomerFlow=app.match(/function openKpiManagerCurrentCustomer\([\s\S]*?\n}/)?.[0]||"";
 check(/openDrawer\(customer\.id,"care",\{inPlace:true\}\)/.test(currentCustomerFlow),"Manager opens live Customer drawer in place");
 check(!/navigateToWorkspace|closeKpiTeamEmployee/.test(currentCustomerFlow),"Manager Customer action does not navigate or close KPI context");

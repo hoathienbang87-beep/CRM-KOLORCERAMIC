@@ -17,6 +17,7 @@ const sql = fs.readFileSync(path.join(root, "supabase-phase-kpi2-final-consolida
 const app = fs.readFileSync(path.join(root, "js", "features", "crm-app.js"), "utf8");
 const adapter = fs.readFileSync(path.join(root, "js", "firebase.js"), "utf8");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const css = fs.readFileSync(path.join(root, "css", "styles.css"), "utf8");
 const runbook = fs.readFileSync(path.join(root, "KPI-2-PRODUCTION-RUNBOOK.md"), "utf8");
 const stagingReport = fs.readFileSync(path.join(root, "KPI-2-SUBMISSION-REVIEW-EVIDENCE.md"), "utf8");
 const failures = [];
@@ -186,7 +187,13 @@ check(/canvas\.toBlob/i.test(app) && /1\.5\*1024\*1024/.test(app) && /1920/.test
 check(/heic\|heif/i.test(app), "HEIC/HEIF explicit handling missing.");
 check(/navigator\.geolocation\.getCurrentPosition/i.test(app), "Required geolocation capture missing.");
 check(/createSignedUrl/i.test(app), "Signed evidence preview missing.");
+check(/class="evidence-preview"[\s\S]*target="_blank"[\s\S]*loading="lazy"/.test(app), "Evidence viewer must use bounded, clickable lazy previews.");
+check(/\.evidence-preview img\{[^}]*max-height:\s*220px[^}]*object-fit:\s*contain/i.test(css), "Evidence preview dimensions must be bounded.");
 check(/kpi2OperationsPanel/.test(html) && /kpi2ProgressRows/.test(html), "KPI-2 operations panel missing.");
+check(/id="kpi2SaleHistoryPanel"/.test(html) && /id="kpi2SaleHistoryRows"/.test(html), "Sale proposal history workspace missing.");
+check(/function renderKpi2SaleHistory\b/.test(app) && /actor_user_id\)===actorId/.test(app), "Sale history must render only the authenticated Sale's events.");
+check(/data-kpi2-sale-history-filter/.test(app) && /filterKpiEvents\(ownEvents,kpi2SaleHistoryStatus\)/.test(app), "Sale proposal history status filters missing.");
+check(/managerKpiEventCardHtml\(viewModel,\{customerAction:false\}\)/.test(app), "Sale history must not expose the Manager-only current Customer action.");
 check(/kpi2ReviewRows/.test(html) && /kpi2BulkReviewBtn/.test(html), "Manager review workspace missing.");
 check(/kpi1DefinitionAggregation/.test(html) && /kpi1DefinitionMaxImages/.test(html), "Manager definition options missing.");
 

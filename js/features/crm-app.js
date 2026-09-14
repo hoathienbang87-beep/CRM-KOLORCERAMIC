@@ -119,6 +119,9 @@ let kpiAssignments = [];
 let kpi2Progress = [];
 let kpi2Events = [];
 let kpi2Evidence = [];
+let kpi2Submissions = [];
+let kpi2HistoryAssignments = [];
+let kpi2SaleHistoryStatus = "all";
 let kpi2StagedEvidence = [];
 let kpi2EvidenceBusy = false;
 let kpi2Candidates = [];
@@ -5223,13 +5226,22 @@ async function submitKpiTeamAssignment() {
 async function reloadKpi2Data() {
   if (!currentUser || !$('kpi2OperationsPanel')) return;
   kpi2Progress = await callCrmRpc("crm_kpi_get_assignment_progress", {p_period_id:null}) || [];
-  const [eventsResult,evidenceResult] = await Promise.all([
+  const [eventsResult,evidenceResult,submissionsResult] = await Promise.all([
     supabase.from("kpi_submission_events").select("*").order("created_at",{ascending:false}).limit(500),
-    supabase.from("kpi_evidence").select("*").in("status",["STAGED","ATTACHED","ARCHIVED"]).limit(1000)
+    supabase.from("kpi_evidence").select("*").in("status",["STAGED","ATTACHED","ARCHIVED"]).limit(1000),
+    supabase.from("kpi_submissions").select("id,sale_note,status,submitted_at").order("submitted_at",{ascending:false}).limit(500)
   ]);
   if (eventsResult.error) throw eventsResult.error;
   if (evidenceResult.error) throw evidenceResult.error;
-  kpi2Events = eventsResult.data || []; kpi2Evidence = evidenceResult.data || [];
+  if (submissionsResult.error) throw submissionsResult.error;
+  kpi2Events = eventsResult.data || []; kpi2Evidence = evidenceResult.data || []; kpi2Submissions = submissionsResult.data || [];
+  const historyAssignmentIds = uniq(kpi2Events.map(event=>clean(event.assignment_id)).filter(Boolean));
+  kpi2HistoryAssignments = [];
+  if (historyAssignmentIds.length) {
+    const historyAssignmentsResult = await supabase.from("kpi_assignments").select("id,definition_snapshot,employee_id,target,assignment_status,period_id").in("id",historyAssignmentIds).limit(500);
+    if (historyAssignmentsResult.error) throw historyAssignmentsResult.error;
+    kpi2HistoryAssignments = historyAssignmentsResult.data || [];
+  }
   kpi2DuplicateDetails = [];
   if (isManager()) {
     const duplicateEventIds = kpi2Events.filter(event => event.possible_duplicate).map(event => event.id).slice(0, 500);
@@ -5254,7 +5266,26 @@ function renderKpi2Operations() {
       ${!isManager()&&canSubmit?`<div class="actions"><button class="small primary" type="button" data-kpi2-open-claim="${esc(id)}">Gửi event</button>${revision?`<button class="small" type="button" data-kpi2-open-revision="${esc(id)}">Bổ sung (${esc(revision)})</button>`:""}</div>`:""}</div>`;
   }).join(""):`<div class="kpi-team-empty"><b>${kpiPeriods.some(period => clean(period.status).toUpperCase() === "ACTIVE") ? "Chưa có KPI ACTIVE được giao." : "Chưa có kỳ KPI đang hoạt động."}</b><span>Khi quản lý kích hoạt kỳ KPI và phân công cho bạn, KPI sẽ xuất hiện tại đây.</span></div>`;
   $('kpi2ManagerReviewPanel')?.classList.toggle('hide',!isManager());
+  renderKpi2SaleHistory();
   if(isManager()) renderKpi2ReviewQueue();
+}
+
+function renderKpi2SaleHistory(){
+  const panel=$('kpi2SaleHistoryPanel'),rows=$('kpi2SaleHistoryRows'),status=$('kpi2SaleHistoryStatus'),count=$('kpi2SaleHistoryCount'),filters=$('kpi2SaleHistoryFilters');
+  if(!panel||!rows||!status||!count||!filters)return;
+  const visible=isSale();panel.classList.toggle('hide',!visible);if(!visible)return;
+  const actorId=clean(appUser?.uid||appUser?.id||currentUser?.uid),ownEvents=actorId?kpi2Events.filter(event=>clean(event.actor_user_id)===actorId):[];
+  const filtered=filterKpiEvents(ownEvents,kpi2SaleHistoryStatus),pendingCount=ownEvents.filter(event=>eventStatusKey(event.status)==='pending').length,evidenceCounts=groupEvidenceCount(kpi2Evidence);
+  const assignmentsById=new Map([...kpi2HistoryAssignments,...kpi2Progress].map(item=>[clean(kpiTeamAssignmentId(item)),item]));
+  const submissionsById=new Map(kpi2Submissions.map(item=>[clean(item.id),item]));
+  const filterOptions=[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"]];
+  count.textContent=`${ownEvents.length} đề xuất`;status.textContent=ownEvents.length?`${pendingCount} đề xuất đang chờ Manager duyệt. Bấm “Xem ảnh” để xem lại minh chứng.`:'Các đề xuất bạn gửi sẽ xuất hiện tại đây.';
+  filters.innerHTML=filterOptions.map(([key,label])=>`<button class="small ${kpi2SaleHistoryStatus===key?'primary':''}" type="button" role="tab" aria-selected="${kpi2SaleHistoryStatus===key}" data-kpi2-sale-history-filter="${key}">${label}</button>`).join('');
+  rows.innerHTML=filtered.length?filtered.map(event=>{
+    const submission=submissionsById.get(clean(event.submission_id))||{},assignment=assignmentsById.get(clean(event.assignment_id))||{};
+    const viewModel=managerKpiEventViewModel({event:{...event,sale_note:submission.sale_note},assignment,saleName:'Đề xuất của bạn',evidenceCount:evidenceCounts.get(clean(event.id))||0});
+    return managerKpiEventCardHtml(viewModel,{customerAction:false});
+  }).join(''):`<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${ownEvents.length?'Chọn trạng thái khác để xem lại.':'Sau khi gửi Event KPI, trạng thái duyệt và minh chứng sẽ được lưu tại đây.'}</span></div>`;
 }
 
 function renderKpi2ReviewQueue(){
@@ -5461,7 +5492,7 @@ async function viewKpi2Evidence(eventId){
   let rows=kpi2Evidence.filter(e=>clean(e.event_id||e.eventId)===clean(eventId));
   if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
   const urls=[];for(const e of rows){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;urls.push(data.signedUrl);}
-  openDetailModal('Minh chứng KPI','URL ký tạm thời trong 2 phút',urls.length?`<div class="evidence-grid">${urls.map(url=>`<img src="${esc(url)}" alt="Minh chứng KPI">`).join('')}</div>`:'<div class="muted">Không có ảnh.</div>');
+  openDetailModal('Minh chứng KPI','Ảnh thu nhỏ · bấm vào ảnh để xem kích thước đầy đủ · liên kết có hiệu lực 2 phút',urls.length?`<div class="evidence-grid">${urls.map((url,index)=>`<a class="evidence-preview" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="Xem lớn minh chứng KPI ${index+1}"><img src="${esc(url)}" alt="Minh chứng KPI ${index+1}" loading="lazy"></a>`).join('')}</div>`:'<div class="muted">Không có ảnh.</div>');
 }
 
 function renderHealthCheck() {
@@ -8945,6 +8976,7 @@ document.addEventListener("click", e => {
   const kpiTeamReviewBtn = e.target.closest("#kpiTeamReviewBtn");
   const kpi2ClaimId = e.target.closest("[data-kpi2-open-claim]")?.dataset.kpi2OpenClaim;
   const kpi2RevisionId = e.target.closest("[data-kpi2-open-revision]")?.dataset.kpi2OpenRevision;
+  const kpi2SaleHistoryFilter = e.target.closest("[data-kpi2-sale-history-filter]")?.dataset.kpi2SaleHistoryFilter;
   const kpi2CustomerId = e.target.closest("[data-kpi2-select-customer]")?.dataset.kpi2SelectCustomer;
   const kpi2ChangeCustomer = e.target.closest("[data-kpi2-change-customer]");
   const kpi2UnlinkCustomer = e.target.closest("[data-kpi2-unlink-customer]");
@@ -9046,6 +9078,7 @@ document.addEventListener("click", e => {
   if (kpiTeamReviewBtn) runAction("kpiTeamReviewBtn", "kpiTeamReview", "Đang xử lý...", reviewSelectedKpi2Events);
   if (kpi2ClaimId) runAction(`kpi2Claim:${kpi2ClaimId}`, "kpi2Claim", "Đang tải candidate...", () => openKpi2Claim(kpi2ClaimId));
   if (kpi2RevisionId) runAction(`kpi2Revision:${kpi2RevisionId}`, "kpi2Revision", "Đang mở bản bổ sung...", () => openKpi2Revision(kpi2RevisionId));
+  if (kpi2SaleHistoryFilter) { kpi2SaleHistoryStatus=kpi2SaleHistoryFilter; renderKpi2SaleHistory(); }
   if (kpi2CustomerId) selectKpi2Customer(kpi2CustomerId);
   if (kpi2ChangeCustomer) changeKpi2Customer();
   if (kpi2UnlinkCustomer) unlinkKpi2Customer();
