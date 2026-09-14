@@ -287,6 +287,8 @@
 .drawer{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100% - 24px));max-height:calc(100vh - 24px);background:#fff;border-radius:8px;z-index:21;box-shadow:0 24px 70px rgba(15,23,42,.24);overflow:auto;padding:18px}
 .drawer-backdrop.is-kpi-contextual{z-index:22}
 .drawer.is-kpi-contextual{z-index:23}
+.drawer-backdrop.is-detail-modal{z-index:24}
+.drawer.is-detail-modal{z-index:25}
 .drawer-head{display:flex;justify-content:space-between;gap:10px;align-items:start;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px}
 #drawerInfo{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px}
 #drawerInfo span{display:inline-flex;align-items:center;border:1px solid #dce8f6;background:#f5f9ff;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:800;color:#36557a}

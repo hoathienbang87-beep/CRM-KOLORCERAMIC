@@ -65,6 +65,7 @@ check(!managerKpiEventCardHtml(vm,{customerAction:false}).includes("data-kpi-cur
 
 const app=fs.readFileSync("js/features/crm-app.js","utf8");
 const team=fs.readFileSync("js/features/kpi-team.js","utf8");
+const css=fs.readFileSync("css/styles.css","utf8");
 check((app.match(/managerKpiEventCardHtml\(/g)||[]).length===3,"employee list, global queue and Sale history use the same card renderer");
 check((app.match(/managerKpiEventViewModel\(/g)||[]).length===3,"employee list, global queue and Sale history use the same view-model");
 check(/customer_name_snapshot[\s\S]*customer_company_name_snapshot[\s\S]*customer_phone_snapshot[\s\S]*customer_address_snapshot/.test(team),"dedicated Customer snapshot fields are mapped centrally");
@@ -77,6 +78,8 @@ check(/globalQueueEvidence/.test(app)&&/groupEvidenceCount\(kpiTeamState\.global
 check(/function viewKpi2Evidence\([\s\S]*openDetailModal\(/.test(app),"Manager evidence viewer reuses canonical detail modal");
 check(!/\bopenDetail\(/.test(app),"stale undefined openDetail handler is absent from production app");
 check(/urls\.map\(\(url,index\)=>`<a class="evidence-preview"[\s\S]*?<img src=/.test(app),"one or two signed evidence URLs render as bounded clickable previews");
+check(/detailModalBackdrop[\s\S]*is-detail-modal/.test(app)&&/detailModal[\s\S]*is-detail-modal/.test(app),"evidence detail modal receives an elevated contextual layer");
+check(/\.drawer-backdrop\.is-detail-modal\{[^}]*z-index:24/.test(css)&&/\.drawer\.is-detail-modal\{[^}]*z-index:25/.test(css),"evidence detail modal stays above KPI/customer drawers");
 const currentCustomerFlow=app.match(/function openKpiManagerCurrentCustomer\([\s\S]*?\n}/)?.[0]||"";
 check(/openDrawer\(customer\.id,"care",\{inPlace:true\}\)/.test(currentCustomerFlow),"Manager opens live Customer drawer in place");
 check(!/navigateToWorkspace|closeKpiTeamEmployee/.test(currentCustomerFlow),"Manager Customer action does not navigate or close KPI context");

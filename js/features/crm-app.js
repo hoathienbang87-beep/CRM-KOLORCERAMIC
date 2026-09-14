@@ -3019,6 +3019,8 @@ function renderChannelReportChart() {
 function closeDetailModal() {
   setViewHidden("detailModalBackdrop", true);
   setViewHidden("detailModal", true);
+  $("detailModalBackdrop")?.classList.remove("is-detail-modal");
+  $("detailModal")?.classList.remove("is-detail-modal");
   restoreOverlayFocus("detailModal");
 }
 
@@ -3027,6 +3029,8 @@ function openDetailModal(title, subtitle, html) {
   $("detailModalSubtitle").textContent = subtitle || "";
   $("detailModalContent").innerHTML = html || `<div class="muted">Chưa có dữ liệu chi tiết.</div>`;
   rememberOverlayFocus("detailModal");
+  $("detailModalBackdrop")?.classList.add("is-detail-modal");
+  $("detailModal")?.classList.add("is-detail-modal");
   setViewHidden("detailModalBackdrop", false);
   setViewHidden("detailModal", false);
   requestAnimationFrame(() => $("closeDetailModalBtn")?.focus());
