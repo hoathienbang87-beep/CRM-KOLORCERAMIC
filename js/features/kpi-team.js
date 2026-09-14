@@ -19,6 +19,7 @@ const managerStatus = status => {
   if (value === "APPROVED") return {label:"Đã duyệt", className:"green"};
   if (value === "REJECTED") return {label:"Từ chối", className:"red"};
   if (value === "NEEDS_REVISION") return {label:"Cần sửa", className:"red"};
+  if (value === "WITHDRAWN") return {label:"Đã thu hồi", className:""};
   return {label:"Chờ duyệt", className:"orange"};
 };
 
@@ -133,6 +134,7 @@ export function eventStatusKey(status) {
   if (value === "APPROVED") return "approved";
   if (value === "REJECTED") return "rejected";
   if (value === "NEEDS_REVISION") return "revision";
+  if (value === "WITHDRAWN") return "withdrawn";
   return "pending";
 }
 
@@ -211,6 +213,8 @@ export function managerKpiEventViewModel({event = {}, assignment = {}, saleName 
     reviewReason: text(event.reviewReasonCode ?? event.review_reason_code),
     managerNote: text(event.managerNote ?? event.manager_note),
     reviewedAt: event.reviewedAt ?? event.reviewed_at ?? null,
+    withdrawnAt: event.withdrawnAt ?? event.withdrawn_at ?? null,
+    withdrawReason: text(event.withdrawReason ?? event.withdraw_reason),
     lockVersion: Number(event.lockVersion ?? event.lock_version ?? 0),
     possibleDuplicate: !!(event.possibleDuplicate ?? event.possible_duplicate),
     duplicateCount: Number(duplicateCount || 0),
@@ -227,10 +231,12 @@ export function managerKpiCustomerSnapshotHtml(viewModel, {showCurrentCustomerAc
   return `<section class="kpi-manager-customer" aria-label="Khách hàng liên quan"><div class="kpi-manager-customer-head"><div><b>Khách hàng liên quan</b><span>Thông tin tại thời điểm Event</span></div>${showCurrentCustomerAction && customer.customerId ? `<button class="small" type="button" data-kpi-current-customer="${html(customer.customerId)}">Xem hồ sơ khách hàng hiện tại</button>` : ""}</div><dl><div><dt>Công ty</dt><dd>${value(customer.companyName)}</dd></div><div><dt>Khách hàng</dt><dd>${value(customer.name)}</dd></div><div><dt>Số điện thoại</dt><dd>${value(customer.phone)}</dd></div><div><dt>Địa chỉ</dt><dd>${value(customer.address)}</dd></div></dl></section>`;
 }
 
-export function managerKpiEventCardHtml(viewModel, {selectable = false, focused = false, openAction = false, customerAction = true} = {}) {
+export function managerKpiEventCardHtml(viewModel, {selectable = false, focused = false, openAction = false, customerAction = true, withdrawAction = false} = {}) {
   const view = viewModel || managerKpiEventViewModel();
   const status = managerStatus(view.status);
   const showContent = view.eventContent && view.eventContent !== view.eventTitle;
   const review = [view.reviewReason ? `Lý do: ${view.reviewReason}` : "", view.managerNote ? `Ghi chú Manager: ${view.managerNote}` : ""].filter(Boolean);
-  return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}" data-kpi-manager-event="${html(view.eventId)}"><div class="kpi-team-event-head"><div>${selectable ? `<input type="checkbox" data-kpi2-review-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}" aria-label="Chọn đề xuất ${html(view.eventTitle)}">` : ""}<b>${html(view.saleName || "Nhân viên")}</b><span>${html(view.kpiName || "KPI")}${view.kpiCode ? ` · ${html(view.kpiCode)}` : ""}</span></div><span class="pill ${status.className}">${html(status.label)}</span></div>${managerKpiCustomerSnapshotHtml(view,{showCurrentCustomerAction:customerAction})}<div class="kpi-team-event-body"><b>${html(view.eventTitle)}</b>${showContent ? `<span>${html(view.eventContent)}</span>` : ""}<div class="kpi-manager-event-meta"><div><span>Giá trị đề xuất</span><b>${html(eventNumber(view.claimedValue))}</b></div>${view.approvedValue != null ? `<div><span>Giá trị duyệt</span><b>${html(eventNumber(view.approvedValue))}</b></div>` : ""}<div><span>Thời gian thực hiện</span><b>${html(eventTime(view.eventAt))}</b></div><div><span>Thời gian gửi</span><b>${html(eventTime(view.createdAt))}</b></div></div><span>${html(view.evidenceCount)} ảnh minh chứng${view.location ? " · Có vị trí" : ""}${view.revisionNo > 1 ? ` · Bản bổ sung ${html(view.revisionNo)}` : ""}</span>${view.saleNote ? `<div class="detail-note">Ghi chú Sale: ${html(view.saleNote)}</div>` : ""}${view.possibleDuplicate ? `<span class="pill orange">Có thể trùng${view.duplicateCount ? ` · ${html(view.duplicateCount)} kết quả` : ""}</span>` : ""}${review.length || view.reviewedAt ? `<div class="kpi-manager-review-history">${review.map(item => `<span>${html(item)}</span>`).join("")}${view.reviewedAt ? `<span>Review lúc: ${html(eventTime(view.reviewedAt))}</span>` : ""}</div>` : ""}</div><div class="actions">${view.evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${html(view.eventId)}">Xem ${html(view.evidenceCount)} ảnh</button>` : ""}${openAction ? `<button class="small primary" type="button" data-kpi-team-open-event="${html(view.eventId)}" data-employee-id="${html(view.saleUserId)}">Mở đề xuất</button>` : ""}</div></article>`;
+  const withdrawn = view.status === "WITHDRAWN" ? [view.withdrawReason ? `Lý do thu hồi: ${view.withdrawReason}` : "", view.withdrawnAt ? `Thu hồi lúc: ${eventTime(view.withdrawnAt)}` : ""].filter(Boolean) : [];
+  const canWithdraw = withdrawAction && view.status === "PENDING" && !view.supersedesEventId;
+  return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}" data-kpi-manager-event="${html(view.eventId)}"><div class="kpi-team-event-head"><div>${selectable ? `<input type="checkbox" data-kpi2-review-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}" aria-label="Chọn đề xuất ${html(view.eventTitle)}">` : ""}<b>${html(view.saleName || "Nhân viên")}</b><span>${html(view.kpiName || "KPI")}${view.kpiCode ? ` · ${html(view.kpiCode)}` : ""}</span></div><span class="pill ${status.className}">${html(status.label)}</span></div>${managerKpiCustomerSnapshotHtml(view,{showCurrentCustomerAction:customerAction})}<div class="kpi-team-event-body"><b>${html(view.eventTitle)}</b>${showContent ? `<span>${html(view.eventContent)}</span>` : ""}<div class="kpi-manager-event-meta"><div><span>Giá trị đề xuất</span><b>${html(eventNumber(view.claimedValue))}</b></div>${view.approvedValue != null ? `<div><span>Giá trị duyệt</span><b>${html(eventNumber(view.approvedValue))}</b></div>` : ""}<div><span>Thời gian thực hiện</span><b>${html(eventTime(view.eventAt))}</b></div><div><span>Thời gian gửi</span><b>${html(eventTime(view.createdAt))}</b></div></div><span>${html(view.evidenceCount)} ảnh minh chứng${view.location ? " · Có vị trí" : ""}${view.revisionNo > 1 ? ` · Bản bổ sung ${html(view.revisionNo)}` : ""}</span>${view.saleNote ? `<div class="detail-note">Ghi chú Sale: ${html(view.saleNote)}</div>` : ""}${view.possibleDuplicate ? `<span class="pill orange">Có thể trùng${view.duplicateCount ? ` · ${html(view.duplicateCount)} kết quả` : ""}</span>` : ""}${review.length || view.reviewedAt ? `<div class="kpi-manager-review-history">${review.map(item => `<span>${html(item)}</span>`).join("")}${view.reviewedAt ? `<span>Review lúc: ${html(eventTime(view.reviewedAt))}</span>` : ""}</div>` : ""}${withdrawn.length ? `<div class="kpi-manager-review-history">${withdrawn.map(item => `<span>${html(item)}</span>`).join("")}</div>` : ""}</div><div class="actions">${view.evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${html(view.eventId)}">Xem ${html(view.evidenceCount)} ảnh</button>` : ""}${canWithdraw ? `<button class="small danger" type="button" data-kpi2-withdraw-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}">Thu hồi đề xuất</button>` : ""}${openAction ? `<button class="small primary" type="button" data-kpi-team-open-event="${html(view.eventId)}" data-employee-id="${html(view.saleUserId)}">Mở đề xuất</button>` : ""}</div></article>`;
 }

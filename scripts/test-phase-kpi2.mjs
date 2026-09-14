@@ -193,7 +193,7 @@ check(/kpi2OperationsPanel/.test(html) && /kpi2ProgressRows/.test(html), "KPI-2 
 check(/id="kpi2SaleHistoryPanel"/.test(html) && /id="kpi2SaleHistoryRows"/.test(html), "Sale proposal history workspace missing.");
 check(/function renderKpi2SaleHistory\b/.test(app) && /actor_user_id\)===actorId/.test(app), "Sale history must render only the authenticated Sale's events.");
 check(/data-kpi2-sale-history-filter/.test(app) && /filterKpiEvents\(ownEvents,kpi2SaleHistoryStatus\)/.test(app), "Sale proposal history status filters missing.");
-check(/managerKpiEventCardHtml\(viewModel,\{customerAction:false\}\)/.test(app), "Sale history must not expose the Manager-only current Customer action.");
+check(/managerKpiEventCardHtml\(viewModel,\{customerAction:false(?:,withdrawAction:true)?\}\)/.test(app), "Sale history must not expose the Manager-only current Customer action.");
 check(/kpi2ReviewRows/.test(html) && /kpi2BulkReviewBtn/.test(html), "Manager review workspace missing.");
 check(/kpi1DefinitionAggregation/.test(html) && /kpi1DefinitionMaxImages/.test(html), "Manager definition options missing.");
 

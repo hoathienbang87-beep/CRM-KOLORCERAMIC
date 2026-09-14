@@ -584,6 +584,9 @@ function authMessage(err) {
   if (/KPI_IDEMPOTENCY_PAYLOAD_CONFLICT/i.test(message)) {
     return "Yêu cầu này đã được gửi trước đó với nội dung khác. Vui lòng tải lại dữ liệu rồi thử lại.";
   }
+  if (/EVENT_VERSION_CONFLICT/i.test(message)) {
+    return "Đề xuất đã được Manager xử lý hoặc vừa thay đổi. Dữ liệu sẽ được tải lại để bạn kiểm tra.";
+  }
   if (/upload ảnh|storage|bucket|object/i.test(message) && /permission|row-level security|violates row-level security/i.test(message)) {
     return "Chưa upload được ảnh minh chứng. Hãy kiểm tra bucket kpi-evidence và policy Storage.";
   }
@@ -4876,7 +4879,7 @@ function renderKpiTeamProposalTab(summary) {
   const periodFrozen = ["CANCELLED", "CLOSED"].includes(clean(kpiTeamPeriod()?.status).toUpperCase());
   const evidenceCounts = groupEvidenceCount(kpiTeamState.employeeEvidence);
   $("kpiTeamDetailStatus").textContent = `${kpiTeamState.employeeEvents.length} đề xuất · ${pendingCount} chờ duyệt`;
-  target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "CLOSED"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
+  target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "CLOSED"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"],["withdrawn","Đã thu hồi"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
     const assignment = kpiTeamEventAssignment(event);
     const evidenceCount = evidenceCounts.get(clean(event.id)) || 0;
     const duplicateCount = kpiTeamState.duplicateDetails.filter(row => clean(kpiTeamValue(row, "eventId", "event_id")) === clean(event.id)).length;
@@ -5278,14 +5281,31 @@ function renderKpi2SaleHistory(){
   const filtered=filterKpiEvents(ownEvents,kpi2SaleHistoryStatus),pendingCount=ownEvents.filter(event=>eventStatusKey(event.status)==='pending').length,evidenceCounts=groupEvidenceCount(kpi2Evidence);
   const assignmentsById=new Map([...kpi2HistoryAssignments,...kpi2Progress].map(item=>[clean(kpiTeamAssignmentId(item)),item]));
   const submissionsById=new Map(kpi2Submissions.map(item=>[clean(item.id),item]));
-  const filterOptions=[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"]];
+  const filterOptions=[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"],["withdrawn","Đã thu hồi"]];
   count.textContent=`${ownEvents.length} đề xuất`;status.textContent=ownEvents.length?`${pendingCount} đề xuất đang chờ Manager duyệt. Bấm “Xem ảnh” để xem lại minh chứng.`:'Các đề xuất bạn gửi sẽ xuất hiện tại đây.';
   filters.innerHTML=filterOptions.map(([key,label])=>`<button class="small ${kpi2SaleHistoryStatus===key?'primary':''}" type="button" role="tab" aria-selected="${kpi2SaleHistoryStatus===key}" data-kpi2-sale-history-filter="${key}">${label}</button>`).join('');
   rows.innerHTML=filtered.length?filtered.map(event=>{
     const submission=submissionsById.get(clean(event.submission_id))||{},assignment=assignmentsById.get(clean(event.assignment_id))||{};
     const viewModel=managerKpiEventViewModel({event:{...event,sale_note:submission.sale_note},assignment,saleName:'Đề xuất của bạn',evidenceCount:evidenceCounts.get(clean(event.id))||0});
-    return managerKpiEventCardHtml(viewModel,{customerAction:false});
+    return managerKpiEventCardHtml(viewModel,{customerAction:false,withdrawAction:true});
   }).join(''):`<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${ownEvents.length?'Chọn trạng thái khác để xem lại.':'Sau khi gửi Event KPI, trạng thái duyệt và minh chứng sẽ được lưu tại đây.'}</span></div>`;
+}
+
+async function withdrawKpi2Event(eventId,expectedVersion){
+  if(!isSale())return notice('Action này chỉ dành cho Sale.',true);
+  const actorId=clean(appUser?.uid||appUser?.id||currentUser?.uid),event=kpi2Events.find(item=>clean(item.id)===clean(eventId)&&clean(item.actor_user_id)===actorId);
+  if(!event)return notice('Không tìm thấy đề xuất thuộc tài khoản Sale hiện tại.',true);
+  if(clean(event.status).toUpperCase()!=='PENDING'||event.supersedes_event_id)return notice('Chỉ đề xuất gốc đang chờ duyệt mới có thể thu hồi.',true);
+  const input=prompt('Nhập lý do thu hồi đề xuất (bắt buộc, tối đa 500 ký tự):','Gửi nhầm thông tin');
+  if(input===null)return;
+  const reason=clean(input);if(!reason||reason.length>500)return notice('Lý do thu hồi là bắt buộc và tối đa 500 ký tự.',true);
+  if(!confirm('Thu hồi đề xuất này? Đề xuất và ảnh minh chứng vẫn được lưu trong lịch sử; Manager sẽ không còn thấy nó trong hàng chờ.'))return;
+  try{
+    await callCrmRpc('crm_kpi_withdraw_event',{p_event_id:event.id,p_expected_lock_version:Number(expectedVersion||event.lock_version),p_reason:reason,p_request_id:crypto.randomUUID()});
+    await reloadKpi2Data();notice('Đã thu hồi đề xuất. Lịch sử và ảnh minh chứng vẫn được giữ nguyên.');
+  }catch(error){
+    await reloadKpi2Data().catch(()=>{});throw error;
+  }
 }
 
 function renderKpi2ReviewQueue(){
@@ -8977,6 +8997,7 @@ document.addEventListener("click", e => {
   const kpi2ClaimId = e.target.closest("[data-kpi2-open-claim]")?.dataset.kpi2OpenClaim;
   const kpi2RevisionId = e.target.closest("[data-kpi2-open-revision]")?.dataset.kpi2OpenRevision;
   const kpi2SaleHistoryFilter = e.target.closest("[data-kpi2-sale-history-filter]")?.dataset.kpi2SaleHistoryFilter;
+  const kpi2WithdrawBtn = e.target.closest("[data-kpi2-withdraw-event]");
   const kpi2CustomerId = e.target.closest("[data-kpi2-select-customer]")?.dataset.kpi2SelectCustomer;
   const kpi2ChangeCustomer = e.target.closest("[data-kpi2-change-customer]");
   const kpi2UnlinkCustomer = e.target.closest("[data-kpi2-unlink-customer]");
@@ -9079,6 +9100,7 @@ document.addEventListener("click", e => {
   if (kpi2ClaimId) runAction(`kpi2Claim:${kpi2ClaimId}`, "kpi2Claim", "Đang tải candidate...", () => openKpi2Claim(kpi2ClaimId));
   if (kpi2RevisionId) runAction(`kpi2Revision:${kpi2RevisionId}`, "kpi2Revision", "Đang mở bản bổ sung...", () => openKpi2Revision(kpi2RevisionId));
   if (kpi2SaleHistoryFilter) { kpi2SaleHistoryStatus=kpi2SaleHistoryFilter; renderKpi2SaleHistory(); }
+  if (kpi2WithdrawBtn) runAction("", `kpi2Withdraw:${kpi2WithdrawBtn.dataset.kpi2WithdrawEvent}`, "Đang thu hồi...", () => withdrawKpi2Event(kpi2WithdrawBtn.dataset.kpi2WithdrawEvent, Number(kpi2WithdrawBtn.dataset.version)));
   if (kpi2CustomerId) selectKpi2Customer(kpi2CustomerId);
   if (kpi2ChangeCustomer) changeKpi2Customer();
   if (kpi2UnlinkCustomer) unlinkKpi2Customer();
