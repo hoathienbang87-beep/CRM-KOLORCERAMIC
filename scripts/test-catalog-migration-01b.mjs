@@ -252,8 +252,8 @@ for (const phrase of [
 
 check(status.includes("| 01A | Data contract sản phẩm | Không | APPROVED |"), "01A dependency must be APPROVED");
 check(
-  /\| 01B \| Migration SQL additive \| 01A \| (IN_PROGRESS|PASS_PENDING_APPROVAL) \|/.test(status),
-  "01B must be IN_PROGRESS or PASS_PENDING_APPROVAL"
+  /\| 01B \| Migration SQL additive \| 01A \| (IN_PROGRESS|PASS_PENDING_APPROVAL|APPROVED) \|/.test(status),
+  "01B must be active, pending approval or approved"
 );
 
 console.log(`PASS: Catalog migration 01B static checks (${checks} checks).`);
