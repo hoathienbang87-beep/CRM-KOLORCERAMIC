@@ -1,10 +1,10 @@
 # Trạng thái Catalog Integration
 
-`NEXT_PROMPT: 01A`
+`NEXT_PROMPT: WAITING_FOR_APPROVAL`
 
 | ID | Công việc | Dependency | Trạng thái | Báo cáo | Commit |
 |---|---|---|---|---|---|
-| 01A | Data contract sản phẩm | Không | IN_PROGRESS | | |
+| 01A | Data contract sản phẩm | Không | PASS_PENDING_APPROVAL | `reports/01A.md` | `8285746` |
 | 01B | Migration SQL additive | 01A | NOT_STARTED | | |
 | 02A | Áp dụng migration staging | 01B | NOT_STARTED | | |
 | 02B | RLS và RPC staging | 02A | NOT_STARTED | | |
