@@ -1,11 +1,11 @@
 # Trạng thái Catalog Integration
 
-`NEXT_PROMPT: WAITING_FOR_APPROVAL`
+`NEXT_PROMPT: 01B`
 
 | ID | Công việc | Dependency | Trạng thái | Báo cáo | Commit |
 |---|---|---|---|---|---|
-| 01A | Data contract sản phẩm | Không | PASS_PENDING_APPROVAL | `reports/01A.md` | `8285746` |
-| 01B | Migration SQL additive | 01A | NOT_STARTED | | |
+| 01A | Data contract sản phẩm | Không | APPROVED | `reports/01A.md` | `8285746` |
+| 01B | Migration SQL additive | 01A | IN_PROGRESS | | |
 | 02A | Áp dụng migration staging | 01B | NOT_STARTED | | |
 | 02B | RLS và RPC staging | 02A | NOT_STARTED | | |
 | 03A | Parser và matching dry-run | 01A | NOT_STARTED | | |
@@ -29,4 +29,4 @@
 
 ## Lịch sử phê duyệt
 
-Chưa có.
+- 2026-09-23 — Prompt 01A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 01A`.
