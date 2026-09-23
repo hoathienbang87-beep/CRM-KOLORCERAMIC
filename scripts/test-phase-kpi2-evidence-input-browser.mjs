@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import {pathToFileURL} from "node:url";
+
+const entry=process.env.KPI2_PHASE4_PLAYWRIGHT_ENTRY,browserPath=process.env.KPI2_PHASE4_BROWSER_PATH;
+if(!entry||!browserPath)throw new Error("Set KPI2_PHASE4_PLAYWRIGHT_ENTRY and KPI2_PHASE4_BROWSER_PATH.");
+const {chromium}=await import(pathToFileURL(entry).href),root=path.resolve(import.meta.dirname,"..");
+const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/css/styles.css"></head><body><section id="kpi2SaleClaimPanel" class="kpi2-workspace"><div class="field"><label for="kpi2ManualDescription">Tiêu đề / Nội dung</label><textarea id="kpi2ManualDescription"></textarea></div><div class="field"><label for="kpi2EvidenceFiles">Ảnh minh chứng (tối đa 2)</label><div id="kpi2EvidenceDropZone" class="kpi2-evidence-dropzone" tabindex="0" role="group" aria-describedby="kpi2EvidenceHelp"><div class="kpi2-evidence-drop-copy"><strong>Kéo ảnh vào đây</strong><span id="kpi2EvidenceHelp" class="muted kpi2-evidence-desktop-help">hoặc Ctrl+V để dán ảnh từ clipboard</span><span class="muted kpi2-evidence-mobile-help">Chọn ảnh từ thiết bị</span></div><label class="button small" for="kpi2EvidenceFiles">Chọn ảnh</label><input id="kpi2EvidenceFiles" class="visually-hidden" type="file" accept="image/jpeg,image/webp,image/png" multiple></div><div id="preview" class="kpi2-staged-evidence-list"></div></div></section><script>const zone=document.getElementById('kpi2EvidenceDropZone');zone.addEventListener('dragenter',e=>{e.preventDefault();zone.classList.add('is-drag-active')});zone.addEventListener('dragleave',e=>{e.preventDefault();zone.classList.remove('is-drag-active')});</script></body></html>`;
+const server=http.createServer((request,response)=>{const url=decodeURIComponent((request.url||"/").split("?")[0]);if(url==="/fixture.html"){response.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Connection":"close"});return response.end(html);}const file=path.resolve(root,url.replace(/^\//,""));if(!file.startsWith(root)||!fs.existsSync(file)){response.writeHead(404);return response.end();}response.writeHead(200,{"Content-Type":"text/css","Connection":"close"});fs.createReadStream(file).pipe(response);});
+await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+const browser=await chromium.launch({executablePath:browserPath,headless:true});
+try{
+  const page=await browser.newPage({viewport:{width:1280,height:800}});await page.goto(`http://127.0.0.1:${server.address().port}/fixture.html`);
+  const zone=page.locator('#kpi2EvidenceDropZone'),picker=page.locator('#kpi2EvidenceFiles');
+  assert.equal(await zone.getAttribute('tabindex'),'0');assert.equal(await picker.getAttribute('multiple'),'');assert.equal(await picker.getAttribute('accept'),'image/jpeg,image/webp,image/png');
+  await zone.evaluate(node=>{const transfer=new DataTransfer();transfer.items.add(new File(['image'],'proof.png',{type:'image/png'}));node.dispatchEvent(new DragEvent('dragenter',{bubbles:true,cancelable:true,dataTransfer:transfer}));});assert.ok(await zone.evaluate(node=>node.classList.contains('is-drag-active')),"drag highlight should turn on");
+  await zone.evaluate(node=>{const transfer=new DataTransfer();transfer.items.add(new File(['image'],'proof.png',{type:'image/png'}));node.dispatchEvent(new DragEvent('dragleave',{bubbles:true,cancelable:true,dataTransfer:transfer}));});assert.ok(!(await zone.evaluate(node=>node.classList.contains('is-drag-active'))),"drag highlight should clear");
+  for(const width of [390,360]){await page.setViewportSize({width,height:760});assert.equal(await page.locator('.kpi2-evidence-desktop-help').evaluate(node=>getComputedStyle(node).display),'none');assert.notEqual(await page.locator('.kpi2-evidence-mobile-help').evaluate(node=>getComputedStyle(node).display),'none');const box=await zone.boundingBox();assert.ok(box.width<=width&&box.height<90,`mobile drop zone stays compact at ${width}px`);assert.ok(await page.getByText('Chọn ảnh',{exact:true}).isVisible(),`picker label remains visible at ${width}px`);}
+  console.log('KPI-2 Phase 6I evidence input browser: desktop drag state + mobile 390/360 PASS');
+}finally{await browser.close();server.closeAllConnections?.();await new Promise(resolve=>server.close(resolve));}

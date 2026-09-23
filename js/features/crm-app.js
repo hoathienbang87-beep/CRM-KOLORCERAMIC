@@ -126,6 +126,7 @@ let kpi2HistoryAssignments = [];
 let kpi2SaleHistoryStatus = "all";
 let kpi2StagedEvidence = [];
 let kpi2EvidenceBusy = false;
+let kpi2EvidenceDragDepth = 0;
 let kpi2Candidates = [];
 let kpi2DuplicateDetails = [];
 const kpi2ClaimState = createKpiEventFormState();
@@ -5415,11 +5416,37 @@ async function compressKpi2Image(file){
   let quality=.86,blob;do{blob=await new Promise(r=>canvas.toBlob(r,'image/webp',quality));quality-=.08;}while(blob&&blob.size>1.5*1024*1024&&quality>=.46);if(!blob||blob.size>1.5*1024*1024)throw new Error('Không thể nén ảnh xuống dưới 1.5MB.');return blob;
 }
 
+const KPI2_EVIDENCE_MAX_FILES=2;
+const KPI2_EVIDENCE_MAX_SOURCE_BYTES=20*1024*1024;
+const KPI2_EVIDENCE_MIME_TYPES=new Set(['image/jpeg','image/png','image/webp']);
+function resetKpi2EvidenceDropState(){kpi2EvidenceDragDepth=0;$('kpi2EvidenceDropZone')?.classList.remove('is-drag-active');}
+function kpi2ClipboardFile(file){
+  if(clean(file?.name))return file;
+  const extension=file?.type==='image/jpeg'?'jpg':file?.type==='image/webp'?'webp':'png';
+  return new File([file],`kpi-evidence-paste-${Date.now()}.${extension}`,{type:file?.type||'image/png',lastModified:Date.now()});
+}
+function normalizeKpi2EvidenceFiles(fileList,{source='picker'}={}){
+  const files=[...(fileList||[])].filter(Boolean).map(file=>source==='clipboard'?kpi2ClipboardFile(file):file);
+  if(!files.length)return {files:[],rejectedForCapacity:0};
+  for(const file of files){
+    if(/heic|heif/i.test(`${file.type||''} ${file.name||''}`))throw new Error('Thiết bị chưa hỗ trợ HEIC/HEIF. Vui lòng chọn ảnh JPEG/WebP.');
+    if(!KPI2_EVIDENCE_MIME_TYPES.has(clean(file.type).toLowerCase()))throw new Error('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.');
+    if(Number(file.size)>KPI2_EVIDENCE_MAX_SOURCE_BYTES)throw new Error('Ảnh gốc vượt 20MB.');
+  }
+  const activeCount=kpi2StagedEvidence.filter(item=>!item.discardedAt).length,remaining=Math.max(0,KPI2_EVIDENCE_MAX_FILES-activeCount);
+  if(!remaining)throw new Error('Mỗi event chỉ được tối đa 2 ảnh. Hãy xóa ảnh cũ trước.');
+  return {files:files.slice(0,remaining),rejectedForCapacity:Math.max(0,files.length-remaining)};
+}
+function isKpi2TextEditable(target){return !!target?.closest?.('textarea,input:not([type="file"]),[contenteditable="true"]');}
+function kpi2ClipboardFiles(event){return [...(event.clipboardData?.items||[])].filter(item=>item.kind==='file').map(item=>item.getAsFile()).filter(Boolean);}
+function setKpi2EvidenceDragActive(active){$('kpi2EvidenceDropZone')?.classList.toggle('is-drag-active',active);}
+
 function kpi2EvidenceValue(row,camel,snake){return row?.[camel]??row?.[snake]??null;}
 function clearKpi2StagedEvidenceLocal(){
   kpi2StagedEvidence.forEach(item=>{if(item.previewUrl)URL.revokeObjectURL(item.previewUrl);});
   kpi2StagedEvidence=[];
   if($('kpi2EvidenceFiles'))$('kpi2EvidenceFiles').value='';
+  resetKpi2EvidenceDropState();
   renderKpi2StagedEvidence();
 }
 function renderKpi2StagedEvidence(){
@@ -5445,13 +5472,22 @@ async function stageKpi2Evidence(assignmentId,file){
   let row;try{row=await callCrmRpc('crm_kpi_stage_evidence',{p_evidence_id:id,p_assignment_id:assignmentId,p_object_path:path,p_original_name:name,p_mime_type:'image/webp',p_size_bytes:blob.size,p_sha256:hash});}catch(firstError){try{row=await callCrmRpc('crm_kpi_stage_evidence',{p_evidence_id:id,p_assignment_id:assignmentId,p_object_path:path,p_original_name:name,p_mime_type:'image/webp',p_size_bytes:blob.size,p_sha256:hash});}catch{throw new Error(`Ảnh đã upload nhưng chưa ghi được metadata. Không tự xóa mù; hãy báo admin với mã ${id}. Lỗi: ${authMessage(firstError)}`);}}
   return {id:row.id,assignmentId:kpi2EvidenceValue(row,'assignmentId','assignment_id')||assignmentId,objectPath:kpi2EvidenceValue(row,'objectPath','object_path')||path,originalName:kpi2EvidenceValue(row,'originalName','original_name')||name,status:clean(row.status||'STAGED').toUpperCase(),lockVersion:Number(kpi2EvidenceValue(row,'lockVersion','lock_version')||1),previewUrl:URL.createObjectURL(blob)};
 }
-async function handleKpi2EvidenceFiles(){
-  const input=$('kpi2EvidenceFiles'),assignmentId=clean($('kpi2ClaimAssignmentId')?.value),files=[...(input?.files||[])];if(!files.length||!assignmentId)return;
-  const active=kpi2StagedEvidence.filter(item=>!item.discardedAt);if(active.length+files.length>2){input.value='';return notice('Mỗi event chỉ được tối đa 2 ảnh. Hãy xóa ảnh cũ trước.',true);}
-  if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
-  kpi2EvidenceBusy=true;
-  try{for(const file of files){const item=await stageKpi2Evidence(assignmentId,file);kpi2StagedEvidence.push(item);renderKpi2StagedEvidence();}notice(`Đã tải ${files.length} ảnh. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.`);}finally{kpi2EvidenceBusy=false;input.value='';renderKpi2StagedEvidence();}
+async function handleKpi2EvidenceFiles(fileList,{source='picker'}={}){
+  const input=$('kpi2EvidenceFiles'),assignmentId=clean($('kpi2ClaimAssignmentId')?.value);let ownsBusy=false;
+  try{
+    if(!assignmentId)return notice('Hãy chọn KPI trước khi thêm minh chứng.',true);
+    const normalized=normalizeKpi2EvidenceFiles(fileList,{source}),files=normalized.files;if(!files.length)return;
+    if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
+    kpi2EvidenceBusy=true;ownsBusy=true;
+    for(const file of files){const item=await stageKpi2Evidence(assignmentId,file);kpi2StagedEvidence.push(item);renderKpi2StagedEvidence();}
+    const sourceLabel=source==='clipboard'?' từ clipboard':source==='drop'?' bằng kéo thả':'';notice(`Đã tải ${files.length} ảnh${sourceLabel}. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.${normalized.rejectedForCapacity?` Còn ${normalized.rejectedForCapacity} ảnh không được thêm vì giới hạn 2 ảnh.`:''}`);
+  }finally{if(ownsBusy)kpi2EvidenceBusy=false;if(input)input.value='';resetKpi2EvidenceDropState();renderKpi2StagedEvidence();}
 }
+function handleKpi2EvidenceDragEnter(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();kpi2EvidenceDragDepth+=1;setKpi2EvidenceDragActive(true);}
+function handleKpi2EvidenceDragOver(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();event.dataTransfer.dropEffect='copy';setKpi2EvidenceDragActive(true);}
+function handleKpi2EvidenceDragLeave(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();kpi2EvidenceDragDepth=Math.max(0,kpi2EvidenceDragDepth-1);if(!kpi2EvidenceDragDepth)setKpi2EvidenceDragActive(false);}
+function handleKpi2EvidenceDrop(event){event.preventDefault();resetKpi2EvidenceDropState();const files=[...(event.dataTransfer?.files||[])];if(!files.length)return;return runAction('', 'kpi2EvidenceUpload', 'Đang tải ảnh...',()=>handleKpi2EvidenceFiles(files,{source:'drop'}));}
+function handleKpi2EvidencePaste(event){if(isKpi2TextEditable(event.target))return;const files=kpi2ClipboardFiles(event);if(!files.length)return;event.preventDefault();return runAction('', 'kpi2EvidenceUpload', 'Đang tải ảnh...',()=>handleKpi2EvidenceFiles(files,{source:'clipboard'}));}
 async function discardKpi2StagedEvidence(evidenceId){
   const item=kpi2StagedEvidence.find(row=>clean(row.id)===clean(evidenceId));if(!item||item.discardedAt)return;
   if(kpi2EvidenceBusy)return notice('Một ảnh khác đang được xử lý.',true);
@@ -9265,7 +9301,12 @@ on("kpi2CustomerEntryBtn", "click", () => runAction("kpi2CustomerEntryBtn", "kpi
 on("kpi2CloseClaimBtn", "click", () => runAction("kpi2CloseClaimBtn", "kpi2CloseClaim", "Đang đóng...", closeKpi2Claim));
 on("kpi2ClaimAssignmentSelect", "change", e => runAction("kpi2ClaimAssignmentSelect", "kpi2ClaimAssignment", "Đang tải KPI...", () => configureKpi2ClaimAssignment(e.target.value,{preserveCustomer:true})));
 on("kpi2CustomerSearchInput", "input", e => scheduleKpi2CustomerSearch({value:e.target.value,session:kpi2ClaimSession}));
-on("kpi2EvidenceFiles", "change", () => runAction("", "kpi2EvidenceUpload", "Đang tải ảnh...", handleKpi2EvidenceFiles));
+on("kpi2EvidenceFiles", "change", e => runAction("", "kpi2EvidenceUpload", "Đang tải ảnh...",()=>handleKpi2EvidenceFiles(e.target.files,{source:'picker'})));
+on("kpi2EvidenceDropZone", "dragenter", handleKpi2EvidenceDragEnter);
+on("kpi2EvidenceDropZone", "dragover", handleKpi2EvidenceDragOver);
+on("kpi2EvidenceDropZone", "dragleave", handleKpi2EvidenceDragLeave);
+on("kpi2EvidenceDropZone", "drop", handleKpi2EvidenceDrop);
+on("kpi2SaleClaimPanel", "paste", handleKpi2EvidencePaste);
 on("kpi2SubmitBtn", "click", () => runAction("kpi2SubmitBtn", "kpi2Submit", "Đang gửi...", submitKpi2Claim));
 on("kpi2BulkReviewBtn", "click", () => runAction("kpi2BulkReviewBtn", "kpi2Review", "Đang xử lý...", reviewSelectedKpi2Events));
 on("kpi2SelectAllEvents", "change", e => document.querySelectorAll("[data-kpi2-review-event]").forEach(box => box.checked=e.target.checked));

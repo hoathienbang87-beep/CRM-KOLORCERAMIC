@@ -73,7 +73,7 @@ if (MAINTENANCE_CONFIG.enabled) {
   try {
     await ensureSupabaseLoaded();
     setLoginStatus("");
-  await import("./features/crm-app.js?v=20260923-kpi-evidence-viewer");
+  await import("./features/crm-app.js?v=20260923-kpi-evidence-input");
   } catch (err) {
     console.error(err);
     setLoginStatus(err?.message || "Khong tai duoc app CRM.", true);

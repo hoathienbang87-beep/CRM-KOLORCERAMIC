@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CRM Công Ty - Supabase</title>
-  <link rel="stylesheet" href="/css/styles.css?v=20260923-kpi-evidence-viewer">
+  <link rel="stylesheet" href="/css/styles.css?v=20260923-kpi-evidence-input">
 </head>
 <body>
   <section id="maintenanceView" class="maintenance hide">
@@ -593,7 +593,19 @@
                   <div class="field"><label for="kpi2ManualDescription">Tiêu đề / Nội dung</label><textarea id="kpi2ManualDescription" placeholder="Mô tả việc đã thực hiện..."></textarea></div>
                   <div class="field"><label for="kpi2ManualEventAt">Ngày giờ event</label><input id="kpi2ManualEventAt" type="datetime-local"></div>
                   <div class="field"><label for="kpi2ManualValue">Giá trị</label><input id="kpi2ManualValue" type="number" min="0.01" step="0.01" value="1"></div>
-                  <div class="field"><label for="kpi2EvidenceFiles">Ảnh minh chứng (tối đa 2)</label><input id="kpi2EvidenceFiles" type="file" accept="image/jpeg,image/webp,image/png" multiple><div id="kpi2StagedEvidenceList" class="kpi2-staged-evidence-list"><span class="muted">Chưa chọn ảnh.</span></div></div>
+                  <div class="field">
+                    <label for="kpi2EvidenceFiles">Ảnh minh chứng (tối đa 2)</label>
+                    <div id="kpi2EvidenceDropZone" class="kpi2-evidence-dropzone" tabindex="0" role="group" aria-describedby="kpi2EvidenceHelp">
+                      <div class="kpi2-evidence-drop-copy">
+                        <strong>Kéo ảnh vào đây</strong>
+                        <span id="kpi2EvidenceHelp" class="muted kpi2-evidence-desktop-help">hoặc Ctrl+V để dán ảnh từ clipboard</span>
+                        <span class="muted kpi2-evidence-mobile-help">Chọn ảnh từ thiết bị</span>
+                      </div>
+                      <label class="button small" for="kpi2EvidenceFiles">Chọn ảnh</label>
+                      <input id="kpi2EvidenceFiles" class="visually-hidden" type="file" accept="image/jpeg,image/webp,image/png" multiple>
+                    </div>
+                    <div id="kpi2StagedEvidenceList" class="kpi2-staged-evidence-list" aria-live="polite"><span class="muted">Chưa chọn ảnh.</span></div>
+                  </div>
                 </div><div id="kpi2LocationStatus" class="muted"></div>
               </div>
               <div class="field"><label for="kpi2SaleNote">Ghi chú submission</label><textarea id="kpi2SaleNote" placeholder="Thông tin bổ sung cho Manager..."></textarea></div>
