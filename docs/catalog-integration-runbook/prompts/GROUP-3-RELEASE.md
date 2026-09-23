@@ -12,11 +12,11 @@ Trong dự án Firebase cũ, kiểm tra URL QR và chuẩn bị redirect giữ n
 
 ## 11A — Kiểm thử tự động staging
 
-Test routes, APIs, RLS, roles, import dry-run/apply/rollback, conflict, blank price, draft, lead, snapshot quote, QR và ảnh ngoài. Fixture không dùng dữ liệu khách production và tự dọn dữ liệu staging.
+Bắt buộc dùng Supabase cloud staging riêng; Supabase local không thay thế gate E2E này. Test routes, APIs, RLS, roles, import dry-run/apply/rollback, conflict, blank price, draft, lead, snapshot quote, QR và ảnh ngoài. Fixture không dùng dữ liệu khách production và tự dọn dữ liệu staging.
 
 ## 11B — Kiểm thử UI staging
 
-Kiểm thử desktop/mobile cho catalog, detail, ảnh, lead, auth, admin import, manual match, rollback, CRM selector, quote snapshot, refresh route và unauthorized access. Sửa lỗi trong phạm vi staging rồi chạy lại.
+Bắt buộc dùng Supabase cloud staging riêng; Supabase local không thay thế gate UI/rehearsal này. Kiểm thử desktop/mobile cho catalog, detail, ảnh, lead, auth, admin import, manual match, rollback, CRM selector, quote snapshot, refresh route và unauthorized access. Sửa lỗi trong phạm vi staging rồi chạy lại.
 
 ## 12A — Chuẩn bị production release
 

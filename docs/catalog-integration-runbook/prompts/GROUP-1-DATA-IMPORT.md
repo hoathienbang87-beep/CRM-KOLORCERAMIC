@@ -14,15 +14,15 @@ Từ data contract đã duyệt, viết migration theo convention repository. Ch
 
 PASS khi migration có rollback/verification, không destructive và kiểm tra cú pháp đạt.
 
-## 02A — Migration staging
+## 02A — Migration integration
 
-Xác định staging từ runbook hiện có và chứng minh không phải project production `jjeeazwlqcwynzquimeo`. Backup staging rồi chạy migration đã duyệt. Read-back schema, chạy compatibility test CRM. Không import catalog, không deploy.
+Được phép dùng Supabase local integration bằng Docker. Xác minh toàn bộ URL/host/project ID là local và không phải production `jjeeazwlqcwynzquimeo`; không relink. Backup trạng thái integration rồi chạy migration đã duyệt, read-back schema, rollback/re-apply và compatibility test CRM. Không import catalog, không deploy.
 
-PASS khi staging đạt và production không bị tác động.
+PASS khi local integration hoặc cloud staging đạt đầy đủ migration/schema/rollback/compatibility và production không bị tác động.
 
-## 02B — RLS và RPC staging
+## 02B — RLS và RPC integration
 
-Triển khai trên staging: public catalog read API, CRM search API, admin import preview/apply/rollback, website lead API và audit. Anon không đọc trực tiếp bảng; sale không sửa catalog; security-definer cố định search path. Viết test vai trò.
+Được phép triển khai trên Supabase local integration hoặc cloud staging: public catalog read API, CRM search API, admin import preview/apply/rollback, website lead API và audit. Anon không đọc trực tiếp bảng; sale không sửa catalog; security-definer cố định search path. Viết test vai trò.
 
 PASS khi toàn bộ ma trận quyền đạt, không có fail-open.
 
@@ -40,6 +40,6 @@ PASS khi test apply, retry, rollback, rollback conflict, blank price, duplicate 
 
 ## 04 — Dữ liệu đã duyệt trên staging
 
-Dùng backup và workbook finalized chạy dry-run. Không mặc định duyệt 359 ứng viên. Phân loại update, draft, manual, duplicate, excluded. Sau báo cáo dry-run an toàn mới nạp thử staging. Kiểm tra 75 ID, ID `SP-...`, 95 ready, 7 draft, 2 excluded và rollback toàn batch.
+Bắt buộc dùng Supabase cloud staging riêng; Supabase local không thay thế gate này. Dùng backup và workbook finalized chạy dry-run. Không mặc định duyệt 359 ứng viên. Phân loại update, draft, manual, duplicate, excluded. Sau báo cáo dry-run an toàn mới nạp thử staging. Kiểm tra 75 ID, ID `SP-...`, 95 ready, 7 draft, 2 excluded và rollback toàn batch.
 
 PASS khi số lượng sau staging được giải thích đầy đủ và rollback khôi phục chính xác.

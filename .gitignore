@@ -81,7 +81,11 @@ exports/
 !scripts/test-hotfix-r1-0-fail-closed.sql
 !scripts/test-phase-employee-onboarding-r1-integration.sql
 !scripts/test-security-regression-after-rollout.sql
+!scripts/catalog-02a-local-baseline.sql
+!scripts/test-catalog-02a-local-integration.sql
+!scripts/test-catalog-02a-local-rollback.sql
 /supabase/.temp/
+/supabase/.branches/
 *.dump
 *.backup
 *.xlsx

@@ -162,6 +162,11 @@ drop index public.products_catalog_public_idx;
 
 drop trigger products_catalog_sync_dimensions_01b on public.products;
 
+-- This constraint only references pre-01B columns, so dropping catalog columns
+-- does not remove it automatically. Drop it explicitly to restore exact schema.
+alter table public.products
+  drop constraint products_price_effective_pair_check;
+
 alter table public.quote_items
   drop column width_mm_snapshot,
   drop column height_mm_snapshot,

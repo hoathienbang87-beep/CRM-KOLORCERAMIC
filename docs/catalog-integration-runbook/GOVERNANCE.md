@@ -16,6 +16,13 @@
 - Không dùng production trong các prompt staging.
 - Không deploy hoặc ghi production trước prompt `12B` và hai lần xác nhận được quy định tại đó.
 
+## Môi trường integration và cloud staging
+
+- Prompt `02A` và `02B` được phép dùng Supabase local integration chạy bằng Docker, với local URL/host/project ID được xác minh và tuyệt đối không relink production.
+- Supabase local chỉ dùng cho migration, schema/RLS/RPC integration và compatibility test; không được coi là cloud staging hoặc rehearsal trước production.
+- Prompt `04`, `11A` và `11B` bắt buộc có Supabase cloud staging riêng, project ref khác production `jjeeazwlqcwynzquimeo`, trước khi bắt đầu.
+- Không dùng Supabase local để thay thế cloud staging cho import dữ liệu đã duyệt, E2E, kiểm thử UI staging hoặc rehearsal trước production.
+
 ## Trạng thái prompt
 
 - `NOT_STARTED`: chưa thực hiện.

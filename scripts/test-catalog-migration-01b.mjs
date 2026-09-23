@@ -238,6 +238,11 @@ matches(rollback.toLowerCase(), /catalog_01b_rollback_blocked/, "rollback must c
 matches(rollback.toLowerCase(), /catalog_01b_rollback_verify_fail/, "rollback must verify restored rows and schema");
 matches(rollbackSql, /drop\s+table\s+public\.website_leads/, "rollback must remove website_leads");
 matches(rollbackSql, /drop\s+table\s+public\.product_source_mappings/, "rollback must remove source mappings");
+matches(
+  rollbackSql,
+  /drop\s+constraint\s+products_price_effective_pair_check/,
+  "rollback must remove the 01B constraint that only references baseline columns"
+);
 check(!/\bcascade\b/.test(rollbackSql), "rollback must not use CASCADE");
 
 for (const phrase of [

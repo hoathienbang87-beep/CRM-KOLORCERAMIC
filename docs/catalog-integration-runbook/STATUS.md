@@ -6,7 +6,7 @@
 |---|---|---|---|---|---|
 | 01A | Data contract sản phẩm | Không | APPROVED | `reports/01A.md` | `8285746` |
 | 01B | Migration SQL additive | 01A | APPROVED | `reports/01B.md` | `66e0b43` |
-| 02A | Áp dụng migration staging | 01B | BLOCKED | `reports/02A.md` | `a1578f1` |
+| 02A | Áp dụng migration staging | 01B | IN_PROGRESS | `reports/02A.md` | `a1578f1` |
 | 02B | RLS và RPC staging | 02A | NOT_STARTED | | |
 | 03A | Parser và matching dry-run | 01A | NOT_STARTED | | |
 | 03B | Import batch, apply, rollback staging | 02B, 03A | NOT_STARTED | | |
