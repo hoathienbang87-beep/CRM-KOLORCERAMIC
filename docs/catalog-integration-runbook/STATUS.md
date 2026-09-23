@@ -7,8 +7,8 @@
 | 01A | Data contract sản phẩm | Không | APPROVED | `reports/01A.md` | `8285746` |
 | 01B | Migration SQL additive | 01A | APPROVED | `reports/01B.md` | `66e0b43` |
 | 02A | Áp dụng migration staging | 01B | APPROVED | `reports/02A.md` | `88c478e` |
-| 02B | RLS và RPC staging | 02A | PASS_PENDING_APPROVAL | `reports/02B.md` | `2e4382c` |
-| 03A | Parser và matching dry-run | 01A | NOT_STARTED | | |
+| 02B | RLS và RPC staging | 02A | APPROVED | `reports/02B.md` | `2e4382c` |
+| 03A | Parser và matching dry-run | 01A | PASS_PENDING_APPROVAL | `reports/03A.md` | `230c5d8` |
 | 03B | Import batch, apply, rollback staging | 02B, 03A | NOT_STARTED | | |
 | 04 | Dữ liệu đã duyệt trên staging | 03B | NOT_STARTED | | |
 | 05A | API catalog công khai | 02B, 04 | NOT_STARTED | | |
@@ -32,3 +32,4 @@
 - 2026-09-23 — Prompt 01A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 01A`.
 - 2026-09-23 — Prompt 01B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 01B`.
 - 2026-09-23 — Prompt 02A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 02A`.
+- 2026-09-23 — Prompt 02B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 02B`.
