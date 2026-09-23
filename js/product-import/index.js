@@ -7,6 +7,9 @@ export {validateCode,validatePriceMath} from "./validation.js";
 export {detectDuplicates} from "./duplicate-detector.js";
 export {extractRowAnchors,extractExplicitGroups,assignGroupRanges,findUnanchoredRowText} from "./geometry.js";
 export {parseIstoneGeometry} from "./istone-indonesia-v1.js";
+export {canonicalizeCatalogRow,catalogVariantKey,classifyCatalogDuplicates,normalizeCatalogName,normalizeCatalogSurface,normalizeCatalogText,parseCatalogSize,parseCatalogVnd} from "./catalog-records.js";
+export {parseCatalogExcelWorkbook} from "./catalog-excel.js";
+export {buildCatalogMatchIndex,catalogNameSimilarity,dryRunCatalogMatching,matchCatalogRow} from "./catalog-matching.js";
 
 import {extractPdfGeometry} from "./pdf-extractor.js";
 import {parseIstoneGeometry} from "./istone-indonesia-v1.js";
