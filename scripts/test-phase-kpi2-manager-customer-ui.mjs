@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   getKpiEventCustomerSnapshot,
+  kpiEvidenceMediaKind,
+  kpiEvidenceViewerHtml,
   managerKpiCustomerSnapshotHtml,
   managerKpiEventCardHtml,
   managerKpiEventViewModel
@@ -77,9 +79,20 @@ check((app.match(/crm_kpi_review_events/g)||[]).length===1,"review RPC implement
 check(/globalQueueEvidence/.test(app)&&/groupEvidenceCount\(kpiTeamState\.globalQueueEvidence\)/.test(app),"global queue loads and renders evidence consistently");
 check(/function viewKpi2Evidence\([\s\S]*openDetailModal\(/.test(app),"Manager evidence viewer reuses canonical detail modal");
 check(!/\bopenDetail\(/.test(app),"stale undefined openDetail handler is absent from production app");
-check(/urls\.map\(\(url,index\)=>`<a class="evidence-preview"[\s\S]*?<img src=/.test(app),"one or two signed evidence URLs render as bounded clickable previews");
+check(kpiEvidenceMediaKind({mime_type:"video/mp4",object_path:"kpi2/a/evidence"})==="video"&&kpiEvidenceMediaKind({mime_type:"image/jpeg",object_path:"kpi2/a/image.jpg"})==="image","evidence media kind uses MIME metadata");
+const portraitViewer=kpiEvidenceViewerHtml([{url:"https://signed.test/portrait.jpg",kind:"image"}]);
+check(portraitViewer.includes('<img class="evidence-viewer-media"')&&!portraitViewer.includes("<a "),"image evidence renders large directly without a second-click link");
+const videoViewer=kpiEvidenceViewerHtml([{url:"https://signed.test/video.mp4",kind:"video"}]);
+check(/<video[^>]*controls[^>]*playsinline/.test(videoViewer),"video evidence renders as a directly playable large player");
+const doubleViewer=kpiEvidenceViewerHtml([{url:"https://signed.test/a.jpg",kind:"image"},{url:"https://signed.test/b.jpg",kind:"image"}]);
+check((doubleViewer.match(/evidence-viewer-item/g)||[]).length===2&&doubleViewer.includes("is-multiple"),"two evidence items render together without a carousel");
+check(/openDetailModal\('Minh chứng KPI',[\s\S]*kpiEvidenceViewerHtml\(items\),\{variant:'evidence'\}\)/.test(app),"KPI viewer opens directly in large evidence mode");
+check(!/Ảnh thu nhỏ|evidence-preview/.test(app),"thumbnail-only KPI viewer interaction is removed");
 check(/detailModalBackdrop[\s\S]*is-detail-modal/.test(app)&&/detailModal[\s\S]*is-detail-modal/.test(app),"evidence detail modal receives an elevated contextual layer");
 check(/\.drawer-backdrop\.is-detail-modal\{[^}]*z-index:24/.test(css)&&/\.drawer\.is-detail-modal\{[^}]*z-index:25/.test(css),"evidence detail modal stays above KPI/customer drawers");
+check(/\.detail-modal\.is-evidence-viewer\{[^}]*width:min\(94vw,1400px\)[^}]*height:94vh[^}]*overflow:hidden/.test(css),"desktop evidence modal uses the large viewport target");
+check(/\.evidence-viewer-media\{[^}]*max-width:100%[^}]*object-fit:contain/.test(css),"evidence media preserves aspect ratio without cropping");
+check(/@media\(max-width:600px\)[\s\S]*\.detail-modal\.is-evidence-viewer\{[^}]*width:calc\(100% - 8px\)[^}]*100dvh/.test(css),"mobile evidence modal is nearly full screen");
 const currentCustomerFlow=app.match(/function openKpiManagerCurrentCustomer\([\s\S]*?\n}/)?.[0]||"";
 check(/openDrawer\(customer\.id,"care",\{inPlace:true\}\)/.test(currentCustomerFlow),"Manager opens live Customer drawer in place");
 check(!/navigateToWorkspace|closeKpiTeamEmployee/.test(currentCustomerFlow),"Manager Customer action does not navigate or close KPI context");

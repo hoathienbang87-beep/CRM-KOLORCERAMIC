@@ -71,6 +71,8 @@ import {
   filterKpiEmployeeSummaries,
   filterKpiEvents,
   groupEvidenceCount,
+  kpiEvidenceMediaKind,
+  kpiEvidenceViewerHtml,
   kpiValue as kpiTeamValue,
   managerKpiEventCardHtml,
   managerKpiEventViewModel
@@ -3021,16 +3023,18 @@ function closeDetailModal() {
   setViewHidden("detailModal", true);
   $("detailModalBackdrop")?.classList.remove("is-detail-modal");
   $("detailModal")?.classList.remove("is-detail-modal");
+  $("detailModal")?.classList.remove("is-evidence-viewer");
   restoreOverlayFocus("detailModal");
 }
 
-function openDetailModal(title, subtitle, html) {
+function openDetailModal(title, subtitle, html, {variant = ""} = {}) {
   $("detailModalTitle").textContent = title || "Chi tiết";
   $("detailModalSubtitle").textContent = subtitle || "";
   $("detailModalContent").innerHTML = html || `<div class="muted">Chưa có dữ liệu chi tiết.</div>`;
   rememberOverlayFocus("detailModal");
   $("detailModalBackdrop")?.classList.add("is-detail-modal");
   $("detailModal")?.classList.add("is-detail-modal");
+  $("detailModal")?.classList.toggle("is-evidence-viewer", variant === "evidence");
   setViewHidden("detailModalBackdrop", false);
   setViewHidden("detailModal", false);
   requestAnimationFrame(() => $("closeDetailModalBtn")?.focus());
@@ -5514,9 +5518,9 @@ async function reviewSelectedKpi2Events(){
 
 async function viewKpi2Evidence(eventId){
   let rows=kpi2Evidence.filter(e=>clean(e.event_id||e.eventId)===clean(eventId));
-  if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
-  const urls=[];for(const e of rows){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;urls.push(data.signedUrl);}
-  openDetailModal('Minh chứng KPI','Ảnh thu nhỏ · bấm vào ảnh để xem kích thước đầy đủ · liên kết có hiệu lực 2 phút',urls.length?`<div class="evidence-grid">${urls.map((url,index)=>`<a class="evidence-preview" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="Xem lớn minh chứng KPI ${index+1}"><img src="${esc(url)}" alt="Minh chứng KPI ${index+1}" loading="lazy"></a>`).join('')}</div>`:'<div class="muted">Không có ảnh.</div>');
+  if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,original_name,mime_type,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
+  const items=[];for(const e of rows.slice(0,2)){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;items.push({url:data.signedUrl,kind:kpiEvidenceMediaKind(e),mimeType:e.mime_type||e.mimeType,originalName:e.original_name||e.originalName,objectPath:e.object_path||e.objectPath});}
+  openDetailModal('Minh chứng KPI','Minh chứng đã gửi kèm Event · liên kết có hiệu lực 2 phút',kpiEvidenceViewerHtml(items),{variant:'evidence'});
 }
 
 function renderHealthCheck() {

@@ -171,6 +171,26 @@ export function groupEvidenceCount(evidence = []) {
   }, new Map());
 }
 
+export function kpiEvidenceMediaKind(row = {}) {
+  const mimeType = text(row.mimeType ?? row.mime_type).toLowerCase();
+  const sourceName = text(row.originalName ?? row.original_name ?? row.objectPath ?? row.object_path).toLowerCase().split("?")[0];
+  return mimeType.startsWith("video/") || /\.(mp4|webm|mov|m4v|ogv|ogg)$/.test(sourceName) ? "video" : "image";
+}
+
+export function kpiEvidenceViewerHtml(items = []) {
+  const evidence = items.filter(item => text(item?.url)).slice(0, 2);
+  if (!evidence.length) return '<div class="kpi-team-empty"><b>Không có minh chứng.</b></div>';
+  return `<div class="evidence-viewer-grid ${evidence.length === 1 ? "is-single" : "is-multiple"}">${evidence.map((item, index) => {
+    const label = `Minh chứng ${index + 1}`;
+    const url = html(item.url);
+    const kind = item.kind || kpiEvidenceMediaKind(item);
+    const media = kind === "video"
+      ? `<video class="evidence-viewer-media" src="${url}" controls playsinline preload="metadata" aria-label="${label}"></video>`
+      : `<img class="evidence-viewer-media" src="${url}" alt="${label}" loading="eager" decoding="async">`;
+    return `<figure class="evidence-viewer-item" data-evidence-kind="${kind}"><div class="evidence-viewer-stage">${media}</div>${evidence.length > 1 ? `<figcaption>${label}</figcaption>` : ""}</figure>`;
+  }).join("")}</div>`;
+}
+
 export function getKpiEventCustomerSnapshot(event = {}) {
   const customerId = text(event.customerId ?? event.customer_id);
   const name = text(event.customerNameSnapshot ?? event.customer_name_snapshot);
