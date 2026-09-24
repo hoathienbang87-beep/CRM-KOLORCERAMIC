@@ -86,6 +86,7 @@ exports/
 !scripts/test-catalog-02a-local-rollback.sql
 !scripts/test-catalog-02b-local-integration.sql
 !scripts/test-catalog-02b-local-rollback.sql
+!scripts/test-catalog-03b-local-integration.sql
 !scripts/extract-catalog-xlsx-readonly.py
 __pycache__/
 /supabase/.temp/
