@@ -1,6 +1,6 @@
 # Trạng thái Catalog Integration
 
-`NEXT_PROMPT: 03B`
+`NEXT_PROMPT: 04`
 
 | ID | Công việc | Dependency | Trạng thái | Báo cáo | Commit |
 |---|---|---|---|---|---|
@@ -9,8 +9,8 @@
 | 02A | Áp dụng migration staging | 01B | APPROVED | `reports/02A.md` | `88c478e` |
 | 02B | RLS và RPC staging | 02A | APPROVED | `reports/02B.md` | `2e4382c` |
 | 03A | Parser và matching dry-run | 01A | APPROVED | `reports/03A.md` | `230c5d8` |
-| 03B | Import batch, apply, rollback staging | 02B, 03A | PASS_PENDING_APPROVAL | `reports/03B.md` | `d27772f` |
-| 04 | Dữ liệu đã duyệt trên staging | 03B | NOT_STARTED | | |
+| 03B | Import batch, apply, rollback staging | 02B, 03A | APPROVED | `reports/03B.md` | `d27772f` |
+| 04 | Dữ liệu đã duyệt trên staging | 03B | BLOCKED | `reports/04.md` | |
 | 05A | API catalog công khai | 02B, 04 | NOT_STARTED | | |
 | 05B | Website leads | 02B | NOT_STARTED | | |
 | 06A | `/admin` quản lý catalog | 05A | NOT_STARTED | | |
@@ -34,6 +34,7 @@
 - 2026-09-23 — Prompt 02A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 02A`.
 - 2026-09-23 — Prompt 02B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 02B`.
 - 2026-09-23 — Prompt 03A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 03A`.
+- 2026-09-24 — Prompt 03B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 03B`.
 
 ## Ghi chú 03B
 
