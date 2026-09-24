@@ -40,3 +40,9 @@
 
 - 2026-09-24 — Người dùng cho phép ngoại lệ kiểm thử kỹ thuật Prompt 03B trên Supabase Local; ngoại lệ không áp dụng cho 04, 11A hoặc 11B.
 - 2026-09-24 — Người dùng cho phép migration bổ sung 03B để thêm approval gate và audit before/after. Migration, rollback và toàn bộ acceptance test đã PASS trên local; đang chờ phê duyệt 03B.
+
+## Ghi chú 04
+
+- 2026-09-24 — Cloud staging `nalkeptqohjbjnqwpzzv` đã được xác minh và CLI đã chuyển link từ production sang staging.
+- 2026-09-24 — Baseline Product R2 schema đã áp trên staging mới/trống. Migration 01B fail-closed tại ACL verification và rollback sạch; 02B/03B, baseline 75 Product và workbook dry-run chưa chạy.
+- 2026-09-24 — Prompt 04 giữ `BLOCKED`, chờ người dùng quyết định về migration staging-bootstrap bổ sung để harden default privileges trước 01B.
