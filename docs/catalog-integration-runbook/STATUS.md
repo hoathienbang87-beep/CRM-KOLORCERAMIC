@@ -9,7 +9,7 @@
 | 02A | Áp dụng migration staging | 01B | APPROVED | `reports/02A.md` | `88c478e` |
 | 02B | RLS và RPC staging | 02A | APPROVED | `reports/02B.md` | `2e4382c` |
 | 03A | Parser và matching dry-run | 01A | APPROVED | `reports/03A.md` | `230c5d8` |
-| 03B | Import batch, apply, rollback staging | 02B, 03A | BLOCKED | `reports/03B.md` | |
+| 03B | Import batch, apply, rollback staging | 02B, 03A | PASS_PENDING_APPROVAL | `reports/03B.md` | `d27772f` |
 | 04 | Dữ liệu đã duyệt trên staging | 03B | NOT_STARTED | | |
 | 05A | API catalog công khai | 02B, 04 | NOT_STARTED | | |
 | 05B | Website leads | 02B | NOT_STARTED | | |
@@ -35,6 +35,7 @@
 - 2026-09-23 — Prompt 02B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 02B`.
 - 2026-09-23 — Prompt 03A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 03A`.
 
-## Ghi chú blocker
+## Ghi chú 03B
 
-- 2026-09-24 — Prompt 03B — Người dùng cho phép ngoại lệ kiểm thử kỹ thuật trên Supabase Local. Local guard đạt, nhưng 03B vẫn `BLOCKED` vì RPC đã duyệt thiếu approval gate độc lập và audit before/after; cần phê duyệt migration bổ sung trước khi tiếp tục.
+- 2026-09-24 — Người dùng cho phép ngoại lệ kiểm thử kỹ thuật Prompt 03B trên Supabase Local; ngoại lệ không áp dụng cho 04, 11A hoặc 11B.
+- 2026-09-24 — Người dùng cho phép migration bổ sung 03B để thêm approval gate và audit before/after. Migration, rollback và toàn bộ acceptance test đã PASS trên local; đang chờ phê duyệt 03B.
