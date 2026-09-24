@@ -70,8 +70,10 @@ import {
   eventStatusKey,
   filterKpiEmployeeSummaries,
   filterKpiEvents,
+  evidenceForEvent,
   groupEvidenceCount,
   kpiEvidenceMediaKind,
+  kpiEvidenceThumbnailsHtml,
   kpiEvidenceViewerHtml,
   kpiValue as kpiTeamValue,
   managerKpiEventCardHtml,
@@ -191,6 +193,7 @@ let pendingLoginSuccessNotice = false;
 let authBootstrapGeneration = 0;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI2_EVIDENCE_BUCKET = "kpi2-evidence";
+const KPI2_EVIDENCE_SIGNED_URL_SECONDS = 120;
 const KPI_EVIDENCE_MAX_FILES = 6;
 const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
 const DEFAULT_COMPANY_SETTINGS = {
@@ -4811,6 +4814,15 @@ function kpiTeamEventAssignment(event) {
   return kpiTeamEmployeeAssignments().find(row => kpiTeamAssignmentId(row) === clean(event.assignment_id || event.assignmentId));
 }
 
+async function withKpi2EvidencePreviewUrls(rows=[]){
+  const paths=[...new Set(rows.filter(row=>clean(row.event_id||row.eventId)&&clean(row.status).toUpperCase()==='ATTACHED').map(row=>clean(row.object_path||row.objectPath)).filter(Boolean))];
+  if(!paths.length)return rows;
+  const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrls(paths,KPI2_EVIDENCE_SIGNED_URL_SECONDS);
+  if(error){console.warn('KPI evidence thumbnail signing failed',error);return rows;}
+  const signedByPath=new Map((data||[]).map(item=>[clean(item.path),item.signedUrl||item.signedURL||'']));
+  return rows.map(row=>{const path=clean(row.object_path||row.objectPath),previewUrl=signedByPath.get(path);return previewUrl?{...row,previewUrl}:row;});
+}
+
 async function loadKpiTeamEmployeeProposals({force = false} = {}) {
   const employeeId = clean(kpiTeamState.selectedEmployeeId);
   if (!employeeId || !isManager()) return;
@@ -4843,9 +4855,9 @@ async function loadKpiTeamEmployeeProposals({force = false} = {}) {
     let evidence = [];
     if (eventIds.length) {
       kpiTeamState.requests.proposals += 1;
-      const evidenceResult = await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,status").in("event_id", eventIds).eq("status", "ATTACHED").limit(1000);
+      const evidenceResult = await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,original_name,mime_type,status").in("event_id", eventIds).eq("status", "ATTACHED").limit(1000);
       if (evidenceResult.error) throw evidenceResult.error;
-      evidence = evidenceResult.data || [];
+      evidence = await withKpi2EvidencePreviewUrls(evidenceResult.data || []);
     }
     let duplicates = [];
     const possibleDuplicateIds = events.filter(row => row.possible_duplicate).map(row => row.id);
@@ -4890,10 +4902,11 @@ function renderKpiTeamProposalTab(summary) {
   $("kpiTeamDetailStatus").textContent = `${kpiTeamState.employeeEvents.length} đề xuất · ${pendingCount} chờ duyệt`;
   target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "CLOSED"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"],["withdrawn","Đã thu hồi"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
     const assignment = kpiTeamEventAssignment(event);
+    const eventEvidence = evidenceForEvent(kpiTeamState.employeeEvidence, event.id);
     const evidenceCount = evidenceCounts.get(clean(event.id)) || 0;
     const duplicateCount = kpiTeamState.duplicateDetails.filter(row => clean(kpiTeamValue(row, "eventId", "event_id")) === clean(event.id)).length;
     const focused = clean(kpiTeamState.focusedEventId) === clean(event.id);
-    const viewModel=managerKpiEventViewModel({event,assignment,saleName:summary.name,evidenceCount,duplicateCount});
+    const viewModel=managerKpiEventViewModel({event,assignment,saleName:summary.name,evidence:eventEvidence,evidenceCount,duplicateCount});
     return managerKpiEventCardHtml(viewModel,{selectable:clean(event.status).toUpperCase()==='PENDING'&&!periodFrozen,focused});
   }).join("") : `<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${summary.name} chưa có dữ liệu phù hợp.</span></div>`}</div>`;
 }
@@ -4926,9 +4939,9 @@ async function loadKpiTeamGlobalQueue({force = false} = {}) {
   const events=result.data||[],eventIds=events.map(row=>row.id).filter(Boolean);let evidence=[];
   if(eventIds.length){
     kpiTeamState.requests.queue+=1;
-    const evidenceResult=await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,status").in("event_id",eventIds).eq("status","ATTACHED").limit(1000);
+    const evidenceResult=await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,original_name,mime_type,status").in("event_id",eventIds).eq("status","ATTACHED").limit(1000);
     if(evidenceResult.error){kpiTeamState.loading.queue=false;kpiTeamState.errors.queue="Không tải được minh chứng trong hàng đợi.";renderKpiTeamShell();throw evidenceResult.error;}
-    evidence=evidenceResult.data||[];
+    evidence=await withKpi2EvidencePreviewUrls(evidenceResult.data||[]);
   }
   kpiTeamState.globalQueueEvents = events;
   kpiTeamState.globalQueueEvidence = evidence;
@@ -4947,7 +4960,8 @@ function renderKpiTeamGlobalQueue() {
   const evidenceCounts=groupEvidenceCount(kpiTeamState.globalQueueEvidence);
   target.innerHTML = `<div class="pro-section-title"><h3>Cần duyệt</h3><button class="small" type="button" data-kpi-team-close-queue>Quay lại nhân viên</button></div><div class="kpi-team-event-list">${kpiTeamState.globalQueueEvents.length ? kpiTeamState.globalQueueEvents.map(event => {
     const progress = progressByAssignment.get(clean(event.assignment_id));
-    const viewModel=managerKpiEventViewModel({event,assignment:progress,saleName:kpiTeamValue(progress,"employeeName","employee_name"),evidenceCount:evidenceCounts.get(clean(event.id))||0});
+    const eventEvidence=evidenceForEvent(kpiTeamState.globalQueueEvidence,event.id);
+    const viewModel=managerKpiEventViewModel({event,assignment:progress,saleName:kpiTeamValue(progress,"employeeName","employee_name"),evidence:eventEvidence,evidenceCount:evidenceCounts.get(clean(event.id))||0});
     return managerKpiEventCardHtml(viewModel,{openAction:true});
   }).join("") : `<div class="kpi-team-empty"><b>Không có event chờ duyệt.</b></div>`}</div>`;
 }
@@ -5246,7 +5260,7 @@ async function reloadKpi2Data() {
   if (eventsResult.error) throw eventsResult.error;
   if (evidenceResult.error) throw evidenceResult.error;
   if (submissionsResult.error) throw submissionsResult.error;
-  kpi2Events = eventsResult.data || []; kpi2Evidence = evidenceResult.data || []; kpi2Submissions = submissionsResult.data || [];
+  kpi2Events = eventsResult.data || []; kpi2Evidence = await withKpi2EvidencePreviewUrls(evidenceResult.data || []); kpi2Submissions = submissionsResult.data || [];
   const historyAssignmentIds = uniq(kpi2Events.map(event=>clean(event.assignment_id)).filter(Boolean));
   kpi2HistoryAssignments = [];
   if (historyAssignmentIds.length) {
@@ -5295,7 +5309,8 @@ function renderKpi2SaleHistory(){
   filters.innerHTML=filterOptions.map(([key,label])=>`<button class="small ${kpi2SaleHistoryStatus===key?'primary':''}" type="button" role="tab" aria-selected="${kpi2SaleHistoryStatus===key}" data-kpi2-sale-history-filter="${key}">${label}</button>`).join('');
   rows.innerHTML=filtered.length?filtered.map(event=>{
     const submission=submissionsById.get(clean(event.submission_id))||{},assignment=assignmentsById.get(clean(event.assignment_id))||{};
-    const viewModel=managerKpiEventViewModel({event:{...event,sale_note:submission.sale_note},assignment,saleName:'Đề xuất của bạn',evidenceCount:evidenceCounts.get(clean(event.id))||0});
+    const eventEvidence=evidenceForEvent(kpi2Evidence,event.id);
+    const viewModel=managerKpiEventViewModel({event:{...event,sale_note:submission.sale_note},assignment,saleName:'Đề xuất của bạn',evidence:eventEvidence,evidenceCount:evidenceCounts.get(clean(event.id))||0});
     return managerKpiEventCardHtml(viewModel,{customerAction:false,withdrawAction:true});
   }).join(''):`<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${ownEvents.length?'Chọn trạng thái khác để xem lại.':'Sau khi gửi Event KPI, trạng thái duyệt và minh chứng sẽ được lưu tại đây.'}</span></div>`;
 }
@@ -5328,7 +5343,7 @@ function renderKpi2ReviewQueue(){
     return `<tr><td><input type="checkbox" data-kpi2-review-event="${esc(e.id)}" data-version="${esc(e.lock_version)}"></td>
       <td><b>${esc(kpi2Field(progress,"employeeName","employee_name")||e.actor_user_id)}</b><div class="muted">${esc(kpi2DefinitionName(progress))}</div></td>
       <td><b>${esc(snapshot.title||snapshot.customer_name||e.source_type)}</b><div class="muted">${esc(fmtDate(e.event_at))} · ${esc(e.source_type)}</div>${e.possible_duplicate?`<span class="pill orange">Có thể trùng</span>${duplicateHtml}`:""}</td>
-      <td>${esc(e.claimed_value)}</td><td>${evidence.length?`<button class="small" data-kpi2-view-evidence="${esc(e.id)}">Xem ${evidence.length} ảnh</button>`:"Không có"}</td><td>${kpi1StatusHtml(e.status)}</td></tr>`;
+      <td>${esc(e.claimed_value)}</td><td>${evidence.length?`${kpiEvidenceThumbnailsHtml(evidence,e.id)}<button class="small" data-kpi2-view-evidence="${esc(e.id)}">Xem tất cả (${evidence.length})</button>`:"Không có"}</td><td>${kpi1StatusHtml(e.status)}</td></tr>`;
   }).join(""):`<tr><td colspan="6" class="muted">Không có event chờ duyệt.</td></tr>`;
 }
 
@@ -5552,9 +5567,10 @@ async function reviewSelectedKpi2Events(){
   notice(`Đã xử lý ${selected.length} event và tải lại dữ liệu.`);
 }
 
-async function viewKpi2Evidence(eventId){
+async function viewKpi2Evidence(eventId,evidenceId=''){
   let rows=kpi2Evidence.filter(e=>clean(e.event_id||e.eventId)===clean(eventId));
   if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,original_name,mime_type,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
+  if(evidenceId)rows=rows.filter(row=>clean(row.id)===clean(evidenceId));
   const items=[];for(const e of rows.slice(0,2)){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;items.push({url:data.signedUrl,kind:kpiEvidenceMediaKind(e),mimeType:e.mime_type||e.mimeType,originalName:e.original_name||e.originalName,objectPath:e.object_path||e.objectPath});}
   openDetailModal('Minh chứng KPI','Minh chứng đã gửi kèm Event · liên kết có hiệu lực 2 phút',kpiEvidenceViewerHtml(items),{variant:'evidence'});
 }
@@ -9045,7 +9061,9 @@ document.addEventListener("click", e => {
   const kpi2CustomerId = e.target.closest("[data-kpi2-select-customer]")?.dataset.kpi2SelectCustomer;
   const kpi2ChangeCustomer = e.target.closest("[data-kpi2-change-customer]");
   const kpi2UnlinkCustomer = e.target.closest("[data-kpi2-unlink-customer]");
-  const kpi2EvidenceEventId = e.target.closest("[data-kpi2-view-evidence]")?.dataset.kpi2ViewEvidence;
+  const kpi2EvidenceAction = e.target.closest("[data-kpi2-view-evidence]");
+  const kpi2EvidenceEventId = kpi2EvidenceAction?.dataset.kpi2ViewEvidence;
+  const kpi2EvidenceId = kpi2EvidenceAction?.dataset.kpi2EvidenceId || '';
   const kpi2DiscardEvidenceId = e.target.closest("[data-kpi2-discard-evidence]")?.dataset.kpi2DiscardEvidence;
   const editCareLogId = e.target.closest("[data-edit-care-log]")?.dataset.editCareLog;
   const deleteCareLogId = e.target.closest("[data-delete-care-log]")?.dataset.deleteCareLog;
@@ -9148,7 +9166,7 @@ document.addEventListener("click", e => {
   if (kpi2CustomerId) selectKpi2Customer(kpi2CustomerId);
   if (kpi2ChangeCustomer) changeKpi2Customer();
   if (kpi2UnlinkCustomer) unlinkKpi2Customer();
-  if (kpi2EvidenceEventId) runAction(`kpi2Evidence:${kpi2EvidenceEventId}`, "kpi2Evidence", "Đang tạo link ảnh...", () => viewKpi2Evidence(kpi2EvidenceEventId));
+  if (kpi2EvidenceEventId) runAction(`kpi2Evidence:${kpi2EvidenceEventId}`, "kpi2Evidence", "Đang tạo link ảnh...", () => viewKpi2Evidence(kpi2EvidenceEventId,kpi2EvidenceId));
   if (kpi2DiscardEvidenceId) runAction(`kpi2Discard:${kpi2DiscardEvidenceId}`, "kpi2DiscardEvidence", "Đang xóa ảnh...", () => discardKpi2StagedEvidence(kpi2DiscardEvidenceId));
   if (editCareLogId) editCareLog(editCareLogId);
   if (deleteCareLogId) deleteCareLog(deleteCareLogId);

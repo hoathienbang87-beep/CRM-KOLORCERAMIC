@@ -24,7 +24,7 @@ try{
 
   // A. Linked Event context
   const employeeText=await page.locator("#employee").textContent();
-  for(const value of ["Sale A","Chăm sóc khách hàng","Công ty ABC","Nguyễn A","0901","Địa chỉ lịch sử","Tư vấn","2 ảnh minh chứng","Thời gian thực hiện","Thời gian gửi","Chờ duyệt"])assert.match(employeeText,new RegExp(value));
+  for(const value of ["Sale A","Chăm sóc khách hàng","Công ty ABC","Nguyễn A","0901","Địa chỉ lịch sử","Tư vấn","2 minh chứng","Thời gian thực hiện","Thời gian gửi","Chờ duyệt"])assert.match(employeeText,new RegExp(value));
   assert.equal(await page.locator("#employee [data-kpi2-review-event]").getAttribute("data-version"),"4");
   await page.locator("#employee [data-kpi2-review-event]").check();assert.equal(await page.locator("#employee [data-kpi2-review-event]").isChecked(),true);
   assert.equal(await page.locator("#employee [data-kpi2-view-evidence]").isVisible(),true);

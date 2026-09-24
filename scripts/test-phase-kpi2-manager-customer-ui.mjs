@@ -38,7 +38,7 @@ check(vm.evidenceCount===2&&!!vm.location,"evidence and location are normalized"
 check(vm.lockVersion===7,"optimistic lock version is preserved");
 
 const card=managerKpiEventCardHtml(vm,{selectable:true,focused:true});
-check(["Sale A","Chăm sóc khách hàng","Công ty ABC","Nguyễn Văn A","0901000000","Địa chỉ lịch sử ABC","Tư vấn mẫu gạch","Đã gửi catalogue","2 ảnh minh chứng","Thời gian thực hiện","Thời gian gửi","Chờ duyệt"].every(value=>card.includes(value)),"linked card contains complete Manager context");
+check(["Sale A","Chăm sóc khách hàng","Công ty ABC","Nguyễn Văn A","0901000000","Địa chỉ lịch sử ABC","Tư vấn mẫu gạch","Đã gửi catalogue","2 minh chứng","Thời gian thực hiện","Thời gian gửi","Chờ duyệt"].every(value=>card.includes(value)),"linked card contains complete Manager context");
 check(card.includes('data-kpi-current-customer="customer-a"'),"current Customer action uses customer_id");
 check(card.includes('data-version="7"'),"review checkbox keeps lock_version");
 check(!card.includes("LIVE SHOULD NOT RENDER")&&!card.includes("0988000000"),"card is snapshot-only, not event JSON/live Customer");

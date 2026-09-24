@@ -171,6 +171,11 @@ export function groupEvidenceCount(evidence = []) {
   }, new Map());
 }
 
+export function evidenceForEvent(evidence = [], eventId = "") {
+  const target = text(eventId);
+  return evidence.filter(row => text(row?.event_id || row?.eventId) === target).slice(0, 2);
+}
+
 export function kpiEvidenceMediaKind(row = {}) {
   const mimeType = text(row.mimeType ?? row.mime_type).toLowerCase();
   const sourceName = text(row.originalName ?? row.original_name ?? row.objectPath ?? row.object_path).toLowerCase().split("?")[0];
@@ -191,6 +196,21 @@ export function kpiEvidenceViewerHtml(items = []) {
   }).join("")}</div>`;
 }
 
+export function kpiEvidenceThumbnailsHtml(items = [], eventId = "") {
+  const evidence = items.filter(item => text(item?.previewUrl ?? item?.preview_url ?? item?.signedUrl ?? item?.signed_url)).slice(0, 2);
+  if (!evidence.length) return "";
+  return `<div class="kpi-evidence-thumbnails" aria-label="Minh chứng đính kèm">${evidence.map((item, index) => {
+    const evidenceId = text(item.id);
+    const url = html(item.previewUrl ?? item.preview_url ?? item.signedUrl ?? item.signed_url);
+    const kind = kpiEvidenceMediaKind(item);
+    const label = `Mở minh chứng ${index + 1}`;
+    const media = kind === "video"
+      ? `<video class="kpi-evidence-thumbnail-media" src="${url}" muted playsinline preload="metadata" aria-hidden="true"></video><span class="kpi-evidence-thumbnail-play" aria-hidden="true">▶</span>`
+      : `<img class="kpi-evidence-thumbnail-media" src="${url}" alt="Minh chứng ${index + 1}" loading="lazy" decoding="async">`;
+    return `<button class="kpi-evidence-thumbnail" type="button" data-kpi2-view-evidence="${html(eventId)}" data-kpi2-evidence-id="${html(evidenceId)}" aria-label="${label}" data-evidence-kind="${kind}">${media}</button>`;
+  }).join("")}</div>`;
+}
+
 export function getKpiEventCustomerSnapshot(event = {}) {
   const customerId = text(event.customerId ?? event.customer_id);
   const name = text(event.customerNameSnapshot ?? event.customer_name_snapshot);
@@ -208,7 +228,7 @@ export function getKpiEventCustomerSnapshot(event = {}) {
   };
 }
 
-export function managerKpiEventViewModel({event = {}, assignment = {}, saleName = "", evidenceCount = 0, duplicateCount = 0} = {}) {
+export function managerKpiEventViewModel({event = {}, assignment = {}, saleName = "", evidence = [], evidenceCount = 0, duplicateCount = 0} = {}) {
   const snapshot = event.eventSnapshot ?? event.event_snapshot ?? {};
   const definition = definitionSnapshot(assignment);
   return {
@@ -227,7 +247,8 @@ export function managerKpiEventViewModel({event = {}, assignment = {}, saleName 
     approvedValue: event.approvedValue ?? event.approved_value ?? null,
     status: text(event.status || "PENDING").toUpperCase(),
     customer: getKpiEventCustomerSnapshot(event),
-    evidenceCount: Number(evidenceCount || 0),
+    evidence: evidence.slice(0, 2),
+    evidenceCount: Number(evidence.length || evidenceCount || 0),
     location: event.locationSnapshot ?? event.location_snapshot ?? null,
     saleNote: text(event.saleNote ?? event.sale_note),
     reviewReason: text(event.reviewReasonCode ?? event.review_reason_code),
@@ -258,5 +279,6 @@ export function managerKpiEventCardHtml(viewModel, {selectable = false, focused 
   const review = [view.reviewReason ? `Lý do: ${view.reviewReason}` : "", view.managerNote ? `Ghi chú Manager: ${view.managerNote}` : ""].filter(Boolean);
   const withdrawn = view.status === "WITHDRAWN" ? [view.withdrawReason ? `Lý do thu hồi: ${view.withdrawReason}` : "", view.withdrawnAt ? `Thu hồi lúc: ${eventTime(view.withdrawnAt)}` : ""].filter(Boolean) : [];
   const canWithdraw = withdrawAction && view.status === "PENDING" && !view.supersedesEventId;
-  return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}" data-kpi-manager-event="${html(view.eventId)}"><div class="kpi-team-event-head"><div>${selectable ? `<input type="checkbox" data-kpi2-review-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}" aria-label="Chọn đề xuất ${html(view.eventTitle)}">` : ""}<b>${html(view.saleName || "Nhân viên")}</b><span>${html(view.kpiName || "KPI")}${view.kpiCode ? ` · ${html(view.kpiCode)}` : ""}</span></div><span class="pill ${status.className}">${html(status.label)}</span></div>${managerKpiCustomerSnapshotHtml(view,{showCurrentCustomerAction:customerAction})}<div class="kpi-team-event-body"><b>${html(view.eventTitle)}</b>${showContent ? `<span>${html(view.eventContent)}</span>` : ""}<div class="kpi-manager-event-meta"><div><span>Giá trị đề xuất</span><b>${html(eventNumber(view.claimedValue))}</b></div>${view.approvedValue != null ? `<div><span>Giá trị duyệt</span><b>${html(eventNumber(view.approvedValue))}</b></div>` : ""}<div><span>Thời gian thực hiện</span><b>${html(eventTime(view.eventAt))}</b></div><div><span>Thời gian gửi</span><b>${html(eventTime(view.createdAt))}</b></div></div><span>${html(view.evidenceCount)} ảnh minh chứng${view.location ? " · Có vị trí" : ""}${view.revisionNo > 1 ? ` · Bản bổ sung ${html(view.revisionNo)}` : ""}</span>${view.saleNote ? `<div class="detail-note">Ghi chú Sale: ${html(view.saleNote)}</div>` : ""}${view.possibleDuplicate ? `<span class="pill orange">Có thể trùng${view.duplicateCount ? ` · ${html(view.duplicateCount)} kết quả` : ""}</span>` : ""}${review.length || view.reviewedAt ? `<div class="kpi-manager-review-history">${review.map(item => `<span>${html(item)}</span>`).join("")}${view.reviewedAt ? `<span>Review lúc: ${html(eventTime(view.reviewedAt))}</span>` : ""}</div>` : ""}${withdrawn.length ? `<div class="kpi-manager-review-history">${withdrawn.map(item => `<span>${html(item)}</span>`).join("")}</div>` : ""}</div><div class="actions">${view.evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${html(view.eventId)}">Xem ${html(view.evidenceCount)} ảnh</button>` : ""}${canWithdraw ? `<button class="small danger" type="button" data-kpi2-withdraw-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}">Thu hồi đề xuất</button>` : ""}${openAction ? `<button class="small primary" type="button" data-kpi-team-open-event="${html(view.eventId)}" data-employee-id="${html(view.saleUserId)}">Mở đề xuất</button>` : ""}</div></article>`;
+  const thumbnails = kpiEvidenceThumbnailsHtml(view.evidence, view.eventId);
+  return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}" data-kpi-manager-event="${html(view.eventId)}"><div class="kpi-team-event-head"><div>${selectable ? `<input type="checkbox" data-kpi2-review-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}" aria-label="Chọn đề xuất ${html(view.eventTitle)}">` : ""}<b>${html(view.saleName || "Nhân viên")}</b><span>${html(view.kpiName || "KPI")}${view.kpiCode ? ` · ${html(view.kpiCode)}` : ""}</span></div><span class="pill ${status.className}">${html(status.label)}</span></div>${managerKpiCustomerSnapshotHtml(view,{showCurrentCustomerAction:customerAction})}<div class="kpi-team-event-body"><b>${html(view.eventTitle)}</b>${showContent ? `<span>${html(view.eventContent)}</span>` : ""}<div class="kpi-manager-event-meta"><div><span>Giá trị đề xuất</span><b>${html(eventNumber(view.claimedValue))}</b></div>${view.approvedValue != null ? `<div><span>Giá trị duyệt</span><b>${html(eventNumber(view.approvedValue))}</b></div>` : ""}<div><span>Thời gian thực hiện</span><b>${html(eventTime(view.eventAt))}</b></div><div><span>Thời gian gửi</span><b>${html(eventTime(view.createdAt))}</b></div></div>${view.evidenceCount ? `<span>${html(view.evidenceCount)} minh chứng${view.location ? " · Có vị trí" : ""}${view.revisionNo > 1 ? ` · Bản bổ sung ${html(view.revisionNo)}` : ""}</span>${thumbnails}` : `${view.location || view.revisionNo > 1 ? `<span>${view.location ? "Có vị trí" : ""}${view.location && view.revisionNo > 1 ? " · " : ""}${view.revisionNo > 1 ? `Bản bổ sung ${html(view.revisionNo)}` : ""}</span>` : ""}`}${view.saleNote ? `<div class="detail-note">Ghi chú Sale: ${html(view.saleNote)}</div>` : ""}${view.possibleDuplicate ? `<span class="pill orange">Có thể trùng${view.duplicateCount ? ` · ${html(view.duplicateCount)} kết quả` : ""}</span>` : ""}${review.length || view.reviewedAt ? `<div class="kpi-manager-review-history">${review.map(item => `<span>${html(item)}</span>`).join("")}${view.reviewedAt ? `<span>Review lúc: ${html(eventTime(view.reviewedAt))}</span>` : ""}</div>` : ""}${withdrawn.length ? `<div class="kpi-manager-review-history">${withdrawn.map(item => `<span>${html(item)}</span>`).join("")}</div>` : ""}</div><div class="actions">${view.evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${html(view.eventId)}">Xem tất cả (${html(view.evidenceCount)})</button>` : ""}${canWithdraw ? `<button class="small danger" type="button" data-kpi2-withdraw-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}">Thu hồi đề xuất</button>` : ""}${openAction ? `<button class="small primary" type="button" data-kpi-team-open-event="${html(view.eventId)}" data-employee-id="${html(view.saleUserId)}">Mở đề xuất</button>` : ""}</div></article>`;
 }
