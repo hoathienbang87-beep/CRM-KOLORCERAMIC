@@ -18,8 +18,9 @@
 
 ## Môi trường integration và cloud staging
 
-- Prompt `02A` và `02B` được phép dùng Supabase local integration chạy bằng Docker, với local URL/host/project ID được xác minh và tuyệt đối không relink production.
-- Supabase local chỉ dùng cho migration, schema/RLS/RPC integration và compatibility test; không được coi là cloud staging hoặc rehearsal trước production.
+- Prompt `02A`, `02B` và ngoại lệ kỹ thuật riêng cho `03B` được phép dùng Supabase local integration chạy bằng Docker, với local URL/host/project ID được xác minh và tuyệt đối không relink production.
+- Ngoại lệ `03B` chỉ dùng để kiểm thử tích hợp parser → preview → apply/rollback bằng fixture nhỏ trên local; không được nhập workbook thật hoặc coi local là cloud staging.
+- Supabase local chỉ dùng cho migration, schema/RLS/RPC integration, compatibility test và ngoại lệ kiểm thử kỹ thuật `03B`; không được coi là cloud staging hoặc rehearsal trước production.
 - Prompt `04`, `11A` và `11B` bắt buộc có Supabase cloud staging riêng, project ref khác production `jjeeazwlqcwynzquimeo`, trước khi bắt đầu.
 - Không dùng Supabase local để thay thế cloud staging cho import dữ liệu đã duyệt, E2E, kiểm thử UI staging hoặc rehearsal trước production.
 

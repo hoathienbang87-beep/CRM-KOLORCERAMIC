@@ -34,3 +34,7 @@
 - 2026-09-23 — Prompt 02A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 02A`.
 - 2026-09-23 — Prompt 02B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 02B`.
 - 2026-09-23 — Prompt 03A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 03A`.
+
+## Ghi chú blocker
+
+- 2026-09-24 — Prompt 03B — Người dùng cho phép ngoại lệ kiểm thử kỹ thuật trên Supabase Local. Local guard đạt, nhưng 03B vẫn `BLOCKED` vì RPC đã duyệt thiếu approval gate độc lập và audit before/after; cần phê duyệt migration bổ sung trước khi tiếp tục.

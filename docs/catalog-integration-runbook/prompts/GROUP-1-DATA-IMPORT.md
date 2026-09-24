@@ -34,7 +34,7 @@ PASS khi test bao phủ `x/X/×`, mm/cm, giá chấm/phẩy, blank, merged cell,
 
 ## 03B — Import batch, apply và rollback staging
 
-Kết nối parser với bảng/RPC staging. Dry-run lưu preview; chỉ batch đã duyệt mới apply. Cập nhật giá phải có history. Import danh mục có thể tạo draft; price-only không tạo mới. Apply/rollback idempotent và dùng version guard.
+Được phép dùng Supabase local integration như một ngoại lệ kỹ thuật chỉ cho prompt này; phải xác minh local guard và tuyệt đối không dùng production. Kết nối parser với bảng/RPC integration. Dry-run lưu preview; chỉ batch đã duyệt mới apply. Cập nhật giá phải có history. Import danh mục có thể tạo draft; price-only không tạo mới. Apply/rollback idempotent và dùng version guard. Chỉ dùng fixture nhỏ, không nhập workbook thật. Local không thay cloud staging bắt buộc ở 04, 11A hoặc 11B.
 
 PASS khi test apply, retry, rollback, rollback conflict, blank price, duplicate cùng/khác giá và audit đều đạt.
 
