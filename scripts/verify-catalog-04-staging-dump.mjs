@@ -3,8 +3,10 @@ import {createHash} from "node:crypto";
 import {readFileSync} from "node:fs";
 
 const baselinePath=process.argv[2];
-const dryRunPath=process.argv[3];
-assert.ok(baselinePath&&dryRunPath,"Usage: node scripts/verify-catalog-04-staging-dump.mjs <baseline-data.sql> <after-dry-run-data.sql>");
+const observedPath=process.argv[3];
+const mode=process.argv[4]??"dry-run";
+assert.ok(baselinePath&&observedPath,"Usage: node scripts/verify-catalog-04-staging-dump.mjs <baseline-data.sql> <observed-data.sql> [dry-run|apply|rollback]");
+assert.ok(["dry-run","apply","rollback"].includes(mode),"Unsupported verification mode");
 
 function parseDump(path){
   const source=readFileSync(path,"utf8");
@@ -43,67 +45,114 @@ function countBy(input,field){
   return Object.fromEntries(Object.entries(output).sort(([a],[b])=>a.localeCompare(b)));
 }
 
+const batchId="b0a3e7d9-1afc-4f24-ad26-1ed49d7288a2";
 const baseline=parseDump(baselinePath);
-const dryRun=parseDump(dryRunPath);
+const observed=parseDump(observedPath);
 const baselineProducts=rows(baseline,"products");
-const products=rows(dryRun,"products");
-const batches=rows(dryRun,"product_import_batches");
-const importRows=rows(dryRun,"product_import_rows");
-const history=rows(dryRun,"product_price_history");
-const mappings=rows(dryRun,"product_source_mappings");
-const leads=rows(dryRun,"website_leads");
-const audits=rows(dryRun,"audit_logs");
+const products=rows(observed,"products");
+const batches=rows(observed,"product_import_batches");
+const importRows=rows(observed,"product_import_rows");
+const history=rows(observed,"product_price_history");
+const mappings=rows(observed,"product_source_mappings");
+const leads=rows(observed,"website_leads");
+const audits=rows(observed,"audit_logs");
+const originalBatch=batches.find(row=>row.id===batchId);
 
 assert.equal(baselineProducts.length,75);
-assert.equal(products.length,75);
 const baselineById=new Map(baselineProducts.map(row=>[row.id,JSON.stringify(row)]));
 const afterById=new Map(products.map(row=>[row.id,JSON.stringify(row)]));
-assert.deepEqual([...afterById.keys()].sort(),[...baselineById.keys()].sort(),"Product IDs changed after dry-run");
-for(const [id,value] of baselineById) assert.equal(afterById.get(id),value,`Product ${id} changed after dry-run`);
-assert.equal(products.filter(row=>row.data_status==="READY").length,75);
-assert.equal(products.filter(row=>row.is_published==="t").length,0);
+for(const [id,value] of baselineById) assert.equal(afterById.get(id),value,`Baseline Product ${id} changed in ${mode}`);
+assert.equal([...baselineById.keys()].every(id=>afterById.has(id)),true);
 
-assert.equal(batches.length,1);
-assert.equal(batches[0].source_sha256,"bdbe0ac5c1832391db83a9a55a6b90eb4359efd8644df4b45336c465ae7e1dd8");
-assert.equal(batches[0].status,"READY");
-assert.equal(batches[0].approved_at,null);
-assert.equal(batches[0].approved_by_user_id,null);
-assert.equal(batches[0].approval_idempotency_key,null);
-
+assert.ok(originalBatch,"Original import batch is missing");
+assert.equal(originalBatch.source_sha256,"bdbe0ac5c1832391db83a9a55a6b90eb4359efd8644df4b45336c465ae7e1dd8");
 assert.equal(importRows.length,104);
 assert.deepEqual(countBy(importRows,"classification"),{NEW:48,REVIEW:2,UNCHANGED:54});
 assert.deepEqual(countBy(importRows,"disposition"),{EXCLUDED_BY_REVIEW:2,READY:95,UPDATING:7});
 assert.deepEqual(countBy(importRows,"selected_action"),{CREATE:48,SKIP:56});
 assert.equal(importRows.filter(row=>row.match_rule==="FUZZY_SUGGESTION").length,12);
-assert.equal(importRows.filter(row=>row.disposition==="MANUAL_REVIEW").length,0);
-assert.equal(importRows.filter(row=>row.classification==="DUPLICATE_IN_FILE").length,0);
-assert.equal(importRows.filter(row=>row.classification==="CONFLICT").length,0);
 assert.equal(importRows.filter(row=>JSON.parse(row.source_values).price_per_m2===null).length,8);
 assert.equal(importRows.filter(row=>row.source_sheet==="Đã loại").length,2);
-
-assert.equal(history.length,0);
 assert.equal(mappings.length,0);
 assert.equal(leads.length,0);
-assert.equal(audits.filter(row=>row.action==="catalogImportPreview02B").length,1);
-assert.equal(audits.filter(row=>/^catalogImport(Apply|Rollback)/.test(row.action??"")).length,0);
+
+const createdIds=importRows.filter(row=>row.selected_action==="CREATE").map(row=>row.matched_product_id).filter(Boolean);
+const createdProducts=products.filter(row=>createdIds.includes(row.id));
+const auditCounts={
+  preview:audits.filter(row=>row.action==="catalogImportPreview02B"&&row.entity_id===batchId).length,
+  approve:audits.filter(row=>row.action==="catalogImportApprove03B"&&row.entity_id===batchId).length,
+  apply:audits.filter(row=>row.action==="catalogImportApply02B"&&row.entity_id===batchId).length,
+  product_apply:audits.filter(row=>row.action==="catalogImportProductApply03B"&&JSON.parse(row.raw_data).batch_id===batchId).length,
+  rollback:audits.filter(row=>row.action==="catalogImportRollback02B"&&row.entity_id===batchId).length,
+  product_rollback:audits.filter(row=>row.action==="catalogImportProductRollback03B"&&JSON.parse(row.raw_data).batch_id===batchId).length
+};
+
+if(mode==="dry-run"){
+  assert.equal(products.length,75);
+  assert.equal(batches.length,1);
+  assert.equal(originalBatch.status,"READY");
+  assert.equal(originalBatch.approved_at,null);
+  assert.equal(originalBatch.approved_by_user_id,null);
+  assert.equal(originalBatch.approval_idempotency_key,null);
+  assert.equal(createdIds.length,0);
+  assert.equal(history.length,0);
+  assert.deepEqual(auditCounts,{preview:1,approve:0,apply:0,product_apply:0,rollback:0,product_rollback:0});
+}
+
+if(mode==="apply"){
+  assert.equal(products.length,123);
+  assert.equal(batches.length,1);
+  assert.equal(originalBatch.status,"APPLIED");
+  assert.ok(originalBatch.approved_at);
+  assert.equal(originalBatch.approved_by_user_id,"catalog-04-staging-admin");
+  assert.equal(originalBatch.approval_idempotency_key,"40400001-4040-4040-8040-404040404040");
+  assert.equal(originalBatch.confirm_idempotency_key,"40400002-4040-4040-8040-404040404040");
+  assert.equal(createdIds.length,48);
+  assert.equal(new Set(createdIds).size,48);
+  assert.equal(createdProducts.length,48);
+  assert.equal(createdProducts.filter(row=>row.active==="t").length,48);
+  assert.equal(createdProducts.filter(row=>row.data_status==="READY").length,41);
+  assert.equal(createdProducts.filter(row=>row.data_status==="UPDATING").length,7);
+  assert.equal(createdProducts.filter(row=>row.is_published==="t").length,0);
+  assert.equal(history.length,42);
+  assert.deepEqual(auditCounts,{preview:1,approve:1,apply:1,product_apply:48,rollback:0,product_rollback:0});
+}
+
+if(mode==="rollback"){
+  const rollbackBatches=batches.filter(row=>row.rollback_of_batch_id===batchId);
+  assert.equal(products.length,123);
+  assert.equal(batches.length,2);
+  assert.equal(originalBatch.status,"CANCELLED");
+  assert.ok(originalBatch.rolled_back_at);
+  assert.equal(originalBatch.rollback_idempotency_key,"40400003-4040-4040-8040-404040404040");
+  assert.equal(rollbackBatches.length,1);
+  assert.equal(rollbackBatches[0].status,"APPLIED");
+  assert.equal(createdIds.length,48);
+  assert.equal(createdProducts.length,48);
+  assert.equal(createdProducts.filter(row=>row.active==="f").length,48);
+  assert.equal(createdProducts.filter(row=>row.is_published==="t").length,0);
+  assert.equal(createdProducts.filter(row=>row.version==="2").length,48);
+  assert.equal(history.length,42);
+  assert.deepEqual(auditCounts,{preview:1,approve:1,apply:1,product_apply:48,rollback:1,product_rollback:48});
+}
 
 console.log(JSON.stringify({
-  batch_id:batches[0].id,
-  batch_status:batches[0].status,
+  mode,
+  batch_id:batchId,
+  original_batch_status:originalBatch.status,
   products:products.length,
-  products_unchanged:true,
-  ready_products:75,
-  published_products:0,
+  baseline_products_unchanged:true,
+  active_products:products.filter(row=>row.active==="t").length,
+  ready_products:products.filter(row=>row.data_status==="READY").length,
+  updating_products:products.filter(row=>row.data_status==="UPDATING").length,
+  published_products:products.filter(row=>row.is_published==="t").length,
   preview_rows:importRows.length,
   classification:countBy(importRows,"classification"),
   disposition:countBy(importRows,"disposition"),
   selected_action:countBy(importRows,"selected_action"),
-  fuzzy_suggestions:12,
-  blank_price_including_excluded:8,
-  blank_price_approved:6,
+  created_product_links:createdIds.length,
   price_history:history.length,
-  preview_audit:1,
-  apply_or_rollback_audit:0,
+  audit:auditCounts,
   baseline_dump_sha256:baseline.sha256,
-  dry_run_dump_sha256:dryRun.sha256
+  observed_dump_sha256:observed.sha256
 },null,2));
