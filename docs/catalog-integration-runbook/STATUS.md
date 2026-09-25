@@ -11,8 +11,8 @@
 | 03A | Parser và matching dry-run | 01A | APPROVED | `reports/03A.md` | `230c5d8` |
 | 03B | Import batch, apply, rollback staging | 02B, 03A | APPROVED | `reports/03B.md` | `d27772f` |
 | 04 | Dữ liệu đã duyệt trên staging | 03B | APPROVED | `reports/04.md` | `02d66ad` |
-| 05A | API catalog công khai | 02B, 04 | PASS_PENDING_APPROVAL | `reports/05A.md` | `04f0f76` |
-| 05B | Website leads | 02B | NOT_STARTED | | |
+| 05A | API catalog công khai | 02B, 04 | APPROVED | `reports/05A.md` | `04f0f76` |
+| 05B | Website leads | 02B | PASS_PENDING_APPROVAL | `reports/05B.md` | `a16b970` |
 | 06A | `/admin` quản lý catalog | 05A | NOT_STARTED | | |
 | 06B | `/admin` import và rollback | 03B, 06A | NOT_STARTED | | |
 | 07A | Website catalog `/` | 05A | NOT_STARTED | | |
@@ -36,6 +36,7 @@
 - 2026-09-23 — Prompt 03A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 03A`.
 - 2026-09-24 — Prompt 03B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 03B`.
 - 2026-09-25 — Prompt 04 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 04`.
+- 2026-09-25 — Prompt 05A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 05A`.
 
 ## Ghi chú 03B
 
@@ -55,3 +56,8 @@
 
 - 2026-09-25 — Prompt 04 được người dùng phê duyệt; Prompt 05A bắt đầu với dependency 02B và 04 đều `APPROVED`.
 - 2026-09-25 — API/RPC catalog public v1, runtime fixture test, REST read-back và transactional rollback rehearsal đã PASS trên cloud staging `nalkeptqohjbjnqwpzzv`; dữ liệu public trước/sau giống nhau về nội dung và production không bị tác động.
+
+## Ghi chú 05B
+
+- 2026-09-25 — Prompt 05A được người dùng phê duyệt; Prompt 05B bắt đầu với dependency 02B đã `APPROVED`.
+- 2026-09-25 — Luồng website lead v1, validate/chống spam, manager/owner workflow, chuyển/ghép customer, idempotency, audit, REST permission, rollback rehearsal và regression đã PASS trên cloud staging `nalkeptqohjbjnqwpzzv`; fixture rollback sạch và production không bị tác động.
