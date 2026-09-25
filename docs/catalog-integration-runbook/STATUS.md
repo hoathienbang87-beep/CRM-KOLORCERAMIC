@@ -10,7 +10,7 @@
 | 02B | RLS và RPC staging | 02A | APPROVED | `reports/02B.md` | `2e4382c` |
 | 03A | Parser và matching dry-run | 01A | APPROVED | `reports/03A.md` | `230c5d8` |
 | 03B | Import batch, apply, rollback staging | 02B, 03A | APPROVED | `reports/03B.md` | `d27772f` |
-| 04 | Dữ liệu đã duyệt trên staging | 03B | BLOCKED | `reports/04.md` | |
+| 04 | Dữ liệu đã duyệt trên staging | 03B | IN_PROGRESS | `reports/04.md` | |
 | 05A | API catalog công khai | 02B, 04 | NOT_STARTED | | |
 | 05B | Website leads | 02B | NOT_STARTED | | |
 | 06A | `/admin` quản lý catalog | 05A | NOT_STARTED | | |
@@ -46,3 +46,5 @@
 - 2026-09-24 — Cloud staging `nalkeptqohjbjnqwpzzv` đã được xác minh và CLI đã chuyển link từ production sang staging.
 - 2026-09-24 — Baseline Product R2 schema đã áp trên staging mới/trống. Migration 01B fail-closed tại ACL verification và rollback sạch; 02B/03B, baseline 75 Product và workbook dry-run chưa chạy.
 - 2026-09-24 — Prompt 04 giữ `BLOCKED`, chờ người dùng quyết định về migration staging-bootstrap bổ sung để harden default privileges trước 01B.
+- 2026-09-25 — Người dùng cho phép migration staging-bootstrap ACL cho Prompt 04. ACL + 01B + 02B + 03B đã PASS trên cloud staging; baseline giữ nguyên 75 UUID.
+- 2026-09-25 — Dry-run workbook finalized đã PASS: 102 dòng giữ lại, 2 excluded, 359 ứng viên không được nhập; Product vẫn 75 và không đổi. Prompt 04 ở checkpoint `DRY_RUN_PENDING_USER_REVIEW`.
