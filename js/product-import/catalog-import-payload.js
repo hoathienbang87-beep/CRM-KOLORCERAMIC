@@ -15,7 +15,14 @@ function sourceFields(row){
     source_sheet:row.source_sheet??null,
     source_cell_ref:row.source_cell_ref??null,
     source_record_id:row.source_id??null,
-    source_values:row.raw_values??{},
+    source_values:{
+      ...(row.raw_values??{}),
+      catalog_match:{
+        status:row.match?.status??null,
+        candidates:row.match?.candidates??[],
+        suggestions:row.match?.suggestions??[]
+      }
+    },
     source_size_text:row.source_size_text??null,
     source_size_unit:row.source_size_unit??null,
     code:row.sku??null,

@@ -13,7 +13,9 @@ const html=read("admin/index.html").replace(/<script\b[^>]*>[\s\S]*?<\/script>/g
 const apiSource=read("js/admin/catalog-admin-api.js").replaceAll("export function","function");
 const appSource=read("js/admin/catalog-admin-app.js")
   .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/catalog-admin-api\.js";\s*/,"")
+  .replace(/import\s*\{createCatalogAdminImport\}\s*from\s*"\.\/catalog-admin-import\.js";\s*/,"")
   .replaceAll("export function","function");
+const importStub="function createCatalogAdminImport(){return {bind(){},loadHistory:async()=>{},showPage(){}};}";
 
 function fixtureProducts(){return [
   {id:"p-ready",code:"K-001",name:"TRAVERTINO DARK GREY",width_mm:600,height_mm:1200,surface:"MATT",color:"Grey",category:"Vân đá",collection:"Atlas",origin:"Italy",description:"Fixture",image_url:"https://example.invalid/product.jpg",gallery_urls:[],pdf_url:null,video_url:null,more_info_url:null,price_per_m2:1500000,price_effective_date:"2026-09-25",active:true,data_status:"READY",is_published:false,version:1,updated_at:"2026-09-25T08:00:00Z",updated_by_name:"Owner Fixture"},
@@ -26,7 +28,7 @@ async function boot(profile={id:"owner",name:"Owner Fixture",email:"owner@stagin
   await page.route("**/*",route=>route.abort());
   await page.setContent(html);
   await page.addStyleTag({content:read("css/catalog-admin.css")});
-  await page.addScriptTag({content:apiSource+"\n"+appSource});
+  await page.addScriptTag({content:apiSource+"\n"+importStub+"\n"+appSource});
   await page.evaluate(async ({profile,session,products})=>{
     const calls=[];
     const fakeApi={
@@ -48,11 +50,11 @@ try{
   assert.match(await page.locator("#adminProductRows").textContent(),/1\.500\.000 ₫/);
   assert.match(await page.locator("#adminProductRows").textContent(),/60 × 120 cm/);
   assert.match(await page.locator("#adminProductRows").textContent(),/Đang cập nhật/);
-  assert.equal(await page.locator('input[type="file"]').count(),0,"no upload control");
+  assert.equal(await page.locator('#adminProductForm input[type="file"]').count(),0,"no product image upload control");
 
   for(const width of [1024,1366,1440]){
     await page.setViewportSize({width,height:900});
-    assert.ok(await page.locator(".table-wrap").isVisible(),`desktop table ${width}`);
+    assert.ok(await page.locator("#adminCatalogPage .table-wrap").isVisible(),`desktop table ${width}`);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),`no desktop overflow ${width}`);
   }
 
@@ -82,7 +84,7 @@ try{
 
   for(const width of [360,390,430,768]){
     await page.setViewportSize({width,height:850});
-    assert.equal(await page.locator(".table-wrap").isVisible(),false,`mobile table hidden ${width}`);
+    assert.equal(await page.locator("#adminCatalogPage .table-wrap").isVisible(),false,`mobile table hidden ${width}`);
     assert.ok(await page.locator("#adminProductCards").isVisible(),`mobile cards ${width}`);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),`no mobile overflow ${width}`);
   }

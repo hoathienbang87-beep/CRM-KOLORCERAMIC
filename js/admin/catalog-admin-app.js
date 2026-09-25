@@ -2,6 +2,7 @@ import {
   cleanText, formatVnd, parseVnd, formatSize, parsePositiveInteger,
   parseHttpsUrl, parseGallery, isAdminProfile
 } from "./catalog-admin-api.js";
+import {createCatalogAdminImport} from "./catalog-admin-import.js";
 
 const PAGE_SIZE = 40;
 const OPTIONAL_TEXT_FIELDS = ["code","surface","color","category","collection","origin","description"];
@@ -72,6 +73,8 @@ export function createCatalogAdminApp({api, root = document}) {
     element.classList.toggle("error", isError);
     state.toastTimer = setTimeout(() => element.classList.add("hide"), 3600);
   }
+
+  const importController = createCatalogAdminImport({api,root,notify:toast});
 
   function setBusy(busy) {
     state.loading = busy;
@@ -302,6 +305,7 @@ export function createCatalogAdminApp({api, root = document}) {
   }
 
   function bind() {
+    importController.bind();
     $("adminLoginForm")?.addEventListener("submit", async event => {
       event.preventDefault(); $("adminLoginError").textContent = "";
       try { await api.signIn(cleanText($("adminLoginEmail").value),$("adminLoginPassword").value); }
@@ -335,6 +339,7 @@ export function createCatalogAdminApp({api, root = document}) {
     openDrawer,
     closeDrawer,
     loadProducts,
+    importController,
     state
   };
 }

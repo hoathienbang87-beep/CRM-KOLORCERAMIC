@@ -57,7 +57,7 @@ for(const id of ["adminLoginView","adminDeniedView","adminWorkspace","adminFilte
 expect("dedicated admin stylesheet",/catalog-admin\.css/.test(html));
 expect("dedicated admin bootstrap",/catalog-admin-bootstrap\.js/.test(html));
 expect("no CRM app entry",!/js\/app\.js|crm-app\.js/.test(html));
-expect("no upload input",!/<input[^>]+type=["']file["']/i.test(html));
+expect("no product image upload input",!/id=["']adminImage[^"']*["'][^>]+type=["']file["']/i.test(html));
 expect("external URL note",/không tải ảnh lên Supabase Storage/i.test(html));
 expect("auth form",/id="adminLoginForm"[\s\S]*type="password"/i.test(html));
 expect("responsive desktop/mobile",/@media\(max-width:820px\)/.test(css)&&/\.product-cards\{display:grid/.test(css));

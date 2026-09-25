@@ -103,6 +103,40 @@ export function createCatalogAdminApi(client) {
     },
     setState(productId, expectedVersion, active, published) {
       return rpc("catalog_admin_set_product_state_v1", {p_product_id:productId,p_expected_version:expectedVersion,p_active:active,p_is_published:published});
+    },
+    async catalogSnapshot() {
+      const items = [];
+      let offset = 0;
+      do {
+        const result = await rpc("catalog_admin_list_products_v1", {
+          p_search:null,p_data_status:null,p_active:null,p_is_published:null,p_limit:100,p_offset:offset
+        });
+        items.push(...(result?.items || []));
+        if (!result?.pagination?.has_more) break;
+        offset += 100;
+      } while (offset <= 100000);
+      return items;
+    },
+    previewImport(batch, rows) {
+      return rpc("catalog_admin_preview_import", {p_batch:batch,p_rows:rows});
+    },
+    listImportBatches(status = null, limit = 30, offset = 0) {
+      return rpc("catalog_admin_list_import_batches_v1", {p_status:status,p_limit:limit,p_offset:offset});
+    },
+    getImportBatch(batchId) {
+      return rpc("catalog_admin_get_import_batch_v1", {p_batch_id:batchId});
+    },
+    reviewImportRows(batchId, decisions) {
+      return rpc("catalog_admin_review_import_rows_v1", {p_batch_id:batchId,p_decisions:decisions});
+    },
+    approveImport(batchId, idempotencyKey) {
+      return rpc("catalog_admin_approve_import", {p_batch_id:batchId,p_idempotency_key:idempotencyKey});
+    },
+    applyImport(batchId, idempotencyKey) {
+      return rpc("catalog_admin_apply_import", {p_batch_id:batchId,p_idempotency_key:idempotencyKey});
+    },
+    rollbackImport(batchId, idempotencyKey) {
+      return rpc("catalog_admin_rollback_import", {p_batch_id:batchId,p_idempotency_key:idempotencyKey});
     }
   };
 }
