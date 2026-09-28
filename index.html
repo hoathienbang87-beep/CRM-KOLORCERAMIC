@@ -105,7 +105,7 @@
           <div class="field"><label>Hoạt động TK/XD</label><select id="partnerActivity"></select></div>
           <div class="field"><label>Năng lực CTY</label><select id="partnerCapacity"></select></div>
         </div>
-        <div class="field"><label>Nhu cầu / Quan tâm</label><input id="need"></div>
+        <div class="field"><label>Nhu cầu / Quan tâm</label><div class="product-interest-control"><input id="need"><button class="small" type="button" data-product-selector-context="interest" data-product-input="need">Chọn sản phẩm</button><button class="small hide" type="button" data-product-website-for="need">Xem website</button></div></div>
         <div class="field"><label>Ghi chú</label><textarea id="note"></textarea></div>
         <div class="actions">
           <button id="saveCustomerBtn" class="primary">Lưu khách</button>
@@ -891,6 +891,7 @@
       <div class="actions" style="justify-content:space-between;margin-bottom:12px">
         <h3 style="margin:0">Thông tin KH</h3>
         <div class="actions">
+          <button id="quoteProposalBtn" class="small" type="button">Báo giá / Đề xuất</button>
           <button id="kpi2CustomerEntryBtn" class="small primary hide" type="button">Đề xuất KPI</button>
           <button id="editCustomerInfoBtn" class="small">Sửa thông tin</button>
         </div>
@@ -932,7 +933,7 @@
           <div class="field"><label>Số lần mua căn bản</label><input id="editBasicPurchaseCount" type="number" min="0" step="1"></div>
           <div class="field"><label>Tổng giá trị mua căn bản</label><input id="editBasicPurchaseValue" type="number" min="0" step="1000"></div>
         </div>
-        <div class="field"><label>Nhu cầu / Quan tâm</label><input id="editNeed"></div>
+        <div class="field"><label>Nhu cầu / Quan tâm</label><div class="product-interest-control"><input id="editNeed"><button class="small" type="button" data-product-selector-context="interest" data-product-input="editNeed">Chọn sản phẩm</button><button class="small hide" type="button" data-product-website-for="editNeed">Xem website</button></div></div>
         <div class="field"><label>Ghi chú</label><textarea id="editNote"></textarea></div>
         <div class="actions">
           <button id="saveCustomerInfoBtn" class="primary">Lưu thông tin</button>
@@ -971,7 +972,7 @@
         <div class="field"><label>Hoạt động TK/XD</label><select id="carePartnerActivity"></select></div>
         <div class="field"><label>Năng lực CTY</label><select id="carePartnerCapacity"></select></div>
       </div>
-      <div class="field"><label>Nhu cầu / Quan tâm</label><input id="careNeed"></div>
+      <div class="field"><label>Nhu cầu / Quan tâm</label><div class="product-interest-control"><input id="careNeed"><button class="small" type="button" data-product-selector-context="interest" data-product-input="careNeed">Chọn sản phẩm</button><button class="small hide" type="button" data-product-website-for="careNeed">Xem website</button></div></div>
       <div class="grid2">
         <div class="field"><label>Ngày chăm</label><input id="careDate" type="date"></div>
         <div class="field"><label>Hẹn chăm tiếp</label><input id="careNextDate" type="date"></div>

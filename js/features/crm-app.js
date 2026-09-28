@@ -1,6 +1,16 @@
 import { productQuantity, productMoney, productSizeLabel, productFromCanonical, productChanges, productError } from "./product-catalog.js";
 import { createProductImportController } from "./product-import-ui.js";
 import { uploadProductImportSource } from "./product-import-client.js";
+import {
+  createCrmProductSelector,
+  crmProductLabel,
+  crmProductSize,
+  crmProductWebsiteUrl,
+  decodeProductSnapshot,
+  encodeProductSnapshot,
+  quoteSnapshotFromItem,
+  quoteSnapshotFromProduct
+} from "./crm-product-selector.js";
 import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, REPORT_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
@@ -248,6 +258,66 @@ async function callCrmRpc(name, args = {}) {
   const {data, error} = await supabase.rpc(name, rpcValue(args));
   if (error) throw error;
   return data;
+}
+
+let crmProductSelector = null;
+function catalogSelector() {
+  if (!crmProductSelector) crmProductSelector = createCrmProductSelector({rpc: callCrmRpc});
+  return crmProductSelector;
+}
+
+function openProductWebsite(product) {
+  if (!product) return notice("Không tìm thấy sản phẩm để mở website.", true);
+  const url = crmProductWebsiteUrl(product, window.location.origin);
+  if (url) window.open(url, "_blank", "noopener");
+}
+
+function rememberInterestProduct(input, product) {
+  if (!input || !product) return;
+  const snapshot = quoteSnapshotFromProduct(product);
+  input.value = crmProductLabel(product);
+  input.dataset.productSnapshot = encodeProductSnapshot(snapshot);
+  input.dataset.productSelectionValue = input.value;
+  const websiteButton = document.querySelector(`[data-product-website-for="${input.id}"]`);
+  if (websiteButton) {
+    websiteButton.dataset.productSnapshot = input.dataset.productSnapshot;
+    websiteButton.classList.remove("hide");
+  }
+  input.dispatchEvent(new Event("input", {bubbles:true}));
+}
+
+function interestProductFields(input) {
+  const snapshot = decodeProductSnapshot(input?.dataset.productSnapshot || "");
+  if (!snapshot.productId) return {};
+  return {
+    needProductId: snapshot.productId,
+    needProductCode: snapshot.productSku || "",
+    needProductSnapshot: snapshot
+  };
+}
+
+function restoreInterestProduct(input, source = {}) {
+  if (!input) return;
+  const snapshot = source.needProductSnapshot || (source.needProductId ? {
+    productId: source.needProductId,
+    productSku: source.needProductCode || "",
+    productName: source.need || ""
+  } : null);
+  input.dataset.productSnapshot = snapshot ? encodeProductSnapshot(snapshot) : "";
+  input.dataset.productSelectionValue = snapshot ? input.value : "";
+  const websiteButton = document.querySelector(`[data-product-website-for="${input.id}"]`);
+  if (websiteButton) {
+    websiteButton.dataset.productSnapshot = input.dataset.productSnapshot;
+    websiteButton.classList.toggle("hide", !snapshot?.productId);
+  }
+}
+
+function clearInterestProductIfChanged(input) {
+  if (!input?.dataset.productSnapshot) return;
+  if (clean(input.value) === clean(input.dataset.productSelectionValue)) return;
+  input.dataset.productSnapshot = "";
+  input.dataset.productSelectionValue = "";
+  document.querySelector(`[data-product-website-for="${input.id}"]`)?.classList.add("hide");
 }
 
 const searchAccessibleKpiCustomers = createKpiCustomerSearchAdapter(callCrmRpc);
@@ -1327,6 +1397,9 @@ function inventorySignedQty(type, qty) {
 function hydrateInventoryProductOptions() {
   const el = $("inventoryProduct");
   if (!el) return;
+  if (!document.querySelector('[data-product-selector-context="inventory"]')) {
+    el.insertAdjacentHTML("afterend", '<div class="product-inline-actions"><button class="small" type="button" data-product-selector-context="inventory">Chọn từ catalog</button></div>');
+  }
   const current = el.value;
   el.innerHTML = `<option value="">-- Chọn sản phẩm --</option>` + products.map(p => {
     return `<option value="${esc(p.id)}">${esc([productSku(p), p.name, `Tồn ${productStockText(p)}`].filter(Boolean).join(" · "))}</option>`;
@@ -1725,11 +1798,13 @@ function hydrateQuoteSelects() {
 
 function quoteItemTemplate(item={}) {
   const product = item.productId ? productByAnyValue(item.productId) : productByAnyValue(item.productName || item.productSku || item.product || "");
-  const productText = item.productLabel || item.productName || item.product || (product ? productLabel(product) : "");
+  const snapshot = quoteSnapshotFromItem(item, product);
+  const productText = item.productLabel || snapshot.productName || item.product || (product ? productLabel(product) : "");
   const unitPrice = Number(item.unitPrice ?? item.price ?? product?.pricePerM2 ?? 0);
   return `<div class="quote-item-row" data-quote-item>
-    <input type="hidden" data-quote-product-id value="${esc(item.productId || product?.id || "")}">
-    <div class="field"><label>Sản phẩm</label><input data-quote-product list="productOptions" value="${esc(productText)}" placeholder="Gõ tên/mã sản phẩm"></div>
+    <input type="hidden" data-quote-product-id value="${esc(snapshot.productId || product?.id || "")}">
+    <input type="hidden" data-quote-product-snapshot value="${esc(encodeProductSnapshot(snapshot))}">
+    <div class="field"><label>Sản phẩm</label><input data-quote-product list="productOptions" value="${esc(productText)}" placeholder="Gõ tên/mã sản phẩm"><div class="product-inline-actions"><button class="small" type="button" data-product-selector-context="quote">Chọn sản phẩm</button><button class="small ${snapshot.productId ? "" : "hide"}" type="button" data-product-website-row="quote">Xem website</button></div></div>
     <div class="field"><label>SL</label><input data-quote-qty type="number" min="0" step="0.01" value="${esc(item.qty || 1)}"></div>
     <div class="field"><label>Đơn giá</label><input data-quote-price type="number" min="0" step="1000" value="${esc(unitPrice || 0)}"></div>
     <div class="field"><label>Chiết khấu</label><input data-quote-discount type="number" min="0" step="1000" value="${esc(item.discountAmount || 0)}"></div>
@@ -1761,16 +1836,24 @@ function clearQuoteForm() {
 function collectQuoteItems() {
   return [...document.querySelectorAll("[data-quote-item]")].map((row, index) => {
     const productValue = clean(row.querySelector("[data-quote-product]").value);
-    const selected = productByAnyValue(clean(row.querySelector("[data-quote-product-id]").value) || productValue);
+    const catalogSelected = productByAnyValue(clean(row.querySelector("[data-quote-product-id]").value) || productValue);
+    const storedSnapshot = decodeProductSnapshot(row.querySelector("[data-quote-product-snapshot]")?.value || "");
+    const snapshot = storedSnapshot.productId ? storedSnapshot : (catalogSelected ? quoteSnapshotFromProduct(catalogSelected) : {});
+    const selected = catalogSelected || (snapshot.productId ? snapshot : null);
     const qty = Number(row.querySelector("[data-quote-qty]").value || 0);
     const unitPrice = Number(row.querySelector("[data-quote-price]").value || selected?.pricePerM2 || 0);
     const discountAmount = Number(row.querySelector("[data-quote-discount]").value || 0);
     const lineTotal = Math.max(0, qty * unitPrice - discountAmount);
     return {
-      productId: selected?.id || clean(row.querySelector("[data-quote-product-id]").value),
-      productSku: selected?.code || "",
-      productName: selected?.name || productValue,
-      productLabel: selected ? productLabel(selected) : productValue,
+      productId: snapshot.productId || clean(row.querySelector("[data-quote-product-id]").value),
+      productSku: snapshot.productSku || selected?.code || "",
+      productName: snapshot.productName || productValue,
+      productLabel: productValue,
+      widthMmSnapshot: snapshot.widthMmSnapshot ?? null,
+      heightMmSnapshot: snapshot.heightMmSnapshot ?? null,
+      surfaceSnapshot: snapshot.surfaceSnapshot || null,
+      listPriceSnapshot: snapshot.listPriceSnapshot ?? null,
+      catalogVersionSnapshot: snapshot.catalogVersionSnapshot ?? null,
       unit: selected ? "m²" : "",
       qty,
       unitPrice,
@@ -1810,12 +1893,17 @@ function applyProductToQuoteInput(input) {
   const p = productByAnyValue(input.value);
   if (!p) {
     row.querySelector("[data-quote-product-id]").value = "";
+    row.querySelector("[data-quote-product-snapshot]").value = "";
+    row.querySelector("[data-product-website-row]")?.classList.add("hide");
     updateQuoteTotals();
     return;
   }
+  const snapshot = quoteSnapshotFromProduct(p);
   input.value = productLabel(p);
   row.querySelector("[data-quote-product-id]").value = p.id || "";
+  row.querySelector("[data-quote-product-snapshot]").value = encodeProductSnapshot(snapshot);
   row.querySelector("[data-quote-price]").value = Number(p.pricePerM2 || 0);
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
   updateQuoteTotals();
 }
 
@@ -1953,6 +2041,8 @@ function openQuoteDetail(quoteId) {
       ${items.map(item => `<div class="detail-row">
         <b>${esc(item.productName || item.productSku || "Sản phẩm")}</b>
         <div class="detail-meta">
+          ${item.widthMmSnapshot && item.heightMmSnapshot ? `<span>Quy cách: ${esc(Number(item.widthMmSnapshot) / 10)} × ${esc(Number(item.heightMmSnapshot) / 10)} cm</span>` : ""}
+          ${item.surfaceSnapshot ? `<span>Bề mặt: ${esc(item.surfaceSnapshot)}</span>` : ""}
           <span>SL: ${esc(item.qty || 0)}</span>
           <span>Đơn giá: ${esc(money(item.unitPrice || 0))}</span>
           <span>CK: ${esc(money(item.discountAmount || 0))}</span>
@@ -2002,6 +2092,11 @@ function quoteOrderItems(q, items) {
     price: Number(item.unitPrice || 0),
     discountAmount: Number(item.discountAmount || 0),
     lineTotal: Number(item.lineTotal || 0),
+    widthMmSnapshot: item.widthMmSnapshot ?? null,
+    heightMmSnapshot: item.heightMmSnapshot ?? null,
+    surfaceSnapshot: item.surfaceSnapshot || null,
+    listPriceSnapshot: item.listPriceSnapshot ?? item.unitPrice ?? null,
+    catalogVersionSnapshot: item.catalogVersionSnapshot ?? null,
     sortOrder: index,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
@@ -2112,13 +2207,71 @@ function applyProductToDealInput(input) {
   const meta = row.querySelector("[data-deal-product-meta]");
   if (!p) {
     row.querySelector("[data-deal-product-id]").value = "";
+    row.querySelector("[data-deal-product-snapshot]").value = "";
+    row.querySelector("[data-product-website-row]")?.classList.add("hide");
     if (meta) meta.textContent = "";
     return;
   }
   input.value = productLabel(p);
   row.querySelector("[data-deal-product-id]").value = p.id || "";
+  row.querySelector("[data-deal-product-snapshot]").value = encodeProductSnapshot(quoteSnapshotFromProduct(p));
   row.querySelector("[data-deal-code]").value = p.code || "";
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
   if (meta) meta.textContent = [productSizeLabel(p), p.surface, p.origin, `Giá/m² ${productMoney(p.pricePerM2)}`].filter(Boolean).join(" · ");
+}
+
+function applyCatalogProductToQuoteRow(row, product) {
+  if (!row || !product) return;
+  const snapshot = quoteSnapshotFromProduct(product);
+  row.querySelector("[data-quote-product]").value = crmProductLabel(product);
+  row.querySelector("[data-quote-product-id]").value = product.id || "";
+  row.querySelector("[data-quote-product-snapshot]").value = encodeProductSnapshot(snapshot);
+  row.querySelector("[data-quote-price]").value = Number(product.pricePerM2 || 0);
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
+  updateQuoteTotals();
+}
+
+function applyCatalogProductToDealRow(row, product) {
+  if (!row || !product) return;
+  const snapshot = quoteSnapshotFromProduct(product);
+  row.querySelector("[data-deal-product]").value = crmProductLabel(product);
+  row.querySelector("[data-deal-product-id]").value = product.id || "";
+  row.querySelector("[data-deal-product-snapshot]").value = encodeProductSnapshot(snapshot);
+  row.querySelector("[data-deal-code]").value = product.code || "";
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
+  const meta = row.querySelector("[data-deal-product-meta]");
+  if (meta) meta.textContent = [crmProductSize(product), product.surface, `Giá/m² ${productMoney(product.pricePerM2)}`].filter(Boolean).join(" · ");
+}
+
+function openCatalogSelectorFor(button) {
+  const context = clean(button?.dataset.productSelectorContext);
+  if (!context) return;
+  const row = button.closest("[data-quote-item],[data-deal-item]");
+  const inputId = clean(button.dataset.productInput);
+  const customerId = clean(button.dataset.customerId);
+  const initialSearch = context === "interest" ? clean($(inputId)?.value) : clean(row?.querySelector("[data-quote-product],[data-deal-product]")?.value);
+  catalogSelector().open({
+    heading: context === "proposal" ? "Chọn sản phẩm cho báo giá/đề xuất" : "Chọn sản phẩm từ catalog",
+    initialSearch,
+    onSelect: product => {
+      if (context === "quote") applyCatalogProductToQuoteRow(row, product);
+      if (context === "deal") applyCatalogProductToDealRow(row, product);
+      if (context === "interest") rememberInterestProduct($(inputId), product);
+      if (context === "inventory") selectInventoryProduct(product.id, "in");
+      if (context === "proposal") {
+        createDealFromQuote(customerId);
+        applyCatalogProductToDealRow(document.querySelector("[data-deal-item]"), product);
+      }
+    }
+  });
+}
+
+function productFromSnapshotButton(button) {
+  const row = button.closest("[data-quote-item],[data-deal-item]");
+  const encoded = row?.querySelector("[data-quote-product-snapshot],[data-deal-product-snapshot]")?.value
+    || button.dataset.productSnapshot || "";
+  const snapshot = decodeProductSnapshot(encoded);
+  return snapshot.productId ? {id:snapshot.productId, code:snapshot.productSku, name:snapshot.productName} : null;
 }
 
 function stopWatchers() {
@@ -3294,6 +3447,7 @@ function openQuoteProposal(customerId) {
     <div class="detail-row">
       <b>${esc(p.name || p.code || "Sản phẩm")}</b>
       <div class="muted">${esc([p.code, productSizeLabel(p), p.surface, p.origin, `Giá/m² ${productMoney(p.pricePerM2)}`].filter(Boolean).join(" · "))}</div>
+      <div class="actions"><button class="small" type="button" data-product-website-id="${esc(p.id)}">Xem website</button></div>
     </div>
   `).join("") : `<div class="muted">Chưa gợi ý được sản phẩm từ nhu cầu hiện tại.</div>`;
   openDetailModal(
@@ -3313,6 +3467,7 @@ function openQuoteProposal(customerId) {
           </div>
           <div class="muted" style="margin-top:8px;white-space:pre-wrap">${esc(quoteCustomerSummary(c))}</div>
           <div class="actions" style="margin-top:10px">
+            <button class="small primary" type="button" data-product-selector-context="proposal" data-customer-id="${esc(c.id)}">Chọn sản phẩm cho đề xuất</button>
             <button class="small primary" type="button" data-quote-create-deal="${esc(c.id)}">Tạo đơn từ báo giá</button>
             <button class="small" type="button" data-quote-open-template="${esc(c.id)}">Mở template báo giá</button>
             <button class="small" type="button" data-quote-copy="${esc(c.id)}">Copy thông tin</button>
@@ -6005,10 +6160,13 @@ function renderAll() {
 function dealItemTemplate(item={}) {
   const productText = item.productLabel || item.product || item.name || "";
   const productId = item.productId || "";
+  const product = productId ? productByAnyValue(productId) : productByAnyValue(productText);
+  const snapshot = quoteSnapshotFromItem(item, product);
   const meta = [item.surface, item.origin, item.color, item.priceText || (item.price ? money(item.price) : "")].filter(Boolean).join(" · ");
   return `<div class="deal-item-row" data-deal-item>
-    <input type="hidden" data-deal-product-id value="${esc(productId)}">
-    <div class="field"><label>Nội dung mua căn bản</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="VD: gạch phòng khách, mẫu showroom, hạng mục khách quan tâm..."><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
+    <input type="hidden" data-deal-product-id value="${esc(snapshot.productId || productId)}">
+    <input type="hidden" data-deal-product-snapshot value="${esc(encodeProductSnapshot(snapshot))}">
+    <div class="field"><label>Nội dung mua căn bản</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="VD: gạch phòng khách, mẫu showroom, hạng mục khách quan tâm..."><div class="product-inline-actions"><button class="small" type="button" data-product-selector-context="deal">Chọn sản phẩm</button><button class="small ${snapshot.productId ? "" : "hide"}" type="button" data-product-website-row="deal">Xem website</button></div><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
     <div class="field hide"><label>Mã hàng</label><input data-deal-code value="${esc(item.code || "")}"></div>
     <div class="field"><label>Số lượng / ghi chú ngắn</label><input data-deal-qty value="${esc(item.qty || "")}" placeholder="VD: 1 lần mua, 30m2..."></div>
     <button class="small" type="button" data-remove-deal-item>Xóa</button>
@@ -6028,18 +6186,25 @@ function collectDealItems() {
   return [...document.querySelectorAll("[data-deal-item]")].map(row => {
     const productValue = clean(row.querySelector("[data-deal-product]").value);
     const selected = productByAnyValue(clean(row.querySelector("[data-deal-product-id]").value) || productValue);
-    const code = clean(row.querySelector("[data-deal-code]").value) || selected?.code || "";
+    const storedSnapshot = decodeProductSnapshot(row.querySelector("[data-deal-product-snapshot]")?.value || "");
+    const snapshot = storedSnapshot.productId ? storedSnapshot : (selected ? quoteSnapshotFromProduct(selected) : {});
+    const code = clean(row.querySelector("[data-deal-code]").value) || snapshot.productSku || selected?.code || "";
     return {
-      productId: selected?.id || clean(row.querySelector("[data-deal-product-id]").value),
-      product: selected?.name || productValue,
-      productLabel: selected ? productLabel(selected) : productValue,
+      productId: snapshot.productId || clean(row.querySelector("[data-deal-product-id]").value),
+      product: snapshot.productName || selected?.name || productValue,
+      productLabel: productValue,
       code,
-      size: selected ? productSizeLabel(selected) : "",
-      surface: selected?.surface || "",
+      size: snapshot.widthMmSnapshot && snapshot.heightMmSnapshot ? `${Number(snapshot.widthMmSnapshot) / 10} × ${Number(snapshot.heightMmSnapshot) / 10} cm` : (selected ? productSizeLabel(selected) : ""),
+      surface: snapshot.surfaceSnapshot || selected?.surface || "",
       origin: selected?.origin || "",
       color: "",
-      price: selected?.pricePerM2 || 0,
-      priceText: selected ? `Giá/m² ${productMoney(selected.pricePerM2)}` : "",
+      price: snapshot.listPriceSnapshot ?? selected?.pricePerM2 ?? 0,
+      priceText: snapshot.productId ? `Giá/m² ${productMoney(snapshot.listPriceSnapshot)}` : "",
+      widthMmSnapshot: snapshot.widthMmSnapshot ?? null,
+      heightMmSnapshot: snapshot.heightMmSnapshot ?? null,
+      surfaceSnapshot: snapshot.surfaceSnapshot || null,
+      listPriceSnapshot: snapshot.listPriceSnapshot ?? null,
+      catalogVersionSnapshot: snapshot.catalogVersionSnapshot ?? null,
       description: "",
       qty: clean(row.querySelector("[data-deal-qty]").value)
     };
@@ -6058,6 +6223,11 @@ function normalizedDealItem(item = {}, index = 0) {
     discountAmount: item.discountAmount || 0,
     lineTotal: item.lineTotal || 0,
     deliveredQty: item.deliveredQty || 0,
+    widthMmSnapshot: item.widthMmSnapshot ?? null,
+    heightMmSnapshot: item.heightMmSnapshot ?? null,
+    surfaceSnapshot: item.surfaceSnapshot || item.surface || null,
+    listPriceSnapshot: item.listPriceSnapshot ?? item.unitPrice ?? item.price ?? null,
+    catalogVersionSnapshot: item.catalogVersionSnapshot ?? null,
     sortOrder: item.sortOrder ?? index,
     note: item.note || ""
   };
@@ -6220,6 +6390,7 @@ function clearForm() {
   hydrateChannelOptions();
   togglePartnerFields();
   if (isManager()) $("owner").value = "";
+  restoreInterestProduct($("need"), {});
   $("name")?.focus();
 }
 
@@ -6250,7 +6421,7 @@ async function saveCustomer() {
   const data = {
     name: clean($("name").value), phoneRaw: clean($("phone").value), phoneNormalized: phone,
     address: clean($("address").value), source: "", channel: clean($("channel").value), customerType: clean($("customerType").value),
-    owner, ownerEmail: selectedOwnerEmail, need: clean($("need").value), note: clean($("note").value),
+    owner, ownerEmail: selectedOwnerEmail, need: clean($("need").value), ...interestProductFields($("need")), note: clean($("note").value),
     noPhone: !phone,
     companyName: isPartnerChannel(clean($("channel").value)) ? clean($("customerCompanyName").value) : "",
     partnerType: isPartnerChannel(clean($("channel").value)) ? clean($("partnerType").value) : "",
@@ -6318,7 +6489,7 @@ async function saveCareLog() {
     partnerActivity: isPartnerChannel(c.channel) ? clean($("carePartnerActivity").value) : "",
     partnerLevel: isPartnerChannel(c.channel) ? clean($("carePartnerLevel").value) : "",
     partnerCapacity: isPartnerChannel(c.channel) ? clean($("carePartnerCapacity").value) : "",
-    need: clean($("careNeed").value), note: careNote,
+    need: clean($("careNeed").value), ...interestProductFields($("careNeed")), note: careNote,
     nextCareDate, createdByEmail: currentUser.email || "",
     createdAt: serverTimestamp()
   };
@@ -6333,6 +6504,9 @@ async function saveCareLog() {
       partnerLevel: log.partnerLevel || c.partnerLevel || "",
       partnerCapacity: log.partnerCapacity || c.partnerCapacity || "",
       need: log.need || c.need || "",
+      needProductId: log.needProductId || c.needProductId || "",
+      needProductCode: log.needProductCode || c.needProductCode || "",
+      needProductSnapshot: log.needProductSnapshot || c.needProductSnapshot || null,
       note: log.note || c.note || "",
       nextCareDate: log.nextCareDate || "",
       lastCareDate: careDate,
@@ -7097,6 +7271,7 @@ function fillCustomerInfoEdit(c) {
   $("editBasicPurchaseCount").value = basicPurchaseCountFor(c);
   $("editBasicPurchaseValue").value = basicPurchaseValueFor(c);
   $("editNeed").value = clean(c.need);
+  restoreInterestProduct($("editNeed"), c);
   $("editNote").value = clean(c.note);
   if (!isManager()) $("editOwner").value = clean(c.ownerEmail || ownerEmail());
   toggleEditPartnerFields();
@@ -7140,6 +7315,7 @@ async function saveCustomerInfo() {
     basicPurchaseCount: positiveNumber($("editBasicPurchaseCount").value),
     basicPurchaseValue: positiveNumber($("editBasicPurchaseValue").value),
     need: clean($("editNeed").value),
+    ...interestProductFields($("editNeed")),
     note: clean($("editNote").value),
     updatedAt: serverTimestamp(),
     updatedByEmail: currentUser.email || ""
@@ -7212,6 +7388,7 @@ function openDrawer(id, mode="care", {inPlace = false} = {}) {
   $("carePartnerCapacity").value = clean(c.partnerCapacity);
   toggleCarePartnerFields(c.channel);
   $("careNeed").value = clean(c.need);
+  restoreInterestProduct($("careNeed"), c);
   $("careNote").value = "";
   if ($("careDate")) $("careDate").value = todayIso();
   if ($("careShowroomVisit")) $("careShowroomVisit").checked = false;
@@ -9030,6 +9207,34 @@ document.addEventListener("click", e => {
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   const customerWorkspaceHash = e.target.closest("[data-customer-workspace]")?.dataset.customerWorkspace;
   const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
+  const productSelectorButton = e.target.closest("[data-product-selector-context]");
+  const productWebsiteRowButton = e.target.closest("[data-product-website-row]");
+  const productWebsiteFieldButton = e.target.closest("[data-product-website-for]");
+  const productWebsiteId = e.target.closest("[data-product-website-id]")?.dataset.productWebsiteId;
+  const quoteCreateDealId = e.target.closest("[data-quote-create-deal]")?.dataset.quoteCreateDeal;
+  const quoteOpenTemplateId = e.target.closest("[data-quote-open-template]")?.dataset.quoteOpenTemplate;
+  const quoteCopyId = e.target.closest("[data-quote-copy]")?.dataset.quoteCopy;
+  const openQuoteId = e.target.closest("[data-open-quote]")?.dataset.openQuote;
+  const editQuoteId = e.target.closest("[data-edit-quote]")?.dataset.editQuote;
+  const convertQuoteId = e.target.closest("[data-convert-quote]")?.dataset.convertQuote;
+  const deleteQuoteId = e.target.closest("[data-delete-quote]")?.dataset.deleteQuote;
+  const removeQuoteItemButton = e.target.closest("[data-remove-quote-item]");
+  if (productSelectorButton) openCatalogSelectorFor(productSelectorButton);
+  if (productWebsiteRowButton) openProductWebsite(productFromSnapshotButton(productWebsiteRowButton));
+  if (productWebsiteFieldButton) openProductWebsite(productFromSnapshotButton(productWebsiteFieldButton));
+  if (productWebsiteId) openProductWebsite(products.find(product => product.id === productWebsiteId));
+  if (quoteCreateDealId) createDealFromQuote(quoteCreateDealId);
+  if (quoteOpenTemplateId) openQuoteTemplate(quoteOpenTemplateId);
+  if (quoteCopyId) copyQuoteCustomerInfo(quoteCopyId);
+  if (openQuoteId) openQuoteDetail(openQuoteId);
+  if (editQuoteId) editQuote(editQuoteId);
+  if (convertQuoteId) convertQuoteToDeal(convertQuoteId);
+  if (deleteQuoteId) softDeleteQuote(deleteQuoteId);
+  if (removeQuoteItemButton) {
+    removeQuoteItemButton.closest("[data-quote-item]")?.remove();
+    if (!document.querySelector("[data-quote-item]")) addQuoteItem();
+    updateQuoteTotals();
+  }
   if (overviewRoute) navigateToWorkspace(overviewRoute);
   if (kpiRoute) {
     closeDrawer();
@@ -9258,6 +9463,7 @@ on("kpiTeamAssignSubmitBtn", "click", () => runAction("kpiTeamAssignSubmitBtn", 
 on("kpiTeamRemoveSubmitBtn", "click", () => runAction("kpiTeamRemoveSubmitBtn", "kpiTeamRemove", "Đang xử lý...", confirmKpiTeamRemoveAssignment));
 on("kpi2ReloadBtn", "click", () => runAction("kpi2ReloadBtn", "kpi2Reload", "Đang tải...", reloadKpi2Data));
 on("kpi2CustomerEntryBtn", "click", () => runAction("kpi2CustomerEntryBtn", "kpi2CustomerEntry", "Đang tải KPI...", () => openKpi2ClaimFromCustomer(selectedCustomerId)));
+on("quoteProposalBtn", "click", () => openQuoteProposal(selectedCustomerId));
 on("kpi2CloseClaimBtn", "click", () => runAction("kpi2CloseClaimBtn", "kpi2CloseClaim", "Đang đóng...", closeKpi2Claim));
 on("kpi2ClaimAssignmentSelect", "change", e => runAction("kpi2ClaimAssignmentSelect", "kpi2ClaimAssignment", "Đang tải KPI...", () => configureKpi2ClaimAssignment(e.target.value,{preserveCustomer:true})));
 on("kpi2CustomerSearchInput", "input", e => scheduleKpi2CustomerSearch({value:e.target.value,session:kpi2ClaimSession}));
@@ -9360,6 +9566,7 @@ on("importFile", "change", handleImportFile);
 on("saveCustomerBtn", "click", () => runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer));
 on("clearBtn", "click", clearForm);
 on("phone", "input", renderPhoneHint);
+["need","editNeed","careNeed"].forEach(id => on(id, "input", event => clearInterestProductIfChanged(event.target)));
 on("enableNotifyBtn", "click", () => runAction("enableNotifyBtn", "enableNotify", "Đang bật...", enableBrowserNotifications));
 on("resetFilterBtn", "click", resetFilters);
 on("exportBtn", "click", exportCsv);
@@ -9374,6 +9581,17 @@ on("toggleCareHistoryBtn", "click", toggleCareHistory);
 on("saveDealBtn", "click", () => runAction("saveDealBtn", "saveDeal", "Đang lưu...", saveDeal));
 on("cancelEditDealBtn", "click", clearDealEditMode);
 on("addDealItemBtn", "click", () => addDealItem());
+on("addQuoteItemBtn", "click", () => addQuoteItem());
+on("saveQuoteBtn", "click", () => runAction("saveQuoteBtn", "saveQuote", "Đang lưu...", saveQuote));
+on("cancelEditQuoteBtn", "click", clearQuoteForm);
+on("quoteItems", "input", event => {
+  if (event.target.matches("[data-quote-product]")) applyProductToQuoteInput(event.target);
+  updateQuoteTotals();
+});
+on("quoteItems", "change", event => {
+  if (event.target.matches("[data-quote-product]")) applyProductToQuoteInput(event.target);
+  updateQuoteTotals();
+});
 on("dealItems", "input", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
 });
