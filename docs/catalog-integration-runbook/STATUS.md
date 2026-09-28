@@ -16,8 +16,8 @@
 | 06A | `/admin` quản lý catalog | 05A | APPROVED | `reports/06A.md` | `31da671` |
 | 06B | `/admin` import và rollback | 03B, 06A | APPROVED | `reports/06B.md` | `319c044` |
 | 07A | Website catalog `/` | 05A | APPROVED | `reports/07A.md` | `585da0f` |
-| 07B | Chi tiết, QR và lead | 05B, 07A | PASS_PENDING_APPROVAL | `reports/07B.md` | `8b7a3d1` |
-| 08A | Bộ chọn sản phẩm trong CRM | 05A | NOT_STARTED | | |
+| 07B | Chi tiết, QR và lead | 05B, 07A | APPROVED | `reports/07B.md` | `8b7a3d1` |
+| 08A | Bộ chọn sản phẩm trong CRM | 05A | PASS_PENDING_APPROVAL | `reports/08A.md` | `dde1733` |
 | 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | NOT_STARTED | | |
 | 09 | Tách ứng dụng và routing | 06B, 07B, 08B | NOT_STARTED | | |
 | 10 | Firebase redirect cho QR cũ | 09 | NOT_STARTED | | |
@@ -41,6 +41,7 @@
 - 2026-09-25 — Prompt 06A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 06A`.
 - 2026-09-26 — Prompt 06B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 06B`.
 - 2026-09-28 — Prompt 07A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 07A`.
+- 2026-09-28 — Prompt 07B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 07B`.
 
 ## Ghi chú 03B
 
@@ -85,3 +86,8 @@
 
 - 2026-09-28 — Prompt 07A được người dùng phê duyệt; Prompt 07B bắt đầu với dependency 05B và 07A đều `APPROVED`.
 - 2026-09-28 — Chi tiết `?id=...`, gallery/media, chia sẻ Zalo/WhatsApp/native, QR SVG cục bộ, website lead idempotent và tracking không PII đã PASS bằng fixture browser desktop/mobile; không đổi routing, không deploy và không tác động production.
+
+## Ghi chú 08A
+
+- 2026-09-28 — Prompt 07B được người dùng phê duyệt; Prompt 08A bắt đầu với dependency 05A đã `APPROVED`.
+- 2026-09-28 — Product selector dùng RPC 02B, tích hợp đề xuất/quan tâm/đơn hàng và adapter báo giá/kho, website action, snapshot bất biến và responsive đã PASS bằng fixture cục bộ; không migration, deploy hoặc tác động production.
