@@ -25,7 +25,7 @@ expect("reduced motion",/@media\(prefers-reduced-motion:reduce\)/.test(css));
 
 expect("public list RPC only",/client\.rpc\("catalog_public_list_products_v1"/.test(api));
 expect("no direct table access",!/\.from\s*\(/.test(api+app+bootstrap));
-expect("no mutation RPC",!/catalog_admin_|catalog_apply_|catalog_submit_website_lead/i.test(api+app+bootstrap));
+expect("no admin mutation RPC",!/catalog_admin_|catalog_apply_/i.test(api+app+bootstrap));
 expect("no service role",!/service[_-]?role/i.test(html+api+app+bootstrap));
 for(const parameter of ["p_search","p_category","p_collection","p_surface","p_width_mm","p_height_mm","p_min_price","p_max_price","p_limit","p_offset"])
   expect(`API parameter ${parameter}`,api.includes(parameter));
@@ -43,7 +43,7 @@ expect("manual load more fallback",/elements\.more\.addEventListener\("click"/.t
 expect("empty state",/elements\.empty\.classList\.toggle/.test(app));
 expect("retry state",/elements\.retry\.addEventListener/.test(app));
 expect("search debounce",/setTimeout\(\(\)=>load\(\{reset:true\}\),350\)/.test(app));
-expect("no detail implementation in 07A",!/catalog_public_get_product_v1|website_lead|whatsapp|zalo|qr/i.test(api+app+bootstrap));
+expect("catalog list stays separate from detail state",!/catalog_public_get_product_v1|submitLead|website_lead/i.test(app));
 expect("anonymous browser client",/createClient\(config\.url, config\.anonKey/.test(bootstrap));
 expect("public site does not persist CRM auth",/persistSession:false,autoRefreshToken:false,detectSessionInUrl:false/.test(bootstrap));
 

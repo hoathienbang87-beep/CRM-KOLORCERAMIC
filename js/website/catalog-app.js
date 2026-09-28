@@ -41,6 +41,10 @@ export function createCatalogWebsiteApp({api, root = document, observerFactory =
   }
 
   function createProductCard(product) {
+    const link = root.createElement("a");
+    link.className = "product-card-link";
+    link.href = `?id=${encodeURIComponent(product?.code || product?.id || "")}`;
+    link.setAttribute("aria-label", `Xem ${product?.name || "sản phẩm"}`);
     const article = root.createElement("article");
     article.className = "product-card";
     article.dataset.productId = product?.id || "";
@@ -75,7 +79,8 @@ export function createCatalogWebsiteApp({api, root = document, observerFactory =
     price.append(makeText("small", "", product?.origin || ""));
     info.append(attributes, price);
     article.append(media, info);
-    return article;
+    link.append(article);
+    return link;
   }
 
   function renderSkeletons() {

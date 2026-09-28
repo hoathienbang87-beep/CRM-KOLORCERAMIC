@@ -56,6 +56,18 @@ export function createCatalogPublicApi(client) {
           next_offset: data?.pagination?.next_offset == null ? null : Number(data.pagination.next_offset)
         }
       };
+    },
+    async get(identifier) {
+      const value = clean(identifier);
+      if (!value || value.length > 200) return null;
+      const {data, error} = await client.rpc("catalog_public_get_product_v1", {p_identifier:value});
+      if (error) throw error;
+      return data || null;
+    },
+    async submitLead(lead) {
+      const {data, error} = await client.rpc("catalog_submit_website_lead_v1", {p_lead:lead});
+      if (error) throw error;
+      return data;
     }
   };
 }
