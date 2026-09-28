@@ -15,8 +15,8 @@
 | 05B | Website leads | 02B | APPROVED | `reports/05B.md` | `a16b970` |
 | 06A | `/admin` quản lý catalog | 05A | APPROVED | `reports/06A.md` | `31da671` |
 | 06B | `/admin` import và rollback | 03B, 06A | APPROVED | `reports/06B.md` | `319c044` |
-| 07A | Website catalog `/` | 05A | PASS_PENDING_APPROVAL | `reports/07A.md` | `585da0f` |
-| 07B | Chi tiết, QR và lead | 05B, 07A | NOT_STARTED | | |
+| 07A | Website catalog `/` | 05A | APPROVED | `reports/07A.md` | `585da0f` |
+| 07B | Chi tiết, QR và lead | 05B, 07A | PASS_PENDING_APPROVAL | `reports/07B.md` | `8b7a3d1` |
 | 08A | Bộ chọn sản phẩm trong CRM | 05A | NOT_STARTED | | |
 | 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | NOT_STARTED | | |
 | 09 | Tách ứng dụng và routing | 06B, 07B, 08B | NOT_STARTED | | |
@@ -40,6 +40,7 @@
 - 2026-09-25 — Prompt 05B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 05B`.
 - 2026-09-25 — Prompt 06A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 06A`.
 - 2026-09-26 — Prompt 06B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 06B`.
+- 2026-09-28 — Prompt 07A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 07A`.
 
 ## Ghi chú 03B
 
@@ -79,3 +80,8 @@
 
 - 2026-09-26 — Prompt 06B được người dùng phê duyệt; Prompt 07A bắt đầu với dependency 05A đã `APPROVED`.
 - 2026-09-26 — Website catalog độc lập, public RPC client, tìm kiếm/lọc/lazy pagination, giá VNĐ/m², trạng thái thiếu dữ liệu, ảnh ngoài/fallback và responsive đã PASS bằng fixture browser; không đổi routing, không deploy và không tác động production.
+
+## Ghi chú 07B
+
+- 2026-09-28 — Prompt 07A được người dùng phê duyệt; Prompt 07B bắt đầu với dependency 05B và 07A đều `APPROVED`.
+- 2026-09-28 — Chi tiết `?id=...`, gallery/media, chia sẻ Zalo/WhatsApp/native, QR SVG cục bộ, website lead idempotent và tracking không PII đã PASS bằng fixture browser desktop/mobile; không đổi routing, không deploy và không tác động production.
