@@ -14,8 +14,8 @@
 | 05A | API catalog công khai | 02B, 04 | APPROVED | `reports/05A.md` | `04f0f76` |
 | 05B | Website leads | 02B | APPROVED | `reports/05B.md` | `a16b970` |
 | 06A | `/admin` quản lý catalog | 05A | APPROVED | `reports/06A.md` | `31da671` |
-| 06B | `/admin` import và rollback | 03B, 06A | PASS_PENDING_APPROVAL | `reports/06B.md` | `319c044` |
-| 07A | Website catalog `/` | 05A | NOT_STARTED | | |
+| 06B | `/admin` import và rollback | 03B, 06A | APPROVED | `reports/06B.md` | `319c044` |
+| 07A | Website catalog `/` | 05A | PASS_PENDING_APPROVAL | `reports/07A.md` | `585da0f` |
 | 07B | Chi tiết, QR và lead | 05B, 07A | NOT_STARTED | | |
 | 08A | Bộ chọn sản phẩm trong CRM | 05A | NOT_STARTED | | |
 | 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | NOT_STARTED | | |
@@ -39,6 +39,7 @@
 - 2026-09-25 — Prompt 05A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 05A`.
 - 2026-09-25 — Prompt 05B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 05B`.
 - 2026-09-25 — Prompt 06A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 06A`.
+- 2026-09-26 — Prompt 06B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 06B`.
 
 ## Ghi chú 03B
 
@@ -73,3 +74,8 @@
 
 - 2026-09-25 — Prompt 06A được người dùng phê duyệt; Prompt 06B bắt đầu với dependency 03B và 06A đều `APPROVED`.
 - 2026-09-25 — Admin import hai chế độ, Excel preview/matching, candidate review, approval/apply, lịch sử/rollback, PDF OCR pending gate, API đọc/review và E2E cloud staging đã PASS; fixture rollback sạch và production không bị tác động.
+
+## Ghi chú 07A
+
+- 2026-09-26 — Prompt 06B được người dùng phê duyệt; Prompt 07A bắt đầu với dependency 05A đã `APPROVED`.
+- 2026-09-26 — Website catalog độc lập, public RPC client, tìm kiếm/lọc/lazy pagination, giá VNĐ/m², trạng thái thiếu dữ liệu, ảnh ngoài/fallback và responsive đã PASS bằng fixture browser; không đổi routing, không deploy và không tác động production.
