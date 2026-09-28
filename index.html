@@ -245,76 +245,6 @@
           </section>
         </div>
 
-        <div id="productsPanel" class="panel hide" style="margin-bottom:14px">
-          <div class="pro-section-title">
-            <h3>Sản phẩm</h3>
-            <button id="addProductBtn" class="small primary hide" type="button">Thêm sản phẩm</button>
-          </div>
-          <div class="product-section-tabs" role="tablist" aria-label="Khu vực sản phẩm">
-            <button id="productCatalogTab" type="button" role="tab" aria-selected="true" aria-controls="productCatalogView" data-product-tab="catalog">Danh sách sản phẩm</button>
-            <button id="productImportTab" type="button" role="tab" aria-selected="false" aria-controls="productImportView" data-product-tab="import">Import bảng giá</button>
-          </div>
-          <div id="productCatalogView" role="tabpanel" aria-labelledby="productCatalogTab">
-          <div class="toolbar product-toolbar">
-            <div class="toolbar-search"><label>Tìm sản phẩm</label><input id="productSearchBox" placeholder="Mã SP, tên sản phẩm..."></div>
-            <div><label>Kích thước</label><select id="productFilterSize"></select></div>
-            <div><label>Bề mặt</label><select id="productFilterSurface"></select></div>
-            <div><label>Xuất xứ</label><select id="productFilterOrigin"></select></div>
-            <div class="toolbar-actions"><button id="resetProductFilterBtn" type="button">Xóa lọc</button></div>
-          </div>
-          <div class="table-wrap product-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Mã SP</th><th>Tên SP</th><th>Quy cách</th><th>Giá/m²</th><th>Giá/hộp</th><th>Tồn kho</th><th>Cập nhật</th>
-                </tr>
-              </thead>
-              <tbody id="productRows"></tbody>
-            </table>
-          </div>
-          <div id="productCardList" class="product-card-list"></div>
-          <div id="productPager" class="list-pager"></div>
-          </div>
-          <section id="productImportView" class="product-import-view hide" role="tabpanel" aria-labelledby="productImportTab" inert>
-            <div id="productImportDropzone" class="product-import-dropzone">
-              <div>
-                <b>Chọn bảng giá PDF</b>
-                <p>PDF được đọc ngay trong trình duyệt, tối đa 20 MiB. Sau khi staging, file gốc chỉ được lưu trong kho riêng để xác minh provenance.</p>
-              </div>
-              <div class="actions">
-                <label class="button primary" for="productImportFile">Chọn file PDF</label>
-                <input id="productImportFile" class="visually-hidden" type="file" accept="application/pdf,.pdf">
-                <button id="cancelProductImportParse" type="button">Hủy phân tích</button>
-              </div>
-            </div>
-            <p id="productImportStatus" class="product-import-status" role="status" aria-live="polite">Chưa chọn file.</p>
-            <div id="productImportEmpty" class="muted product-import-empty">Sau khi phân tích, kết quả so sánh sẽ xuất hiện tại đây. Chưa có thao tác nào ghi vào sản phẩm.</div>
-            <div id="productImportPreview" class="hide">
-              <div class="product-import-head">
-                <div><h4 style="margin:0">Bản xem trước</h4><p id="productImportBatchMeta" class="muted"></p></div>
-                <button id="refreshProductImport" type="button">Làm mới so sánh</button>
-              </div>
-              <div id="productImportReadyState" class="product-import-ready"></div>
-              <div id="productImportSourceStatus" class="product-import-source-status">Cần xác minh file PDF gốc trước khi áp dụng.</div>
-              <button id="retryProductImportSource" type="button">Chọn lại / xác minh file gốc</button>
-              <button id="confirmProductImportBtn" class="primary" type="button" disabled>Xác nhận áp dụng</button>
-              <p id="productImportAppliedMeta" class="muted"></p>
-              <div id="productImportSummary" class="product-import-summary"></div>
-              <label class="product-import-candidate"><input id="productImportOriginAccept" type="checkbox"> Áp dụng “Indonesia” làm xuất xứ cho các sản phẩm trong batch này <small>(mặc định tắt)</small></label>
-              <div id="productImportFilters" class="product-import-filters" aria-label="Lọc kết quả">
-                <button type="button" data-import-filter="ALL">Tất cả</button><button type="button" data-import-filter="NEW">Mới</button><button type="button" data-import-filter="PRICE_CHANGED">Đổi giá</button><button type="button" data-import-filter="REVIEW">Cần xem</button><button type="button" data-import-filter="DUPLICATE_IN_FILE">Trùng</button><button type="button" data-import-filter="INVALID">Không hợp lệ</button>
-              </div>
-              <div class="table-wrap product-import-table-wrap"><table class="admin-table"><thead><tr><th>Dòng</th><th>Sản phẩm</th><th>Quy cách</th><th>Giá/m²</th><th>Phân loại</th><th>Quyết định</th><th></th></tr></thead><tbody id="productImportRows"></tbody></table></div>
-              <div id="productImportCards" class="product-import-cards"></div>
-              <aside id="productImportDetail" class="product-import-detail hide" inert aria-labelledby="productImportDetailTitle">
-                <div class="drawer-head"><h4 id="productImportDetailTitle" style="margin:0">Chi tiết</h4><button id="closeProductImportDetail" type="button">Đóng</button></div>
-                <div id="productImportDetailBody"></div>
-              </aside>
-              <p class="muted">Chỉ khi file gốc đã xác minh và mọi quyết định đã READY, bạn mới có thể xác nhận áp dụng.</p>
-            </div>
-          </section>
-        </div>
-
         <div id="needCarePanel" class="customer-workspace panel hide" inert aria-hidden="true" style="margin-top:14px">
           <button type="button" class="customer-workspace-back customer-care-back hide" data-customer-workspace="#/customers">← Khách hàng</button>
           <div class="customer-workspace-context customer-care-context hide"><span>Khách hàng</span><span aria-hidden="true">›</span><b>Chăm sóc &amp; lịch hẹn</b></div>
@@ -1039,50 +969,6 @@
       <button id="closeDetailModalBtn" class="small" type="button">Đóng</button>
     </div>
     <div id="detailModalContent" class="detail-content muted"></div>
-  </aside>
-
-  <div id="productDrawerBackdrop" class="drawer-backdrop hide"></div>
-  <aside id="productDrawer" class="drawer hide" role="dialog" aria-modal="true" aria-labelledby="productDrawerTitle">
-    <div class="drawer-head">
-      <div>
-        <h2 id="productDrawerTitle" style="margin:0">Sản phẩm</h2>
-        <div id="productDrawerMeta" class="muted"></div>
-      </div>
-      <button id="closeProductDrawerBtn" class="small" type="button" aria-label="Đóng">Đóng</button>
-    </div>
-    <div class="section">
-      <div class="grid2">
-        <div class="field"><label>Mã SP</label><input id="productCodeInput" placeholder="VD: STP90-MN98105"></div>
-        <div class="field"><label>Tên SP</label><input id="productNameInput" placeholder="Tên sản phẩm"></div>
-        <div class="field"><label>Chiều rộng (cm)</label><input id="productWidthCmInput" inputmode="decimal" placeholder="VD: 60 hoặc 7.5"></div>
-        <div class="field"><label>Chiều cao (cm)</label><input id="productHeightCmInput" inputmode="decimal" placeholder="VD: 120 hoặc 30"></div>
-        <div class="field"><label>Bề mặt</label><input id="productSurfaceInput" placeholder="VD: POLISH, MATT..."></div>
-        <div class="field"><label>Xuất xứ</label><input id="productOriginInput" placeholder="VD: SPAIN, INDONESIA..."></div>
-        <div class="field"><label>Giá/m² (VND)</label><input id="productPricePerM2Input" inputmode="numeric" placeholder="VD: 760000"></div>
-        <div class="field"><label>Ngày hiệu lực giá</label><input id="productPriceEffectiveDateInput" type="date"><small>Ngày này được lưu riêng với thời gian cập nhật.</small></div>
-        <div class="field"><label>Giá/hộp (VND, tùy chọn)</label><input id="productPricePerBoxInput" inputmode="numeric" placeholder="Để trống nếu chưa có"></div>
-        <div class="field"><label>Giá/viên (VND, tùy chọn)</label><input id="productPricePerPieceInput" inputmode="numeric" placeholder="Để trống nếu chưa có"></div>
-        <div class="field"><label>Số viên/hộp</label><input id="productPiecesPerBoxInput" inputmode="numeric" placeholder="Để trống nếu chưa có"></div>
-        <div class="field"><label>m²/hộp</label><input id="productSqmPerBoxInput" inputmode="decimal" placeholder="VD: 1.44"></div>
-        <div class="field"><label>Tồn kho</label><input id="productStockInput" inputmode="decimal" placeholder="Chưa cập nhật"><small>Để trống nếu chưa cập nhật tồn kho.</small></div>
-      </div>
-      <div class="muted">Tồn kho là số lượng tham khảo do nhân viên tự cập nhật, không tự động trừ theo đơn hàng.</div>
-    </div>
-    <div id="productAuditMeta" class="section product-audit-meta" aria-label="Thông tin tạo và cập nhật">
-      <div><span>Tạo bởi</span><b id="productCreatedByText">—</b></div>
-      <div><span>Ngày tạo</span><b id="productCreatedAtText">—</b></div>
-      <div><span>Cập nhật bởi</span><b id="productUpdatedByText">—</b></div>
-      <div><span>Cập nhật lúc</span><b id="productUpdatedAtText">—</b></div>
-    </div>
-    <div id="productHistorySection" class="section">
-      <div class="pro-section-title"><h3>Lịch sử giá</h3></div>
-      <div id="productHistoryList" class="product-history-list muted">Chọn một sản phẩm để xem lịch sử giá.</div>
-    </div>
-    <div class="actions">
-      <button id="editProductBtn" class="primary" type="button">Chỉnh sửa</button>
-      <button id="saveProductBtn" class="primary" type="button">Lưu</button>
-      <button id="archiveProductBtn" class="danger hide" type="button">Ngừng sử dụng</button>
-    </div>
   </aside>
 
   <div id="kpiTeamDetailBackdrop" class="drawer-backdrop hide"></div>

@@ -25,25 +25,24 @@ try{
       });
     };
     window.showPanel=id=>{
-      for(const el of document.querySelectorAll("#overviewDashboard,#customerHubPanel,#customerNewPanel,#customerSearchPanel,#needCarePanel,#customerAllocationPanel,#kpiHubPanel,#kpiTeamPanel,#kpiFoundationPanel,#kpi2OperationsPanel,#productsPanel,#reportsPanel")){const show=el.id===id;el.classList.toggle("hide",!show);el.toggleAttribute("inert",!show);el.setAttribute("aria-hidden",String(!show));}
+      for(const el of document.querySelectorAll("#overviewDashboard,#customerHubPanel,#customerNewPanel,#customerSearchPanel,#needCarePanel,#customerAllocationPanel,#kpiHubPanel,#kpiTeamPanel,#kpiFoundationPanel,#kpi2OperationsPanel,#reportsPanel")){const show=el.id===id;el.classList.toggle("hide",!show);el.toggleAttribute("inert",!show);el.setAttribute("aria-hidden",String(!show));}
     };
     kpiHubCards.innerHTML='<button class="customer-action-card">KPI của tôi</button>';
     reportsHubCards.innerHTML='<button class="customer-action-card">Tổng hợp quản trị</button>';
-    productRows.innerHTML='<tr data-open-product="p"><td>TEST</td><td>Sản phẩm</td><td></td><td></td><td></td><td>0</td><td>0</td><td></td><td></td></tr>';
     window.applyRole("sale"); window.showPanel("overviewDashboard");
     window.openTestModal=()=>{detailModal.classList.remove("hide");detailModal.removeAttribute("inert");detailModalBackdrop.classList.remove("hide");closeDetailModalBtn.focus();};
     window.closeTestModal=()=>{detailModal.classList.add("hide");detailModal.setAttribute("inert","");detailModalBackdrop.classList.add("hide");};
     document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!detailModal.classList.contains("hide")){e.preventDefault();window.closeTestModal();}});
   });
 
-  const roleExpected={sale:["overview","customers","kpi","products"],manager:["overview","customers","kpi","products","reports"],owner:["overview","customers","kpi","products","reports","admin"]};
+  const roleExpected={sale:["overview","customers","kpi"],manager:["overview","customers","kpi","reports"],owner:["overview","customers","kpi","reports","admin"]};
   for(const [role,expected] of Object.entries(roleExpected)){
     await page.evaluate(r=>window.applyRole(r),role);
     const visible=await page.locator("#desktopNavItems [data-workspace-nav]:not(.hide)").evaluateAll(els=>els.map(x=>x.dataset.workspaceNav));
     assert.deepEqual(visible,expected,`${role} role nav`);
   }
 
-  const panels=["overviewDashboard","customerHubPanel","customerNewPanel","customerSearchPanel","needCarePanel","customerAllocationPanel","kpiHubPanel","kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel","productsPanel","reportsPanel"];
+  const panels=["overviewDashboard","customerHubPanel","customerNewPanel","customerSearchPanel","needCarePanel","customerAllocationPanel","kpiHubPanel","kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel","reportsPanel"];
   for(const width of [360,390,430,768,1024,1180,1366,1440,1920]){
     await page.setViewportSize({width,height:width<=430?800:900});
     for(const id of panels){

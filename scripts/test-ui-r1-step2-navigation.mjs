@@ -11,7 +11,7 @@ const shell = await import(`data:text/javascript;base64,${Buffer.from(shellSourc
 
 assert.deepEqual(
   shell.CRM_NAV_ITEMS.map(item => item.id),
-  ["overview", "customers", "kpi", "products", "reports", "admin"],
+  ["overview", "customers", "kpi", "reports", "admin"],
   "Thứ tự Sidebar phải theo IA đã duyệt"
 );
 assert.equal(shell.normalizeWorkspaceHash(""), "#/overview");
@@ -23,8 +23,8 @@ assert.ok(
   vercelConfig.rewrites.some(route => route.source === "/admin" && route.destination === "/"),
   "Vercel phải phục vụ canonical /admin route"
 );
-assert.match(html, /href="\/css\/styles\.css"/, "Deep /admin phải tải CSS từ root");
-assert.match(html, /src="\/js\/app\.js\?v=/, "Deep /admin phải tải app module từ root");
+assert.match(html, /href="\/css\/styles\.css(?:\?[^\"]+)?"/, "Deep /admin phải tải CSS từ root");
+assert.match(html, /src="\/js\/app\.js(?:\?[^\"]+)?"/, "Deep /admin phải tải app module từ root");
 assert.ok(
   vercelConfig.rewrites.some(route => route.source === "/admin/:path*" && route.destination === "/"),
   "Vercel phải phục vụ các route con /admin/*"
@@ -36,9 +36,10 @@ assert.equal((shellSource.match(/CRM_NAV_ITEMS\.map/g) || []).length, 1, "Deskto
 assert.doesNotMatch(html, /viewTabsSlot|crmViewBtn|customersViewBtn|kpiViewBtn|productsViewBtn|reportsViewBtn|adminViewBtn/);
 assert.doesNotMatch(css, /legacy-view-tabs|\.view-tabs/);
 assert.doesNotMatch(shellSource, /renderLegacyViewTabs/);
-for (const id of ["name", "saveCustomerBtn", "customerSearchPanel", "drawer", "productDrawer", "kpiTeamPanel", "kpi2OperationsPanel", "reportsPanel"]) {
+for (const id of ["name", "saveCustomerBtn", "customerSearchPanel", "drawer", "productOptions", "kpiTeamPanel", "kpi2OperationsPanel", "reportsPanel"]) {
   assert.match(html, new RegExp(`id="${id}"`), `Không được xóa business DOM #${id}`);
 }
+assert.doesNotMatch(html, /id="productsPanel"|id="productDrawer"/, "CRM không còn DOM quản trị catalog");
 assert.match(appSource, /function navigateToWorkspace/);
 assert.match(appSource, /CRM_HASH_ROUTES\[normalized\]/, "Hash chỉ được resolve qua whitelist");
 assert.match(appSource, /window\.addEventListener\("hashchange", scheduleRouteResolution\)/);

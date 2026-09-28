@@ -2,9 +2,8 @@ export const CRM_NAV_ITEMS = Object.freeze([
   { id: "overview", label: "Tổng quan", hash: "#/overview", mainView: "crm", capability: "crm" },
   { id: "customers", label: "Khách hàng", hash: "#/customers", mainView: "customers", capability: "crm" },
   { id: "kpi", label: "KPI", hash: "#/kpi", mainView: "kpi", capability: "crm" },
-  { id: "products", label: "Sản phẩm", hash: "#/products", mainView: "products", capability: "crm" },
   { id: "reports", label: "Báo cáo", hash: "#/reports", mainView: "reports", capability: "manager" },
-  { id: "admin", label: "Quản trị", path: "/admin", capability: "admin" }
+  { id: "admin", label: "Quản lý catalog", path: "/admin", capability: "admin" }
 ]);
 
 export const CUSTOMER_WORKSPACES = Object.freeze([

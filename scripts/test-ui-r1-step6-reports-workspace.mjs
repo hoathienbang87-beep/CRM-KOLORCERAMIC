@@ -23,12 +23,12 @@ assert.match(app, /if \(activeReportWorkspace === "sales"\) renderSaleActivityRe
 assert.match(app, /if \(activeReportWorkspace === "customers"\) renderPipelineReport\(\)/);
 assert.match(app, /item\.mainView === "reports"|canUseNavItem\(item\)/);
 assert.equal((html.match(/id="pipelinePanel"/g) || []).length, 1);
-assert.match(html.slice(html.indexOf('id="reportCustomersPanel"'), html.indexOf('id="productsPanel"')), /id="pipelinePanel"/);
+assert.match(html.slice(html.indexOf('id="reportCustomersPanel"'), html.indexOf('id="needCarePanel"')), /id="pipelinePanel"/);
 assert.equal((html.match(/id="growthChart"/g) || []).length, 1);
 assert.equal((html.match(/id="channelReportChart"/g) || []).length, 1);
 const overview = html.slice(html.indexOf('id="overviewDashboard"'), html.indexOf('id="reportsPanel"'));
 assert.match(overview, /id="channelReportChart"[\s\S]*?id="growthChart"/);
-const reports = html.slice(html.indexOf('id="reportsPanel"'), html.indexOf('id="productsPanel"'));
+const reports = html.slice(html.indexOf('id="reportsPanel"'), html.indexOf('id="needCarePanel"'));
 assert.doesNotMatch(reports, /id="growthChart"|id="channelReportChart"|userAdminPanel|dropdownSettingsPanel|auditPanel|kpiTeamPanel/);
 assert.match(reports, /id="reportSalesPanel"[\s\S]*?id="reportActivityOwner"[\s\S]*?id="saleActivityPager"/);
 assert.match(reports, /id="reportExportManagementBtn"/);
