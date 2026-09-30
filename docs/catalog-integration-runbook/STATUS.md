@@ -20,8 +20,8 @@
 | 08A | Bộ chọn sản phẩm trong CRM | 05A | APPROVED | `reports/08A.md` | `dde1733` |
 | 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | APPROVED | `reports/08B.md` | `25ed03c` |
 | 09 | Tách ứng dụng và routing | 06B, 07B, 08B | APPROVED | `reports/09.md` | `307f407` |
-| 10 | Firebase redirect cho QR cũ | 09 | PASS_PENDING_APPROVAL | `reports/10.md` | `1206569` |
-| 11A | Kiểm thử tự động staging | 09, 10 | NOT_STARTED | | |
+| 10 | Firebase redirect cho QR cũ | 09 | APPROVED | `reports/10.md` | `1206569` |
+| 11A | Kiểm thử tự động staging | 09, 10 | PASS_PENDING_APPROVAL | `reports/11A.md` | `5daa00c` |
 | 11B | Kiểm thử UI staging | 11A | NOT_STARTED | | |
 | 12A | Chuẩn bị production release | 11B | NOT_STARTED | | |
 | 12B | Production cutover | 12A + xác nhận production | NOT_STARTED | | |
@@ -45,6 +45,7 @@
 - 2026-09-28 — Prompt 08A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 08A`.
 - 2026-09-30 — Prompt 08B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 08B`.
 - 2026-09-30 — Prompt 09 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 09`.
+- 2026-09-30 — Prompt 10 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 10`.
 
 ## Ghi chú 03B
 
@@ -109,3 +110,8 @@
 
 - 2026-09-30 — Prompt 09 được người dùng phê duyệt; Prompt 10 bắt đầu với dependency 09 đã `APPROVED`.
 - 2026-09-30 — Đã xác minh read-only QR/link live cũ dùng `?id=` và nhận alias `?code=`; chuẩn bị package redirect-only pin project/site `kolor-ceramics`, thêm `code` compatibility cho catalog mới, rollback procedure và test static/emulator/dry-run. Live Firebase version trước/sau dry-run không đổi; không deploy, clone, tạo channel hoặc tác động production. Prompt 10 chuyển `PASS_PENDING_APPROVAL` và dừng tại gate.
+
+## Ghi chú 11A
+
+- 2026-09-30 — Prompt 10 được người dùng phê duyệt; Prompt 11A bắt đầu với dependencies 09 và 10 đều `APPROVED`. Cloud staging bắt buộc được pin tại `nalkeptqohjbjnqwpzzv`, khác production `jjeeazwlqcwynzquimeo`.
+- 2026-09-30 — Automated database/REST/contract/browser E2E đã PASS trên cloud staging `nalkeptqohjbjnqwpzzv`: routes, APIs, RLS/roles, dry-run/apply/idempotency/rollback/conflict/blank price/new-update/draft, lead, quote snapshot, QR và ảnh ngoài đều đạt; fixture rollback sạch, production không bị tác động. Prompt 11A chuyển `PASS_PENDING_APPROVAL` và dừng chờ duyệt.
