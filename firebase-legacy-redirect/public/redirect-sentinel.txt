@@ -1,0 +1,2 @@
+This directory intentionally contains no application.
+Firebase Hosting redirects all paths to the canonical Vercel catalog.

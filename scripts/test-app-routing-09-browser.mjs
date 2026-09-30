@@ -56,6 +56,7 @@ try{
   const cases=[
     {url:"/",title:/Catalog gạch/,selector:"#catalogView",css:"catalog-website.css"},
     {url:"/?id=SP-ROUTE-09",title:/Kolorceramic/,selector:"#productDetailView",css:"catalog-website.css"},
+    {url:"/?code=SP-LEGACY-10",title:/Kolorceramic/,selector:"#productDetailView",css:"catalog-website.css"},
     {url:"/admin",title:/Quản trị Catalog/,selector:"#adminLoadingView",css:"catalog-admin.css"},
     {url:"/admin/import",title:/Quản trị Catalog/,selector:"#adminWorkspace",css:"catalog-admin.css"},
     {url:"/crm",title:/CRM Công Ty/,selector:"#appView",css:"styles.css"},

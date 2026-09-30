@@ -5,7 +5,8 @@ import {createCatalogDetailApp} from "./catalog-detail.js";
 
 const publicClient = createSupabaseBrowserClient({authMode:"public"});
 const api=createCatalogPublicApi(publicClient);
-const identifier=new URL(location.href).searchParams.get("id");
+const query=new URL(location.href).searchParams;
+const identifier=query.get("id")||query.get("code");
 const app = identifier
   ? createCatalogDetailApp({api,identifier,root:document,locationRef:location,navigatorRef:navigator})
   : createCatalogWebsiteApp({api,root:document});

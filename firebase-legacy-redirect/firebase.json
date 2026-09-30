@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/firebase/firebase-tools/master/schema/firebase-config.json",
+  "hosting": {
+    "site": "kolor-ceramics",
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "redirects": [
+      {
+        "regex": "^/.*$",
+        "destination": "https://crmkolor.vercel.app/",
+        "type": 301
+      }
+    ]
+  },
+  "emulators": {
+    "hosting": {
+      "host": "127.0.0.1",
+      "port": 55010
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}
