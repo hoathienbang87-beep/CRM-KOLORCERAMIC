@@ -58,7 +58,7 @@ try{
   assert.match(await page.locator('[data-product-id="p-2"] .product-price').textContent(),/Đang cập nhật/);
   assert.equal(await page.locator('[data-product-id="p-2"] img').count(),0,"rejects non-HTTPS image");
   assert.ok(await page.locator('[data-product-id="p-2"] .image-fallback').isVisible(),"missing image fallback visible");
-  await page.waitForTimeout(80);
+  await page.waitForFunction(()=>document.querySelector('[data-product-id="p-1"] img')===null,null,{timeout:5000});
   assert.equal(await page.locator('[data-product-id="p-1"] img').count(),0,"broken external image falls back");
 
   await page.evaluate(()=>fixture.triggerLazy());
