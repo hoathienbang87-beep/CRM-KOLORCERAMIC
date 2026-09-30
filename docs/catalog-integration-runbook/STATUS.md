@@ -18,8 +18,8 @@
 | 07A | Website catalog `/` | 05A | APPROVED | `reports/07A.md` | `585da0f` |
 | 07B | Chi tiết, QR và lead | 05B, 07A | APPROVED | `reports/07B.md` | `8b7a3d1` |
 | 08A | Bộ chọn sản phẩm trong CRM | 05A | APPROVED | `reports/08A.md` | `dde1733` |
-| 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | PASS_PENDING_APPROVAL | `reports/08B.md` | `25ed03c` |
-| 09 | Tách ứng dụng và routing | 06B, 07B, 08B | NOT_STARTED | | |
+| 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | APPROVED | `reports/08B.md` | `25ed03c` |
+| 09 | Tách ứng dụng và routing | 06B, 07B, 08B | PASS_PENDING_APPROVAL | `reports/09.md` | `307f407` |
 | 10 | Firebase redirect cho QR cũ | 09 | NOT_STARTED | | |
 | 11A | Kiểm thử tự động staging | 09, 10 | NOT_STARTED | | |
 | 11B | Kiểm thử UI staging | 11A | NOT_STARTED | | |
@@ -43,6 +43,7 @@
 - 2026-09-28 — Prompt 07A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 07A`.
 - 2026-09-28 — Prompt 07B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 07B`.
 - 2026-09-28 — Prompt 08A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 08A`.
+- 2026-09-30 — Prompt 08B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 08B`.
 
 ## Ghi chú 03B
 
@@ -97,3 +98,8 @@
 
 - 2026-09-28 — Prompt 08A được người dùng phê duyệt; Prompt 08B bắt đầu với dependency 08A đã `APPROVED`.
 - 2026-09-28 — Menu/hash/panel/drawer/import catalog cũ và mutation runtime đã được retire khỏi CRM; owner/admin được hướng tới `/admin`, sale không còn đường sửa catalog, các adapter đọc cho selector/báo giá/đơn/kho/báo cáo được giữ lại và regression desktop/mobile đã PASS. Không migration, database write, deploy, push hoặc tác động production.
+
+## Ghi chú 09
+
+- 2026-09-30 — Prompt 08B được người dùng phê duyệt; Prompt 09 bắt đầu với dependencies 06B, 07B và 08B đều `APPROVED`.
+- 2026-09-30 — Đã tách website catalog, admin catalog và CRM thành ba entry point/bundle/runtime độc lập; thêm shared Supabase client/auth contract không chứa domain logic; cấu hình `/`, `/admin`, `/crm` và redirect `/CRM`; static, browser, refresh/asset-path và regression 06A–08B/CRM đều PASS. Không database write, deploy, push hoặc tác động production. Prompt 09 chuyển `PASS_PENDING_APPROVAL` và dừng tại gate.
