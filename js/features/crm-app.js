@@ -604,7 +604,8 @@ function navigateToWorkspace(target, {replace = false} = {}) {
   }
   if (item.path) {
     setMobileNavigationOpen(false, {restoreFocus:false});
-    return goToRoute(item.path);
+    window.location.assign(item.path);
+    return item;
   }
   if (window.location.hash !== item.hash) {
     const method = replace ? "replaceState" : "pushState";

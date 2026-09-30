@@ -1,4 +1,5 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "node scripts/generate-maintenance-config.mjs",
   "installCommand": "",
   "outputDirectory": ".",
@@ -16,18 +17,33 @@
       ]
     }
   ],
+  "redirects": [
+    {
+      "source": "/CRM",
+      "destination": "/crm",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/website/index"
+    },
+    {
       "source": "/admin",
-      "destination": "/"
+      "destination": "/admin/index"
     },
     {
       "source": "/admin/:path*",
-      "destination": "/"
+      "destination": "/admin/index"
     },
     {
-      "source": "/",
-      "destination": "/index.html"
+      "source": "/crm",
+      "destination": "/index"
+    },
+    {
+      "source": "/crm/:path*",
+      "destination": "/index"
     }
   ]
 }

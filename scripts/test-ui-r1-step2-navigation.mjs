@@ -20,15 +20,17 @@ assert.equal(shell.workspaceForHash("#/unknown").id, "overview");
 assert.equal(shell.CRM_HASH_ROUTES["#/reports"].mainView, "reports");
 assert.equal(shell.CRM_NAV_ITEMS.find(item => item.id === "admin").path, "/admin");
 assert.ok(
-  vercelConfig.rewrites.some(route => route.source === "/admin" && route.destination === "/"),
+  vercelConfig.rewrites.some(route => route.source === "/admin" && route.destination === "/admin/index"),
   "Vercel phải phục vụ canonical /admin route"
 );
 assert.match(html, /href="\/css\/styles\.css(?:\?[^\"]+)?"/, "Deep /admin phải tải CSS từ root");
 assert.match(html, /src="\/js\/app\.js(?:\?[^\"]+)?"/, "Deep /admin phải tải app module từ root");
 assert.ok(
-  vercelConfig.rewrites.some(route => route.source === "/admin/:path*" && route.destination === "/"),
+  vercelConfig.rewrites.some(route => route.source === "/admin/:path*" && route.destination === "/admin/index"),
   "Vercel phải phục vụ các route con /admin/*"
 );
+assert.ok(vercelConfig.rewrites.some(route => route.source === "/crm" && route.destination === "/index"), "Vercel phải phục vụ /crm");
+assert.ok(vercelConfig.redirects.some(route => route.source === "/CRM" && route.destination === "/crm" && route.permanent === true), "Vercel phải redirect /CRM sang /crm");
 
 assert.match(shellSource, /desktopNavItems/);
 assert.match(shellSource, /mobileNavItems/);
@@ -41,6 +43,7 @@ for (const id of ["name", "saveCustomerBtn", "customerSearchPanel", "drawer", "p
 }
 assert.doesNotMatch(html, /id="productsPanel"|id="productDrawer"/, "CRM không còn DOM quản trị catalog");
 assert.match(appSource, /function navigateToWorkspace/);
+assert.match(appSource, /window\.location\.assign\(item\.path\)/, "Đi sang app /admin phải full navigation, không chia sẻ CRM state");
 assert.match(appSource, /CRM_HASH_ROUTES\[normalized\]/, "Hash chỉ được resolve qua whitelist");
 assert.match(appSource, /window\.addEventListener\("hashchange", scheduleRouteResolution\)/);
 assert.match(appSource, /activeMainView = workspace\.mainView;[\s\S]{0,260}renderAll\(\)/, "Refresh phải khôi phục route trước renderAll");

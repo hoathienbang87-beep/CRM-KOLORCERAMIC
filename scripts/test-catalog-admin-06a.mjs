@@ -80,7 +80,8 @@ expect("app image fallback",/function attachImageFallbacks/.test(app)&&/image\.o
 expect("app optimistic version",/api\.update\(state\.selected\.id,state\.selected\.version,changes\)/.test(app));
 expect("app publish readiness guard",/state\.selected\.data_status !== "READY"/.test(app));
 expect("app keyboard escape",/event\.key==="Escape"/.test(app));
-expect("bootstrap imports shared anon client",/import \{ supabase \} from "\.\.\/firebase\.js"/.test(bootstrap));
+expect("bootstrap imports shared browser client factory",/import \{ createSupabaseBrowserClient \} from "\.\.\/shared\/supabase-client\.js"/.test(bootstrap));
+expect("bootstrap uses authenticated auth state",/createSupabaseBrowserClient\(\{authMode:"authenticated"\}\)/.test(bootstrap));
 
 expect("runtime baseline guarded",/expected post-05B staging baseline 123\/75\/0/i.test(runtime));
 for(const label of ["admin list/pagination","filters","content update/read-back","price history","version conflict","HTTPS image constraint","publish state","archive state","publish readiness gate","audit before/after","sale role guard","anon execute denial","fixture rollback residue"])

@@ -1,20 +1,10 @@
-const config = window.CRM_SUPABASE_CONFIG || {};
-const createClient = window.supabase?.createClient;
-if (!createClient) {
-  throw new Error("Không tải được thư viện Supabase. Hãy kiểm tra mạng hoặc CDN jsdelivr.");
-}
+import { createSupabaseBrowserClient } from "./shared/supabase-client.js";
+
 export const app = {};
 export const db = {};
 export const auth = {};
 
-export const supabase = createClient(config.url || "https://example.supabase.co", config.anonKey || "anon-key", {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storageKey: "crm-kolor-supabase-auth"
-  }
-});
+export const supabase = createSupabaseBrowserClient({authMode:"authenticated"});
 
 const tableMap = {
   users: "app_users",

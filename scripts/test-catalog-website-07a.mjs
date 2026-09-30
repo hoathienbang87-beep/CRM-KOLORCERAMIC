@@ -44,7 +44,7 @@ expect("empty state",/elements\.empty\.classList\.toggle/.test(app));
 expect("retry state",/elements\.retry\.addEventListener/.test(app));
 expect("search debounce",/setTimeout\(\(\)=>load\(\{reset:true\}\),350\)/.test(app));
 expect("catalog list stays separate from detail state",!/catalog_public_get_product_v1|submitLead|website_lead/i.test(app));
-expect("anonymous browser client",/createClient\(config\.url, config\.anonKey/.test(bootstrap));
-expect("public site does not persist CRM auth",/persistSession:false,autoRefreshToken:false,detectSessionInUrl:false/.test(bootstrap));
+expect("anonymous browser client",/createSupabaseBrowserClient\(\{authMode:"public"\}\)/.test(bootstrap));
+expect("public site does not persist CRM auth",!/authMode:"authenticated"/.test(bootstrap));
 
 console.log(`PASS: Catalog website 07A static contract (${checks} checks).`);
