@@ -21,8 +21,8 @@
 | 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | APPROVED | `reports/08B.md` | `25ed03c` |
 | 09 | Tách ứng dụng và routing | 06B, 07B, 08B | APPROVED | `reports/09.md` | `307f407` |
 | 10 | Firebase redirect cho QR cũ | 09 | APPROVED | `reports/10.md` | `1206569` |
-| 11A | Kiểm thử tự động staging | 09, 10 | PASS_PENDING_APPROVAL | `reports/11A.md` | `5daa00c` |
-| 11B | Kiểm thử UI staging | 11A | NOT_STARTED | | |
+| 11A | Kiểm thử tự động staging | 09, 10 | APPROVED | `reports/11A.md` | `5daa00c` |
+| 11B | Kiểm thử UI staging | 11A | PASS_PENDING_APPROVAL | `reports/11B.md` | `a7f0069` |
 | 12A | Chuẩn bị production release | 11B | NOT_STARTED | | |
 | 12B | Production cutover | 12A + xác nhận production | NOT_STARTED | | |
 | 13 | Theo dõi sau triển khai | 12B | NOT_STARTED | | |
@@ -46,6 +46,7 @@
 - 2026-09-30 — Prompt 08B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 08B`.
 - 2026-09-30 — Prompt 09 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 09`.
 - 2026-09-30 — Prompt 10 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 10`.
+- 2026-09-30 — Prompt 11A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 11A`.
 
 ## Ghi chú 03B
 
@@ -115,3 +116,8 @@
 
 - 2026-09-30 — Prompt 10 được người dùng phê duyệt; Prompt 11A bắt đầu với dependencies 09 và 10 đều `APPROVED`. Cloud staging bắt buộc được pin tại `nalkeptqohjbjnqwpzzv`, khác production `jjeeazwlqcwynzquimeo`.
 - 2026-09-30 — Automated database/REST/contract/browser E2E đã PASS trên cloud staging `nalkeptqohjbjnqwpzzv`: routes, APIs, RLS/roles, dry-run/apply/idempotency/rollback/conflict/blank price/new-update/draft, lead, quote snapshot, QR và ảnh ngoài đều đạt; fixture rollback sạch, production không bị tác động. Prompt 11A chuyển `PASS_PENDING_APPROVAL` và dừng chờ duyệt.
+
+## Ghi chú 11B
+
+- 2026-09-30 — Prompt 11A được người dùng phê duyệt; Prompt 11B bắt đầu trên Supabase cloud staging `nalkeptqohjbjnqwpzzv`. UI được phục vụ cục bộ và trỏ tới cloud staging thật; không deploy và không dùng production `jjeeazwlqcwynzquimeo`.
+- 2026-09-30 — Live UI rehearsal desktop/mobile đã PASS cho catalog/detail/ảnh/lead/Auth/admin import/manual match/approval/apply/rollback/CRM selector/quote snapshot/deep refresh/unauthorized; read-back audit before/after đầy đủ, fixture residue bằng 0 và toàn bộ regression 11A PASS. Prompt 11B chuyển `PASS_PENDING_APPROVAL` và dừng chờ duyệt.
