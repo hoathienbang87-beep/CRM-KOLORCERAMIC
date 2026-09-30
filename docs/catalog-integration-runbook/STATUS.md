@@ -19,8 +19,8 @@
 | 07B | Chi tiết, QR và lead | 05B, 07A | APPROVED | `reports/07B.md` | `8b7a3d1` |
 | 08A | Bộ chọn sản phẩm trong CRM | 05A | APPROVED | `reports/08A.md` | `dde1733` |
 | 08B | Ẩn quản lý sản phẩm khỏi CRM | 08A | APPROVED | `reports/08B.md` | `25ed03c` |
-| 09 | Tách ứng dụng và routing | 06B, 07B, 08B | PASS_PENDING_APPROVAL | `reports/09.md` | `307f407` |
-| 10 | Firebase redirect cho QR cũ | 09 | NOT_STARTED | | |
+| 09 | Tách ứng dụng và routing | 06B, 07B, 08B | APPROVED | `reports/09.md` | `307f407` |
+| 10 | Firebase redirect cho QR cũ | 09 | PASS_PENDING_APPROVAL | `reports/10.md` | `1206569` |
 | 11A | Kiểm thử tự động staging | 09, 10 | NOT_STARTED | | |
 | 11B | Kiểm thử UI staging | 11A | NOT_STARTED | | |
 | 12A | Chuẩn bị production release | 11B | NOT_STARTED | | |
@@ -44,6 +44,7 @@
 - 2026-09-28 — Prompt 07B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 07B`.
 - 2026-09-28 — Prompt 08A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 08A`.
 - 2026-09-30 — Prompt 08B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 08B`.
+- 2026-09-30 — Prompt 09 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 09`.
 
 ## Ghi chú 03B
 
@@ -103,3 +104,8 @@
 
 - 2026-09-30 — Prompt 08B được người dùng phê duyệt; Prompt 09 bắt đầu với dependencies 06B, 07B và 08B đều `APPROVED`.
 - 2026-09-30 — Đã tách website catalog, admin catalog và CRM thành ba entry point/bundle/runtime độc lập; thêm shared Supabase client/auth contract không chứa domain logic; cấu hình `/`, `/admin`, `/crm` và redirect `/CRM`; static, browser, refresh/asset-path và regression 06A–08B/CRM đều PASS. Không database write, deploy, push hoặc tác động production. Prompt 09 chuyển `PASS_PENDING_APPROVAL` và dừng tại gate.
+
+## Ghi chú 10
+
+- 2026-09-30 — Prompt 09 được người dùng phê duyệt; Prompt 10 bắt đầu với dependency 09 đã `APPROVED`.
+- 2026-09-30 — Đã xác minh read-only QR/link live cũ dùng `?id=` và nhận alias `?code=`; chuẩn bị package redirect-only pin project/site `kolor-ceramics`, thêm `code` compatibility cho catalog mới, rollback procedure và test static/emulator/dry-run. Live Firebase version trước/sau dry-run không đổi; không deploy, clone, tạo channel hoặc tác động production. Prompt 10 chuyển `PASS_PENDING_APPROVAL` và dừng tại gate.
