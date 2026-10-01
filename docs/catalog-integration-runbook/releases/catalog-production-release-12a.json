@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "catalog-integration-2026-10-01",
+  "preparedAt": "2026-10-01",
+  "branch": "feat/catalog-supabase-integration",
+  "git": {
+    "mergeBase": "7e9db5182844e2a14855fa7aba148a5fb990384c",
+    "applicationCommit": "a7f00692d7c66def1e7eff94b5ed6536872d0272",
+    "approvedGateCommit": "1033a82",
+    "commitsAheadAtPreparation": 49
+  },
+  "targets": {
+    "supabase": {
+      "productionRef": "jjeeazwlqcwynzquimeo",
+      "productionName": "ERP kolorceramic",
+      "stagingRef": "nalkeptqohjbjnqwpzzv",
+      "requireProductionHealthy": true,
+      "requireStagingAndProductionDifferent": true
+    },
+    "vercel": {
+      "projectName": "crm_kolor",
+      "projectId": "prj_BNeqeHfdUbfR1uaZFyzeuxhzcBRw",
+      "orgId": "team_7gs92w9113W7Nq7ytCsdoLm4",
+      "canonicalUrl": "https://crmkolor.vercel.app/",
+      "baselineDeploymentId": "dpl_FMLr7dPEzQd3uo8zY1QSBjsRFBLL",
+      "baselineDeploymentUrl": "https://crmkolor-oovyjwuvd-thien-di-s-projects1.vercel.app",
+      "baselineStatus": "READY"
+    },
+    "firebase": {
+      "projectId": "kolor-ceramics",
+      "site": "kolor-ceramics",
+      "legacyUrl": "https://kolor-ceramics.web.app/",
+      "baselineLiveVersion": "2259ef3eda629186",
+      "baselineStatus": "FINALIZED",
+      "redirectDestination": "https://crmkolor.vercel.app/"
+    }
+  },
+  "runtimeArtifacts": [
+    {
+      "path": "vercel.json",
+      "sha256": "41cf69f665bec3c18ff9ad0345b113a2ea5415535f491fcb46242262e733d5f5"
+    },
+    {
+      "path": "firebase-legacy-redirect/.firebaserc",
+      "sha256": "c0c5508611b58842ef7071411a8c600fd5174405b47675b3abf191a21f4bee5c"
+    },
+    {
+      "path": "firebase-legacy-redirect/firebase.json",
+      "sha256": "25fe72aca8b98e3f8de6a2b2b01d0257347e2f51012bd1ab1c1337f4e09d9c5e"
+    },
+    {
+      "path": "website/index.html",
+      "sha256": "0cfc8b56acc5b413de2f5e45633a5ff5c7786d03dc91674755fc0881bfbd091c"
+    },
+    {
+      "path": "admin/index.html",
+      "sha256": "f9bbd15608d5379f4a3ba829911e32b7952d5101e7942c1619ff0af17518a2bd"
+    },
+    {
+      "path": "index.html",
+      "sha256": "f77c8908b006c5663360cc28e931ad92a401844ec43fde5fa26801bfcc4abbcc"
+    }
+  ],
+  "database": {
+    "apply": [
+      {
+        "phase": "01B",
+        "path": "supabase-phase-catalog-integration-01b-additive.sql",
+        "sha256": "5c7869fa7d225bd66ffa52cc3bbe06dc481538e03c76c15ad79021080e28df56"
+      },
+      {
+        "phase": "02B",
+        "path": "supabase-phase-catalog-integration-02b-rls-rpc.sql",
+        "sha256": "59f4c7f18355b03388ffd229d36d3978aaac28b412b395b4a1cecae984e265d8"
+      },
+      {
+        "phase": "03B",
+        "path": "supabase-phase-catalog-integration-03b-approval-audit.sql",
+        "sha256": "4e02cffc60ed1c644531991015735db7c5e3de71f9f5ce9653287aca081aff88"
+      },
+      {
+        "phase": "05A",
+        "path": "supabase-phase-catalog-integration-05a-public-api-v1.sql",
+        "sha256": "d85ed4257eef3c49a067979f84134d1b75a9241b99daf1c33391973d8b93e686"
+      },
+      {
+        "phase": "05B",
+        "path": "supabase-phase-catalog-integration-05b-website-leads.sql",
+        "sha256": "00d0ff4af851579bf13a8dca4e80f0c91f214cb6677e84a3e5f4eb196fd501b3"
+      },
+      {
+        "phase": "06A",
+        "path": "supabase-phase-catalog-integration-06a-admin-catalog.sql",
+        "sha256": "6e41fa4e63cc968dcadf68dd518beb639f2eab93c327be7ee082a3bdf35c3cb1"
+      },
+      {
+        "phase": "06B",
+        "path": "supabase-phase-catalog-integration-06b-admin-import.sql",
+        "sha256": "2a13dae3c00fc05192cf186bf514b799ee0fe9095970f5cb620ddca52efe2878"
+      },
+      {
+        "phase": "06B-COMPAT",
+        "path": "supabase-phase-catalog-integration-06b-classification-compat.sql",
+        "sha256": "ae934cc72821bc5891ba4ee6ff30f6c30b53ac82aaab1c1cfdd59ba208170f11"
+      },
+      {
+        "phase": "06B-ALIAS",
+        "path": "supabase-phase-catalog-integration-06b-review-alias-fix.sql",
+        "sha256": "ebdfebc7ce30aed6e8ebc4453755b9d9258d749ba8e54d25d24093225d3be697"
+      }
+    ],
+    "rollback": [
+      {
+        "phase": "06B",
+        "path": "supabase-phase-catalog-integration-06b-rollback.sql",
+        "sha256": "80f6b6a1bd21d6e1f85a82fc9a655c8d1391fcbbe6b69265f176fa5be91d7794"
+      },
+      {
+        "phase": "06A",
+        "path": "supabase-phase-catalog-integration-06a-rollback.sql",
+        "sha256": "b23fb3bd632b361efb9aa34216b78fba0285d96d533512f0d07ee3df8d5b9994"
+      },
+      {
+        "phase": "05B",
+        "path": "supabase-phase-catalog-integration-05b-rollback.sql",
+        "sha256": "834059b48fb2a366ca6f87e54347c17a3b2e027f98682ea5fdf772215b0f34a5"
+      },
+      {
+        "phase": "05A",
+        "path": "supabase-phase-catalog-integration-05a-rollback.sql",
+        "sha256": "78b0f6839b2cbebd0ed8404c4787793a5f60efcc594d2a9427409eb3888f80f8"
+      },
+      {
+        "phase": "03B",
+        "path": "supabase-phase-catalog-integration-03b-rollback.sql",
+        "sha256": "c1158297a6592b528716a804002e0a9fffa9347b792961d533a6f10cf212b14d"
+      },
+      {
+        "phase": "02B",
+        "path": "supabase-phase-catalog-integration-02b-rollback.sql",
+        "sha256": "cc92f453f2dcaa28176684393657d5d290fa831fbf5f522e1e3ec8d968bf508f"
+      },
+      {
+        "phase": "01B",
+        "path": "supabase-phase-catalog-integration-01b-rollback.sql",
+        "sha256": "8ed89f8b14cdb7170028851267c87469edff4275f3ca13454ec96fe7d9f78fcc"
+      }
+    ],
+    "excludedFromProduction": [
+      "supabase-phase-catalog-integration-04-staging-bootstrap-acl.sql",
+      "supabase-phase-catalog-integration-05b-postgrest-cache.sql",
+      "supabase-phase-catalog-integration-05b-postgrest-cache-recovery.sql",
+      "supabase/migrations/20260924040000_production_public_schema_baseline.sql",
+      "supabase/migrations/20260924040100_catalog_staging_bootstrap_acl.sql",
+      "supabase/migrations/20260924040500_catalog_baseline_75.sql",
+      "supabase/migrations/20260924040600_catalog_dry_run.sql",
+      "supabase/migrations/20260924040700_catalog_apply_verify.sql",
+      "supabase/migrations/20260924040800_catalog_rollback_verify.sql",
+      "supabase/migrations/*_staging_test.sql",
+      "supabase/migrations/*_rollback_test.sql",
+      "supabase/migrations/20260930110100_catalog_staging_e2e_11a.sql"
+    ]
+  },
+  "requiredProductionConfirmations": [
+    "TÔI XÁC NHẬN CUTOVER PRODUCTION",
+    "TÔI DUYỆT GHI DỮ LIỆU PRODUCTION BATCH <BATCH_ID>"
+  ],
+  "deploymentOrder": [
+    "fresh production backup and checksum",
+    "read-only preflight",
+    "database migrations and schema read-back",
+    "production import dry-run and explicit batch approval stop",
+    "approved batch apply and audit read-back",
+    "Vercel production deploy and smoke test",
+    "Firebase safety clone, redirect deploy and smoke test"
+  ]
+}

@@ -95,6 +95,7 @@ exports/
 !scripts/test-catalog-06a-staging-rollback.sql
 !scripts/test-catalog-06b-staging.sql
 !scripts/test-catalog-06b-staging-rollback.sql
+!scripts/catalog-production-preflight-12a.sql
 !scripts/extract-catalog-xlsx-readonly.py
 __pycache__/
 /supabase/.temp/
