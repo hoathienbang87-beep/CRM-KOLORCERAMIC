@@ -24,11 +24,13 @@
       "permanent": true
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/",
-      "destination": "/website/index"
-    },
+      "src": "^/$",
+      "dest": "/website/index"
+    }
+  ],
+  "rewrites": [
     {
       "source": "/admin",
       "destination": "/admin/index"

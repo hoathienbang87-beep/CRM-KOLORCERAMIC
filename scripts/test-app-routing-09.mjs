@@ -11,9 +11,11 @@ const crmBootstrap=read("js/app.js"),crmApp=read("js/features/crm-app.js");
 const shared=read("js/shared/supabase-client.js");
 let checks=0;const expect=(label,value)=>{checks++;assert.ok(value,`FAIL: ${label}`);};
 const rewrite=(source,destination)=>config.rewrites?.some(route=>route.source===source&&route.destination===destination);
+const route=(src,dest)=>config.routes?.some(item=>item.src===src&&item.dest===dest);
 
 expect("clean URLs enabled",config.cleanUrls===true);
-expect("website root route",rewrite("/","/website/index"));
+expect("website root route precedes filesystem",route("^/$","/website/index"));
+expect("website root is not a post-filesystem rewrite",!rewrite("/","/website/index"));
 expect("admin canonical route",rewrite("/admin","/admin/index"));
 expect("admin refresh route",rewrite("/admin/:path*","/admin/index"));
 expect("CRM canonical route",rewrite("/crm","/index"));
@@ -51,6 +53,10 @@ expect("maintenance build remains CRM-only",/maintenance\.generated\.js/.test(cr
 for(const destination of config.rewrites.map(route=>route.destination)){
   const relative=destination.replace(/^\//,"");
   expect(`rewrite destination exists ${destination}`,fs.existsSync(path.join(root,`${relative}.html`))||fs.existsSync(path.join(root,relative)));
+}
+for(const destination of config.routes.map(route=>route.dest).filter(Boolean)){
+  const relative=destination.replace(/^\//,"");
+  expect(`route destination exists ${destination}`,fs.existsSync(path.join(root,`${relative}.html`))||fs.existsSync(path.join(root,relative)));
 }
 
 console.log(`PASS: app separation and routing 09 static contract (${checks} checks).`);

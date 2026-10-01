@@ -24,7 +24,7 @@
 | 11A | Kiểm thử tự động staging | 09, 10 | APPROVED | `reports/11A.md` | `5daa00c` |
 | 11B | Kiểm thử UI staging | 11A | APPROVED | `reports/11B.md` | `a7f0069` |
 | 12A | Chuẩn bị production release | 11B | APPROVED | `reports/12A.md` | `3a9fa10` |
-| 12B | Production cutover | 12A + xác nhận production | BLOCKED | `reports/12B.md` | `9018cf9` |
+| 12B | Production cutover | 12A + xác nhận production | IN_PROGRESS | `reports/12B.md` | `9018cf9` |
 | 13 | Theo dõi sau triển khai | 12B | NOT_STARTED | | |
 
 ## Lịch sử phê duyệt
@@ -136,3 +136,4 @@
 - 2026-10-01 — Checkpoint `PRODUCTION_PREVIEW_PENDING_BATCH_APPROVAL`. Giữ `NEXT_PROMPT: 12B`; cấm apply/deploy cho đến câu chính xác `TÔI DUYỆT GHI DỮ LIỆU PRODUCTION BATCH ead71cd8-9b44-4fd8-ba5c-f03d9fbce52a`.
 - 2026-10-01 — Người dùng duyệt đúng batch; approval/apply/read-back/idempotency PASS. Batch `APPLIED`, tạo 48 Product mới, 75 Product baseline byte-identical và audit before/after đầy đủ.
 - 2026-10-01 — Vercel deployment mới `dpl_DZnztwRTSuPm6U32LN1SsiJFhrwA` `READY` và dùng đúng Supabase production, nhưng deployment smoke FAIL vì `/` trả CRM thay vì website catalog. Không promote canonical, không clone/deploy Firebase; canonical và Firebase live vẫn ở baseline. Prompt 12B chuyển `BLOCKED`, giữ `NEXT_PROMPT: 12B` chờ cho phép routing hotfix/release amendment.
+- 2026-10-01 — Người dùng cho phép tạo routing hotfix và release amendment cho Prompt 12B. Chỉ sửa route `/`, bổ sung regression mô phỏng Vercel pre-filesystem route và revalidate/deploy theo đúng thứ tự; 12B chuyển lại `IN_PROGRESS`.

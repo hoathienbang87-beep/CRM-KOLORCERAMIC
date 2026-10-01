@@ -12,6 +12,9 @@ const root=process.cwd(),config=JSON.parse(fs.readFileSync("vercel.json","utf8")
 const mime={".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".svg":"image/svg+xml",".png":"image/png"};
 
 function rewritePath(pathname){
+  for(const route of config.routes||[]){
+    if(route.dest&&new RegExp(route.src).test(pathname))return route.dest;
+  }
   for(const route of config.rewrites){
     if(route.source===pathname)return route.destination;
     if(route.source.endsWith("/:path*")&&pathname.startsWith(route.source.slice(0,-7)+"/"))return route.destination;
