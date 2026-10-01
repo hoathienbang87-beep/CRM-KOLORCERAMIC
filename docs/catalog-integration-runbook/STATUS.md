@@ -25,7 +25,7 @@
 | 11B | Kiểm thử UI staging | 11A | APPROVED | `reports/11B.md` | `a7f0069` |
 | 12A | Chuẩn bị production release | 11B | APPROVED | `reports/12A.md` | `3a9fa10` |
 | 12B | Production cutover | 12A + xác nhận production | APPROVED | `reports/12B.md` | `477f126` |
-| 13 | Theo dõi sau triển khai | 12B | PASS_PENDING_APPROVAL | `reports/13.md` | PENDING |
+| 13 | Theo dõi sau triển khai | 12B | PASS_PENDING_APPROVAL | `reports/13.md` | `3924736` |
 
 ## Lịch sử phê duyệt
 
