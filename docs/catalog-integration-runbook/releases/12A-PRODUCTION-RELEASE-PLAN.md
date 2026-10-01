@@ -20,6 +20,16 @@ Status: prepared only. This document does not authorize production access, migra
 
 The machine-readable source of truth is `catalog-production-release-12a.json`. Prompt 12B must stop if a checksum, project ID, site, URL or application tree differs. Documentation-only commits after the application boundary are allowed only when `git diff a7f0069 --` proves there is no unreviewed runtime or migration change.
 
+### Authorized Prompt 12B routing amendment
+
+After deployment-URL smoke showed that Vercel served the root `index.html` before the high-level `/` rewrite, the user explicitly authorized `TÔI CHO PHÉP TẠO ROUTING HOTFIX VÀ RELEASE AMENDMENT CHO PROMPT 12B`.
+
+- Original application boundary remains `a7f00692d7c66def1e7eff94b5ed6536872d0272`.
+- The only authorized runtime delta is routing hotfix commit `477f1265eac7b91af2bb8b6ed5e81ad7270ee32f` plus its two routing regression files.
+- `vercel.json` moves only `/` from a post-filesystem rewrite to the exact pre-filesystem route `^/$` → `/website/index`; `/admin`, `/crm`, `/CRM`, Supabase configuration and Firebase configuration remain unchanged.
+- Amended `vercel.json` SHA-256 is `17c25627af4eab377c125ea44aff4749fcd8a47f348a27cc409b8c9fc3038ea1`; the previous hash is retained in the manifest audit trail.
+- The amended package must pass the release validator and actual protected deployment-URL smoke before alias promotion. This amendment does not authorize any new database mutation or a second catalog batch apply.
+
 ### Approved functional commits
 
 The release history contains 49 commits after the merge base. The functional checkpoints are:

@@ -6,9 +6,25 @@
   "git": {
     "mergeBase": "7e9db5182844e2a14855fa7aba148a5fb990384c",
     "applicationCommit": "a7f00692d7c66def1e7eff94b5ed6536872d0272",
+    "routingHotfixCommit": "477f1265eac7b91af2bb8b6ed5e81ad7270ee32f",
     "approvedGateCommit": "1033a82",
     "commitsAheadAtPreparation": 49
   },
+  "amendments": [
+    {
+      "id": "12b-routing-hotfix-2026-10-01",
+      "authorizedBy": "TÔI CHO PHÉP TẠO ROUTING HOTFIX VÀ RELEASE AMENDMENT CHO PROMPT 12B",
+      "reason": "Vercel deployment URL served the root CRM index before the post-filesystem rewrite.",
+      "hotfixCommit": "477f1265eac7b91af2bb8b6ed5e81ad7270ee32f",
+      "previousVercelSha256": "41cf69f665bec3c18ff9ad0345b113a2ea5415535f491fcb46242262e733d5f5",
+      "newVercelSha256": "17c25627af4eab377c125ea44aff4749fcd8a47f348a27cc409b8c9fc3038ea1",
+      "scope": [
+        "vercel.json",
+        "scripts/test-app-routing-09.mjs",
+        "scripts/test-app-routing-09-browser.mjs"
+      ]
+    }
+  ],
   "targets": {
     "supabase": {
       "productionRef": "jjeeazwlqcwynzquimeo",
@@ -38,7 +54,7 @@
   "runtimeArtifacts": [
     {
       "path": "vercel.json",
-      "sha256": "41cf69f665bec3c18ff9ad0345b113a2ea5415535f491fcb46242262e733d5f5"
+      "sha256": "17c25627af4eab377c125ea44aff4749fcd8a47f348a27cc409b8c9fc3038ea1"
     },
     {
       "path": "firebase-legacy-redirect/.firebaserc",

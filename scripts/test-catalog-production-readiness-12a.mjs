@@ -16,6 +16,14 @@ const check=(condition,message)=>{assert.ok(condition,message);checks+=1;};
 check(manifest.schemaVersion===1,"manifest schema version");
 check(manifest.branch==="feat/catalog-supabase-integration","release branch pinned");
 check(manifest.git.applicationCommit==="a7f00692d7c66def1e7eff94b5ed6536872d0272","application commit pinned");
+check(manifest.git.routingHotfixCommit==="477f1265eac7b91af2bb8b6ed5e81ad7270ee32f","routing hotfix commit pinned");
+check(manifest.amendments?.length===1,"exactly one release amendment");
+const routingAmendment=manifest.amendments[0];
+check(routingAmendment.id==="12b-routing-hotfix-2026-10-01","routing amendment id pinned");
+check(routingAmendment.hotfixCommit===manifest.git.routingHotfixCommit,"routing amendment commit matches git pin");
+check(routingAmendment.previousVercelSha256==="41cf69f665bec3c18ff9ad0345b113a2ea5415535f491fcb46242262e733d5f5","previous Vercel checksum recorded");
+check(routingAmendment.newVercelSha256==="17c25627af4eab377c125ea44aff4749fcd8a47f348a27cc409b8c9fc3038ea1","amended Vercel checksum pinned");
+check(routingAmendment.scope.length===3&&routingAmendment.scope.includes("vercel.json"),"routing amendment scope constrained");
 check(manifest.targets.supabase.productionRef==="jjeeazwlqcwynzquimeo","production Supabase ref pinned");
 check(manifest.targets.supabase.stagingRef==="nalkeptqohjbjnqwpzzv","staging Supabase ref pinned");
 check(manifest.targets.supabase.productionRef!==manifest.targets.supabase.stagingRef,"staging differs from production");
@@ -28,7 +36,8 @@ check(manifest.targets.firebase.redirectDestination===manifest.targets.vercel.ca
 
 execFileSync("git",["cat-file","-e",`${manifest.git.mergeBase}^{commit}`],{stdio:"ignore"});
 execFileSync("git",["cat-file","-e",`${manifest.git.applicationCommit}^{commit}`],{stdio:"ignore"});
-checks+=2;
+execFileSync("git",["cat-file","-e",`${manifest.git.routingHotfixCommit}^{commit}`],{stdio:"ignore"});
+checks+=3;
 
 const project=JSON.parse(read(".vercel/project.json"));
 check(project.projectId===manifest.targets.vercel.projectId,"local Vercel project id matches manifest");
@@ -46,7 +55,8 @@ check(hosting.redirects[0].type===301,"Firebase redirect is permanent");
 
 const vercel=JSON.parse(read("vercel.json"));
 const rewriteMap=Object.fromEntries(vercel.rewrites.map(item=>[item.source,item.destination]));
-check(rewriteMap["/"]==="/website/index","public route rewrite");
+check(vercel.routes?.some(item=>item.src==="^/$"&&item.dest==="/website/index"),"public root route precedes filesystem");
+check(!("/" in rewriteMap),"public root is not a post-filesystem rewrite");
 check(rewriteMap["/admin"]==="/admin/index","admin route rewrite");
 check(rewriteMap["/crm"]==="/index","CRM route rewrite");
 check(vercel.redirects.some(item=>item.source==="/CRM"&&item.destination==="/crm"),"legacy CRM redirect");
