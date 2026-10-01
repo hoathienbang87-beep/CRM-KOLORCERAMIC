@@ -24,7 +24,7 @@
 | 11A | Kiểm thử tự động staging | 09, 10 | APPROVED | `reports/11A.md` | `5daa00c` |
 | 11B | Kiểm thử UI staging | 11A | APPROVED | `reports/11B.md` | `a7f0069` |
 | 12A | Chuẩn bị production release | 11B | APPROVED | `reports/12A.md` | `3a9fa10` |
-| 12B | Production cutover | 12A + xác nhận production | IN_PROGRESS | `reports/12B.md` | `f06cdfa` |
+| 12B | Production cutover | 12A + xác nhận production | BLOCKED | `reports/12B.md` | `f06cdfa` |
 | 13 | Theo dõi sau triển khai | 12B | NOT_STARTED | | |
 
 ## Lịch sử phê duyệt
@@ -134,3 +134,5 @@
 - 2026-10-01 — Prompt 12A được phê duyệt và câu xác nhận cutover production đã được ghi nhận. Prompt 12B bắt đầu tại fresh-backup/preflight gate; chưa apply dữ liệu hoặc deploy.
 - 2026-10-01 — Fresh backup SQL + Storage, preflight, 9 migration production và schema/RLS/RPC read-back đều PASS. Production preview tạo batch `ead71cd8-9b44-4fd8-ba5c-f03d9fbce52a`; Product trước/sau byte-identical, batch `READY`, chưa approved/applied.
 - 2026-10-01 — Checkpoint `PRODUCTION_PREVIEW_PENDING_BATCH_APPROVAL`. Giữ `NEXT_PROMPT: 12B`; cấm apply/deploy cho đến câu chính xác `TÔI DUYỆT GHI DỮ LIỆU PRODUCTION BATCH ead71cd8-9b44-4fd8-ba5c-f03d9fbce52a`.
+- 2026-10-01 — Người dùng duyệt đúng batch; approval/apply/read-back/idempotency PASS. Batch `APPLIED`, tạo 48 Product mới, 75 Product baseline byte-identical và audit before/after đầy đủ.
+- 2026-10-01 — Vercel deployment mới `dpl_DZnztwRTSuPm6U32LN1SsiJFhrwA` `READY` và dùng đúng Supabase production, nhưng deployment smoke FAIL vì `/` trả CRM thay vì website catalog. Không promote canonical, không clone/deploy Firebase; canonical và Firebase live vẫn ở baseline. Prompt 12B chuyển `BLOCKED`, giữ `NEXT_PROMPT: 12B` chờ cho phép routing hotfix/release amendment.
