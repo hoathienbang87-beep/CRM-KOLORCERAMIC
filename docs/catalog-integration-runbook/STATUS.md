@@ -24,8 +24,8 @@
 | 11A | Kiểm thử tự động staging | 09, 10 | APPROVED | `reports/11A.md` | `5daa00c` |
 | 11B | Kiểm thử UI staging | 11A | APPROVED | `reports/11B.md` | `a7f0069` |
 | 12A | Chuẩn bị production release | 11B | APPROVED | `reports/12A.md` | `3a9fa10` |
-| 12B | Production cutover | 12A + xác nhận production | PASS_PENDING_APPROVAL | `reports/12B.md` | `477f126` |
-| 13 | Theo dõi sau triển khai | 12B | NOT_STARTED | | |
+| 12B | Production cutover | 12A + xác nhận production | APPROVED | `reports/12B.md` | `477f126` |
+| 13 | Theo dõi sau triển khai | 12B | PASS_PENDING_APPROVAL | `reports/13.md` | PENDING |
 
 ## Lịch sử phê duyệt
 
@@ -49,6 +49,7 @@
 - 2026-09-30 — Prompt 11A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 11A`.
 - 2026-10-01 — Prompt 11B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 11B`.
 - 2026-10-01 — Prompt 12A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 12A`; xác nhận cutover production riêng đã được gửi bằng câu `TÔI XÁC NHẬN CUTOVER PRODUCTION`.
+- 2026-10-01 — Prompt 12B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 12B`.
 
 ## Ghi chú 03B
 
@@ -139,3 +140,8 @@
 - 2026-10-01 — Người dùng cho phép tạo routing hotfix và release amendment cho Prompt 12B. Chỉ sửa route `/`, bổ sung regression mô phỏng Vercel pre-filesystem route và revalidate/deploy theo đúng thứ tự; 12B chuyển lại `IN_PROGRESS`.
 - 2026-10-01 — Routing hotfix/release amendment PASS; deployment `dpl_2d6Pv5Fvs4W2vjFAY2SpZCXxiHaU` được smoke rồi promote tới `crmkolor.vercel.app`. Canonical desktop/mobile, public API, anonymous guards, read-only RBAC/import history/CRM selector và transactional lead rollback smoke đều PASS.
 - 2026-10-01 — Firebase live baseline `2259ef3eda629186` được clone sang `pre-catalog-cutover-20261001`, redirect version mới `f37a6d1510892335` được deploy cuối cùng; `id/code/UTM`, no-loop và safety restore read đều PASS. Final database read-back sạch; Prompt 12B chuyển `PASS_PENDING_APPROVAL`, `NEXT_PROMPT: WAITING_FOR_APPROVAL`.
+
+## Ghi chú 13
+
+- 2026-10-01 — Prompt 12B được người dùng phê duyệt; Prompt 13 bắt đầu ở chế độ theo dõi/read-only sau triển khai. Không tự sửa production; lỗi nghiêm trọng phải dừng để xin duyệt rollback hoặc forward fix.
+- 2026-10-01 — Post-deploy monitoring PASS: Vercel canonical/routing/browser, public và protected RPC, RLS/auth, Product/import/audit/giá/duplicate, lead, quote snapshot, QR/Firebase và regression đều đạt. Không có production mutation; 13 chuyển `PASS_PENDING_APPROVAL`, `NEXT_PROMPT: WAITING_FOR_APPROVAL`.
