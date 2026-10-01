@@ -24,7 +24,7 @@
 | 11A | Kiểm thử tự động staging | 09, 10 | APPROVED | `reports/11A.md` | `5daa00c` |
 | 11B | Kiểm thử UI staging | 11A | APPROVED | `reports/11B.md` | `a7f0069` |
 | 12A | Chuẩn bị production release | 11B | APPROVED | `reports/12A.md` | `3a9fa10` |
-| 12B | Production cutover | 12A + xác nhận production | IN_PROGRESS | `reports/12B.md` | |
+| 12B | Production cutover | 12A + xác nhận production | IN_PROGRESS | `reports/12B.md` | `f06cdfa` |
 | 13 | Theo dõi sau triển khai | 12B | NOT_STARTED | | |
 
 ## Lịch sử phê duyệt
