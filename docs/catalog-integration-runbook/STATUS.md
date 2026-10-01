@@ -1,6 +1,6 @@
 # Trạng thái Catalog Integration
 
-`NEXT_PROMPT: WAITING_FOR_APPROVAL`
+`NEXT_PROMPT: COMPLETE`
 
 | ID | Công việc | Dependency | Trạng thái | Báo cáo | Commit |
 |---|---|---|---|---|---|
@@ -25,7 +25,7 @@
 | 11B | Kiểm thử UI staging | 11A | APPROVED | `reports/11B.md` | `a7f0069` |
 | 12A | Chuẩn bị production release | 11B | APPROVED | `reports/12A.md` | `3a9fa10` |
 | 12B | Production cutover | 12A + xác nhận production | APPROVED | `reports/12B.md` | `477f126` |
-| 13 | Theo dõi sau triển khai | 12B | PASS_PENDING_APPROVAL | `reports/13.md` | `3924736` |
+| 13 | Theo dõi sau triển khai | 12B | APPROVED | `reports/13.md` | `3924736` |
 
 ## Lịch sử phê duyệt
 
@@ -50,6 +50,7 @@
 - 2026-10-01 — Prompt 11B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 11B`.
 - 2026-10-01 — Prompt 12A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 12A`; xác nhận cutover production riêng đã được gửi bằng câu `TÔI XÁC NHẬN CUTOVER PRODUCTION`.
 - 2026-10-01 — Prompt 12B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 12B`.
+- 2026-10-01 — Prompt 13 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 13`; toàn bộ catalog integration runbook đã hoàn tất.
 
 ## Ghi chú 03B
 
@@ -145,3 +146,4 @@
 
 - 2026-10-01 — Prompt 12B được người dùng phê duyệt; Prompt 13 bắt đầu ở chế độ theo dõi/read-only sau triển khai. Không tự sửa production; lỗi nghiêm trọng phải dừng để xin duyệt rollback hoặc forward fix.
 - 2026-10-01 — Post-deploy monitoring PASS: Vercel canonical/routing/browser, public và protected RPC, RLS/auth, Product/import/audit/giá/duplicate, lead, quote snapshot, QR/Firebase và regression đều đạt. Không có production mutation; 13 chuyển `PASS_PENDING_APPROVAL`, `NEXT_PROMPT: WAITING_FOR_APPROVAL`.
+- 2026-10-01 — Người dùng phê duyệt Prompt 13. Không còn prompt kế tiếp; runbook chuyển `NEXT_PROMPT: COMPLETE`.
