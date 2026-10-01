@@ -22,8 +22,8 @@
 | 09 | Tách ứng dụng và routing | 06B, 07B, 08B | APPROVED | `reports/09.md` | `307f407` |
 | 10 | Firebase redirect cho QR cũ | 09 | APPROVED | `reports/10.md` | `1206569` |
 | 11A | Kiểm thử tự động staging | 09, 10 | APPROVED | `reports/11A.md` | `5daa00c` |
-| 11B | Kiểm thử UI staging | 11A | PASS_PENDING_APPROVAL | `reports/11B.md` | `a7f0069` |
-| 12A | Chuẩn bị production release | 11B | NOT_STARTED | | |
+| 11B | Kiểm thử UI staging | 11A | APPROVED | `reports/11B.md` | `a7f0069` |
+| 12A | Chuẩn bị production release | 11B | PASS_PENDING_APPROVAL | `reports/12A.md` | `3a9fa10` |
 | 12B | Production cutover | 12A + xác nhận production | NOT_STARTED | | |
 | 13 | Theo dõi sau triển khai | 12B | NOT_STARTED | | |
 
@@ -47,6 +47,7 @@
 - 2026-09-30 — Prompt 09 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 09`.
 - 2026-09-30 — Prompt 10 — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 10`.
 - 2026-09-30 — Prompt 11A — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 11A`.
+- 2026-10-01 — Prompt 11B — Người dùng phê duyệt bằng câu: `TÔI DUYỆT PROMPT 11B`.
 
 ## Ghi chú 03B
 
@@ -121,3 +122,8 @@
 
 - 2026-09-30 — Prompt 11A được người dùng phê duyệt; Prompt 11B bắt đầu trên Supabase cloud staging `nalkeptqohjbjnqwpzzv`. UI được phục vụ cục bộ và trỏ tới cloud staging thật; không deploy và không dùng production `jjeeazwlqcwynzquimeo`.
 - 2026-09-30 — Live UI rehearsal desktop/mobile đã PASS cho catalog/detail/ảnh/lead/Auth/admin import/manual match/approval/apply/rollback/CRM selector/quote snapshot/deep refresh/unauthorized; read-back audit before/after đầy đủ, fixture residue bằng 0 và toàn bộ regression 11A PASS. Prompt 11B chuyển `PASS_PENDING_APPROVAL` và dừng chờ duyệt.
+
+## Ghi chú 12A
+
+- 2026-10-01 — Prompt 11B được người dùng phê duyệt; Prompt 12A bắt đầu để chuẩn bị production release package. Chỉ thực hiện read-only inventory/planning; không migration, database write, deploy hoặc tác động production.
+- 2026-10-01 — Release manifest/checksum, production migration/rollback bundle, read-only preflight, fresh-backup checklist, two-phase maintenance window, dry-run/batch approval stop và GO/NO-GO matrix đã hoàn tất; 119 readiness checks, toàn bộ static regression và Firebase dry-run PASS. Prompt 12A chuyển `PASS_PENDING_APPROVAL`; chưa bắt đầu 12B và chưa tác động production.
