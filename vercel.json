@@ -19,6 +19,11 @@
   ],
   "redirects": [
     {
+      "source": "/catalog",
+      "destination": "/",
+      "permanent": true
+    },
+    {
       "source": "/CRM",
       "destination": "/crm",
       "permanent": true
@@ -31,6 +36,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/videos/:path*",
+      "destination": "/public/videos/:path*"
+    },
     {
       "source": "/admin",
       "destination": "/admin/index"

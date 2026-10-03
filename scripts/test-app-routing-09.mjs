@@ -22,9 +22,13 @@ expect("CRM canonical route",rewrite("/crm","/index"));
 expect("CRM refresh route",rewrite("/crm/:path*","/index"));
 expect("no html extension in destinations",config.rewrites.every(route=>!route.destination.endsWith(".html")));
 expect("legacy CRM redirect",config.redirects?.some(route=>route.source==="/CRM"&&route.destination==="/crm"&&route.permanent===true));
+expect("catalog compatibility redirect",config.redirects?.some(route=>route.source==="/catalog"&&route.destination==="/"&&route.permanent===true));
+expect("E-STRUCTURE media rewrite",rewrite("/videos/:path*","/public/videos/:path*"));
 expect("old admin-to-CRM rewrite removed",!rewrite("/admin","/"));
+expect("root is not redirected",!config.redirects?.some(route=>route.source==="/"));
+expect("lowercase CRM is not redirected",!config.redirects?.some(route=>route.source==="/crm"));
 
-for(const [label,file] of [["website","website/index.html"],["admin","admin/index.html"],["CRM","index.html"]])
+for(const [label,file] of [["website","website/index.html"],["admin","admin/index.html"],["CRM","index.html"],["E-STRUCTURE","qr/e-structure.html"],["E-STRUCTURE video","public/videos/e-structure.mp4"]])
   expect(`${label} entry exists`,fs.existsSync(path.join(root,file)));
 expect("website owns catalog CSS/bootstrap",/\/css\/catalog-website\.css/.test(websiteHtml)&&/\/js\/website\/catalog-bootstrap\.js/.test(websiteHtml));
 expect("admin owns catalog CSS/bootstrap",/\/css\/catalog-admin\.css/.test(adminHtml)&&/\/js\/admin\/catalog-admin-bootstrap\.js/.test(adminHtml));
@@ -52,7 +56,8 @@ expect("maintenance build remains CRM-only",/maintenance\.generated\.js/.test(cr
 
 for(const destination of config.rewrites.map(route=>route.destination)){
   const relative=destination.replace(/^\//,"");
-  expect(`rewrite destination exists ${destination}`,fs.existsSync(path.join(root,`${relative}.html`))||fs.existsSync(path.join(root,relative)));
+  const wildcardBase=relative.replace(/:path\*$/,"");
+  expect(`rewrite destination exists ${destination}`,fs.existsSync(path.join(root,`${relative}.html`))||fs.existsSync(path.join(root,relative))||fs.existsSync(path.join(root,wildcardBase)));
 }
 for(const destination of config.routes.map(route=>route.dest).filter(Boolean)){
   const relative=destination.replace(/^\//,"");

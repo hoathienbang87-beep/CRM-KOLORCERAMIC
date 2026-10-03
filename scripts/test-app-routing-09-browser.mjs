@@ -9,7 +9,7 @@ const browserPath=process.env.ROUTING_09_BROWSER_PATH;
 if(!playwrightEntry||!browserPath)throw new Error("ROUTING_09_PLAYWRIGHT_ENTRY and ROUTING_09_BROWSER_PATH are required.");
 const {chromium}=await import(pathToFileURL(playwrightEntry).href).then(module=>module.default||module);
 const root=process.cwd(),config=JSON.parse(fs.readFileSync("vercel.json","utf8"));
-const mime={".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".svg":"image/svg+xml",".png":"image/png"};
+const mime={".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".svg":"image/svg+xml",".png":"image/png",".mp4":"video/mp4"};
 
 function rewritePath(pathname){
   for(const route of config.routes||[]){
@@ -17,7 +17,10 @@ function rewritePath(pathname){
   }
   for(const route of config.rewrites){
     if(route.source===pathname)return route.destination;
-    if(route.source.endsWith("/:path*")&&pathname.startsWith(route.source.slice(0,-7)+"/"))return route.destination;
+    if(route.source.endsWith("/:path*")){
+      const sourceBase=route.source.slice(0,-7);
+      if(pathname.startsWith(`${sourceBase}/`))return route.destination.replace(":path*",pathname.slice(sourceBase.length+1));
+    }
   }
   return pathname;
 }
@@ -41,7 +44,17 @@ const server=http.createServer((request,response)=>{
   if(!file.startsWith(root)||!fs.existsSync(file)||fs.statSync(file).isDirectory()){
     response.writeHead(404,{"Content-Type":"text/plain"});return response.end("Not found");
   }
-  response.writeHead(200,{"Content-Type":mime[path.extname(file)]||"application/octet-stream"});
+  const contentType=mime[path.extname(file)]||"application/octet-stream";
+  const range=request.headers.range;
+  if(range&&path.extname(file)===".mp4"){
+    const size=fs.statSync(file).size;
+    const match=/bytes=(\d+)-(\d*)/.exec(range);
+    if(!match){response.writeHead(416,{"Content-Range":`bytes */${size}`});return response.end();}
+    const start=Number(match[1]),end=Math.min(match[2]?Number(match[2]):size-1,size-1);
+    response.writeHead(206,{"Content-Type":contentType,"Accept-Ranges":"bytes","Content-Range":`bytes ${start}-${end}/${size}`,"Content-Length":end-start+1});
+    return fs.createReadStream(file,{start,end}).pipe(response);
+  }
+  response.writeHead(200,{"Content-Type":contentType,"Accept-Ranges":path.extname(file)===".mp4"?"bytes":"none"});
   fs.createReadStream(file).pipe(response);
 });
 await new Promise((resolve,reject)=>server.listen(0,"127.0.0.1",error=>error?reject(error):resolve()));
@@ -63,7 +76,8 @@ try{
     {url:"/admin",title:/Quản trị Catalog/,selector:"#adminLoadingView",css:"catalog-admin.css"},
     {url:"/admin/import",title:/Quản trị Catalog/,selector:"#adminWorkspace",css:"catalog-admin.css"},
     {url:"/crm",title:/CRM Công Ty/,selector:"#appView",css:"styles.css"},
-    {url:"/crm/deep-refresh",title:/CRM Công Ty/,selector:"#appView",css:"styles.css"}
+    {url:"/crm/deep-refresh",title:/CRM Công Ty/,selector:"#appView",css:"styles.css"},
+    {url:"/qr/e-structure",title:/E-STRUCTURE/,selector:"#experienceVideo"}
   ];
   for(const item of cases){
     await page.goto(`${base}${item.url}`,{waitUntil:"domcontentloaded"});
@@ -82,9 +96,23 @@ try{
   const redirect=await context.request.get(`${base}/CRM?source=legacy`,{maxRedirects:0});
   assert.equal(redirect.status(),308,"legacy redirect status");
   assert.equal(redirect.headers().location,"/crm?source=legacy","legacy redirect preserves query");
+  const catalogRedirect=await context.request.get(`${base}/catalog?source=legacy`,{maxRedirects:0});
+  assert.equal(catalogRedirect.status(),308,"catalog redirect status");
+  assert.equal(catalogRedirect.headers().location,"/?source=legacy","catalog redirect preserves query");
+  const video=await context.request.get(`${base}/videos/e-structure.mp4`,{headers:{Range:"bytes=0-1023"}});
+  assert.equal(video.status(),206,"E-STRUCTURE video supports byte ranges");
+  assert.match(video.headers()["content-type"],/^video\/mp4/,"E-STRUCTURE video content type");
+  assert.equal((await video.body()).length,1024,"E-STRUCTURE byte range length");
+
+  await page.goto(`${base}/crm`,{waitUntil:"domcontentloaded"});
+  await page.goto(`${base}/`,{waitUntil:"domcontentloaded"});
+  await page.goBack({waitUntil:"domcontentloaded"});
+  assert.equal(new URL(page.url()).pathname,"/crm","browser back restores CRM canonical path");
+  await page.goForward({waitUntil:"domcontentloaded"});
+  assert.equal(new URL(page.url()).pathname,"/","browser forward restores Catalog root");
   assert.deepEqual(localFailures,[],`local asset failures: ${localFailures.join(" | ")}`);
   assert.deepEqual(productionRequests,[],"routing fixture must not request production");
-  console.log("PASS: app routing 09 browser — /, /admin, /crm, deep refresh, root-relative assets and /CRM redirect.");
+  console.log("PASS: unified routing browser — Catalog, Admin, CRM, E-STRUCTURE, redirects, deep refresh, history and byte-range media.");
 }finally{
   await browser.close();
   await new Promise(resolve=>server.close(resolve));
