@@ -4,8 +4,9 @@ import path from 'node:path';
 const root = process.cwd();
 const migrationPath = path.join(root, 'supabase-phase-kpi2-customer-linked-event.sql');
 const integrationPath = path.join(root, 'scripts', 'test-phase-kpi2-customer-linked-event-integration.sql');
-const migration = fs.readFileSync(migrationPath, 'utf8');
-const integration = fs.readFileSync(integrationPath, 'utf8');
+const normalizeNewlines = text => text.replace(/\r\n?/g, '\n');
+const migration = normalizeNewlines(fs.readFileSync(migrationPath, 'utf8'));
+const integration = normalizeNewlines(fs.readFileSync(integrationPath, 'utf8'));
 
 let passed = 0;
 const failures = [];

@@ -64,9 +64,20 @@ const browser=await chromium.launch({executablePath:browserPath,headless:true});
 try{
   const context=await browser.newContext();
   const page=await context.newPage();
-  const localFailures=[],productionRequests=[];
+  const localFailures=[],productionRequests=[],pageErrors=[],consoleErrors=[],failedRequests=[],externalRequests=[];
   page.on("response",response=>{if(response.url().startsWith(base)&&response.status()>=400&&!response.url().includes("/supabase/"))localFailures.push(`${response.status()} ${response.url()}`);});
-  page.on("request",request=>{if(request.url().includes("jjeeazwlqcwynzquimeo"))productionRequests.push(request.url());});
+  page.on("pageerror",error=>pageErrors.push(error.message));
+  page.on("console",message=>{if(message.type()==="error"&&!/Failed to load resource/i.test(message.text()))consoleErrors.push(message.text());});
+  page.on("requestfailed",request=>{
+    const errorText=request.failure()?.errorText||"failed";
+    const navigationAbortedVideo=request.url().startsWith(`${base}/videos/`)&&errorText==="net::ERR_ABORTED";
+    if(request.url().startsWith(base)&&!navigationAbortedVideo)failedRequests.push(`${request.method()} ${request.url()} ${errorText}`);
+  });
+  page.on("request",request=>{
+    if(request.url().includes("jjeeazwlqcwynzquimeo"))productionRequests.push(request.url());
+    const allowedExternal=["https://cdn.jsdelivr.net/","https://fonts.googleapis.com/","https://fonts.gstatic.com/"];
+    if(!request.url().startsWith(base)&&!allowedExternal.some(origin=>request.url().startsWith(origin)))externalRequests.push(request.url());
+  });
   await page.route("https://cdn.jsdelivr.net/**",route=>route.abort());
 
   const cases=[
@@ -83,14 +94,32 @@ try{
     await page.goto(`${base}${item.url}`,{waitUntil:"domcontentloaded"});
     await page.locator(item.selector).waitFor({state:"attached"});
     assert.match(await page.title(),item.title,`title ${item.url}`);
-    const hasStylesheet=await page.evaluate(
-      css=>[...document.styleSheets].some(sheet=>Boolean(sheet.href?.includes(css))),
-      item.css
-    );
-    assert.ok(hasStylesheet,`stylesheet ${item.css} at ${item.url}`);
+    if(item.css){
+      const hasStylesheet=await page.evaluate(
+        css=>[...document.styleSheets].some(sheet=>Boolean(sheet.href?.includes(css))),
+        item.css
+      );
+      assert.ok(hasStylesheet,`stylesheet ${item.css} at ${item.url}`);
+    }
     await page.reload({waitUntil:"domcontentloaded"});
     await page.locator(item.selector).waitFor({state:"attached"});
     assert.equal(new URL(page.url()).pathname,new URL(`${base}${item.url}`).pathname,`refresh path ${item.url}`);
+  }
+
+  for(const [width,height] of [[1440,900],[768,1024],[390,844]]){
+    await page.setViewportSize({width,height});
+    await page.goto(`${base}/qr/e-structure`,{waitUntil:"domcontentloaded"});
+    const videoState=await page.locator("#experienceVideo").evaluate(video=>({
+      autoplay:video.autoplay,muted:video.muted,playsInline:video.playsInline,loop:video.loop,
+      source:video.querySelector("source")?.getAttribute("src"),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
+    }));
+    assert.deepEqual(
+      {autoplay:videoState.autoplay,muted:videoState.muted,playsInline:videoState.playsInline,loop:videoState.loop,source:videoState.source},
+      {autoplay:true,muted:true,playsInline:true,loop:true,source:"/videos/e-structure.mp4"},
+      `E-STRUCTURE autoplay contract ${width}x${height}`
+    );
+    assert.ok(videoState.overflow<=1,`E-STRUCTURE has no horizontal overflow ${width}x${height}`);
+    await page.waitForFunction(()=>document.querySelector("#experienceVideo")?.readyState>=2,{timeout:5000});
   }
 
   const redirect=await context.request.get(`${base}/CRM?source=legacy`,{maxRedirects:0});
@@ -112,6 +141,10 @@ try{
   assert.equal(new URL(page.url()).pathname,"/","browser forward restores Catalog root");
   assert.deepEqual(localFailures,[],`local asset failures: ${localFailures.join(" | ")}`);
   assert.deepEqual(productionRequests,[],"routing fixture must not request production");
+  assert.deepEqual(pageErrors,[],`page errors: ${pageErrors.join(" | ")}`);
+  assert.deepEqual(consoleErrors,[],`console errors: ${consoleErrors.join(" | ")}`);
+  assert.deepEqual(failedRequests,[],`failed local requests: ${failedRequests.join(" | ")}`);
+  assert.deepEqual(externalRequests,[],`unexpected external requests: ${externalRequests.join(" | ")}`);
   console.log("PASS: unified routing browser — Catalog, Admin, CRM, E-STRUCTURE, redirects, deep refresh, history and byte-range media.");
 }finally{
   await browser.close();
