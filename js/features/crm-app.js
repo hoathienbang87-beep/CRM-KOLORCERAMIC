@@ -78,7 +78,11 @@ import {
   eventStatusKey,
   filterKpiEmployeeSummaries,
   filterKpiEvents,
+  evidenceForEvent,
   groupEvidenceCount,
+  kpiEvidenceMediaKind,
+  kpiEvidenceThumbnailsHtml,
+  kpiEvidenceViewerHtml,
   kpiValue as kpiTeamValue,
   managerKpiEventCardHtml,
   managerKpiEventViewModel
@@ -132,6 +136,7 @@ let kpi2HistoryAssignments = [];
 let kpi2SaleHistoryStatus = "all";
 let kpi2StagedEvidence = [];
 let kpi2EvidenceBusy = false;
+let kpi2EvidenceDragDepth = 0;
 let kpi2Candidates = [];
 let kpi2DuplicateDetails = [];
 const kpi2ClaimState = createKpiEventFormState();
@@ -195,6 +200,7 @@ let pendingLoginSuccessNotice = false;
 let authBootstrapGeneration = 0;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI2_EVIDENCE_BUCKET = "kpi2-evidence";
+const KPI2_EVIDENCE_SIGNED_URL_SECONDS = 120;
 const KPI_EVIDENCE_MAX_FILES = 6;
 const KPI_EVIDENCE_MAX_SIZE = 8 * 1024 * 1024;
 const DEFAULT_COMPANY_SETTINGS = {
@@ -2943,16 +2949,18 @@ function closeDetailModal() {
   setViewHidden("detailModal", true);
   $("detailModalBackdrop")?.classList.remove("is-detail-modal");
   $("detailModal")?.classList.remove("is-detail-modal");
+  $("detailModal")?.classList.remove("is-evidence-viewer");
   restoreOverlayFocus("detailModal");
 }
 
-function openDetailModal(title, subtitle, html) {
+function openDetailModal(title, subtitle, html, {variant = ""} = {}) {
   $("detailModalTitle").textContent = title || "Chi tiết";
   $("detailModalSubtitle").textContent = subtitle || "";
   $("detailModalContent").innerHTML = html || `<div class="muted">Chưa có dữ liệu chi tiết.</div>`;
   rememberOverlayFocus("detailModal");
   $("detailModalBackdrop")?.classList.add("is-detail-modal");
   $("detailModal")?.classList.add("is-detail-modal");
+  $("detailModal")?.classList.toggle("is-evidence-viewer", variant === "evidence");
   setViewHidden("detailModalBackdrop", false);
   setViewHidden("detailModal", false);
   requestAnimationFrame(() => $("closeDetailModalBtn")?.focus());
@@ -4730,6 +4738,15 @@ function kpiTeamEventAssignment(event) {
   return kpiTeamEmployeeAssignments().find(row => kpiTeamAssignmentId(row) === clean(event.assignment_id || event.assignmentId));
 }
 
+async function withKpi2EvidencePreviewUrls(rows=[]){
+  const paths=[...new Set(rows.filter(row=>clean(row.event_id||row.eventId)&&clean(row.status).toUpperCase()==='ATTACHED').map(row=>clean(row.object_path||row.objectPath)).filter(Boolean))];
+  if(!paths.length)return rows;
+  const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrls(paths,KPI2_EVIDENCE_SIGNED_URL_SECONDS);
+  if(error){console.warn('KPI evidence thumbnail signing failed',error);return rows;}
+  const signedByPath=new Map((data||[]).map(item=>[clean(item.path),item.signedUrl||item.signedURL||'']));
+  return rows.map(row=>{const path=clean(row.object_path||row.objectPath),previewUrl=signedByPath.get(path);return previewUrl?{...row,previewUrl}:row;});
+}
+
 async function loadKpiTeamEmployeeProposals({force = false} = {}) {
   const employeeId = clean(kpiTeamState.selectedEmployeeId);
   if (!employeeId || !isManager()) return;
@@ -4762,9 +4779,9 @@ async function loadKpiTeamEmployeeProposals({force = false} = {}) {
     let evidence = [];
     if (eventIds.length) {
       kpiTeamState.requests.proposals += 1;
-      const evidenceResult = await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,status").in("event_id", eventIds).eq("status", "ATTACHED").limit(1000);
+      const evidenceResult = await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,original_name,mime_type,status").in("event_id", eventIds).eq("status", "ATTACHED").limit(1000);
       if (evidenceResult.error) throw evidenceResult.error;
-      evidence = evidenceResult.data || [];
+      evidence = await withKpi2EvidencePreviewUrls(evidenceResult.data || []);
     }
     let duplicates = [];
     const possibleDuplicateIds = events.filter(row => row.possible_duplicate).map(row => row.id);
@@ -4809,10 +4826,11 @@ function renderKpiTeamProposalTab(summary) {
   $("kpiTeamDetailStatus").textContent = `${kpiTeamState.employeeEvents.length} đề xuất · ${pendingCount} chờ duyệt`;
   target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "CLOSED"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"],["withdrawn","Đã thu hồi"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
     const assignment = kpiTeamEventAssignment(event);
+    const eventEvidence = evidenceForEvent(kpiTeamState.employeeEvidence, event.id);
     const evidenceCount = evidenceCounts.get(clean(event.id)) || 0;
     const duplicateCount = kpiTeamState.duplicateDetails.filter(row => clean(kpiTeamValue(row, "eventId", "event_id")) === clean(event.id)).length;
     const focused = clean(kpiTeamState.focusedEventId) === clean(event.id);
-    const viewModel=managerKpiEventViewModel({event,assignment,saleName:summary.name,evidenceCount,duplicateCount});
+    const viewModel=managerKpiEventViewModel({event,assignment,saleName:summary.name,evidence:eventEvidence,evidenceCount,duplicateCount});
     return managerKpiEventCardHtml(viewModel,{selectable:clean(event.status).toUpperCase()==='PENDING'&&!periodFrozen,focused});
   }).join("") : `<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${summary.name} chưa có dữ liệu phù hợp.</span></div>`}</div>`;
 }
@@ -4845,9 +4863,9 @@ async function loadKpiTeamGlobalQueue({force = false} = {}) {
   const events=result.data||[],eventIds=events.map(row=>row.id).filter(Boolean);let evidence=[];
   if(eventIds.length){
     kpiTeamState.requests.queue+=1;
-    const evidenceResult=await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,status").in("event_id",eventIds).eq("status","ATTACHED").limit(1000);
+    const evidenceResult=await supabase.from("kpi_evidence").select("id,event_id,assignment_id,object_path,original_name,mime_type,status").in("event_id",eventIds).eq("status","ATTACHED").limit(1000);
     if(evidenceResult.error){kpiTeamState.loading.queue=false;kpiTeamState.errors.queue="Không tải được minh chứng trong hàng đợi.";renderKpiTeamShell();throw evidenceResult.error;}
-    evidence=evidenceResult.data||[];
+    evidence=await withKpi2EvidencePreviewUrls(evidenceResult.data||[]);
   }
   kpiTeamState.globalQueueEvents = events;
   kpiTeamState.globalQueueEvidence = evidence;
@@ -4866,7 +4884,8 @@ function renderKpiTeamGlobalQueue() {
   const evidenceCounts=groupEvidenceCount(kpiTeamState.globalQueueEvidence);
   target.innerHTML = `<div class="pro-section-title"><h3>Cần duyệt</h3><button class="small" type="button" data-kpi-team-close-queue>Quay lại nhân viên</button></div><div class="kpi-team-event-list">${kpiTeamState.globalQueueEvents.length ? kpiTeamState.globalQueueEvents.map(event => {
     const progress = progressByAssignment.get(clean(event.assignment_id));
-    const viewModel=managerKpiEventViewModel({event,assignment:progress,saleName:kpiTeamValue(progress,"employeeName","employee_name"),evidenceCount:evidenceCounts.get(clean(event.id))||0});
+    const eventEvidence=evidenceForEvent(kpiTeamState.globalQueueEvidence,event.id);
+    const viewModel=managerKpiEventViewModel({event,assignment:progress,saleName:kpiTeamValue(progress,"employeeName","employee_name"),evidence:eventEvidence,evidenceCount:evidenceCounts.get(clean(event.id))||0});
     return managerKpiEventCardHtml(viewModel,{openAction:true});
   }).join("") : `<div class="kpi-team-empty"><b>Không có event chờ duyệt.</b></div>`}</div>`;
 }
@@ -5165,7 +5184,7 @@ async function reloadKpi2Data() {
   if (eventsResult.error) throw eventsResult.error;
   if (evidenceResult.error) throw evidenceResult.error;
   if (submissionsResult.error) throw submissionsResult.error;
-  kpi2Events = eventsResult.data || []; kpi2Evidence = evidenceResult.data || []; kpi2Submissions = submissionsResult.data || [];
+  kpi2Events = eventsResult.data || []; kpi2Evidence = await withKpi2EvidencePreviewUrls(evidenceResult.data || []); kpi2Submissions = submissionsResult.data || [];
   const historyAssignmentIds = uniq(kpi2Events.map(event=>clean(event.assignment_id)).filter(Boolean));
   kpi2HistoryAssignments = [];
   if (historyAssignmentIds.length) {
@@ -5214,7 +5233,8 @@ function renderKpi2SaleHistory(){
   filters.innerHTML=filterOptions.map(([key,label])=>`<button class="small ${kpi2SaleHistoryStatus===key?'primary':''}" type="button" role="tab" aria-selected="${kpi2SaleHistoryStatus===key}" data-kpi2-sale-history-filter="${key}">${label}</button>`).join('');
   rows.innerHTML=filtered.length?filtered.map(event=>{
     const submission=submissionsById.get(clean(event.submission_id))||{},assignment=assignmentsById.get(clean(event.assignment_id))||{};
-    const viewModel=managerKpiEventViewModel({event:{...event,sale_note:submission.sale_note},assignment,saleName:'Đề xuất của bạn',evidenceCount:evidenceCounts.get(clean(event.id))||0});
+    const eventEvidence=evidenceForEvent(kpi2Evidence,event.id);
+    const viewModel=managerKpiEventViewModel({event:{...event,sale_note:submission.sale_note},assignment,saleName:'Đề xuất của bạn',evidence:eventEvidence,evidenceCount:evidenceCounts.get(clean(event.id))||0});
     return managerKpiEventCardHtml(viewModel,{customerAction:false,withdrawAction:true});
   }).join(''):`<div class="kpi-team-empty"><b>Không có đề xuất trong bộ lọc này.</b><span>${ownEvents.length?'Chọn trạng thái khác để xem lại.':'Sau khi gửi Event KPI, trạng thái duyệt và minh chứng sẽ được lưu tại đây.'}</span></div>`;
 }
@@ -5247,7 +5267,7 @@ function renderKpi2ReviewQueue(){
     return `<tr><td><input type="checkbox" data-kpi2-review-event="${esc(e.id)}" data-version="${esc(e.lock_version)}"></td>
       <td><b>${esc(kpi2Field(progress,"employeeName","employee_name")||e.actor_user_id)}</b><div class="muted">${esc(kpi2DefinitionName(progress))}</div></td>
       <td><b>${esc(snapshot.title||snapshot.customer_name||e.source_type)}</b><div class="muted">${esc(fmtDate(e.event_at))} · ${esc(e.source_type)}</div>${e.possible_duplicate?`<span class="pill orange">Có thể trùng</span>${duplicateHtml}`:""}</td>
-      <td>${esc(e.claimed_value)}</td><td>${evidence.length?`<button class="small" data-kpi2-view-evidence="${esc(e.id)}">Xem ${evidence.length} ảnh</button>`:"Không có"}</td><td>${kpi1StatusHtml(e.status)}</td></tr>`;
+      <td>${esc(e.claimed_value)}</td><td>${evidence.length?`${kpiEvidenceThumbnailsHtml(evidence,e.id)}<button class="small" data-kpi2-view-evidence="${esc(e.id)}">Xem tất cả (${evidence.length})</button>`:"Không có"}</td><td>${kpi1StatusHtml(e.status)}</td></tr>`;
   }).join(""):`<tr><td colspan="6" class="muted">Không có event chờ duyệt.</td></tr>`;
 }
 
@@ -5335,11 +5355,37 @@ async function compressKpi2Image(file){
   let quality=.86,blob;do{blob=await new Promise(r=>canvas.toBlob(r,'image/webp',quality));quality-=.08;}while(blob&&blob.size>1.5*1024*1024&&quality>=.46);if(!blob||blob.size>1.5*1024*1024)throw new Error('Không thể nén ảnh xuống dưới 1.5MB.');return blob;
 }
 
+const KPI2_EVIDENCE_MAX_FILES=2;
+const KPI2_EVIDENCE_MAX_SOURCE_BYTES=20*1024*1024;
+const KPI2_EVIDENCE_MIME_TYPES=new Set(['image/jpeg','image/png','image/webp']);
+function resetKpi2EvidenceDropState(){kpi2EvidenceDragDepth=0;$('kpi2EvidenceDropZone')?.classList.remove('is-drag-active');}
+function kpi2ClipboardFile(file){
+  if(clean(file?.name))return file;
+  const extension=file?.type==='image/jpeg'?'jpg':file?.type==='image/webp'?'webp':'png';
+  return new File([file],`kpi-evidence-paste-${Date.now()}.${extension}`,{type:file?.type||'image/png',lastModified:Date.now()});
+}
+function normalizeKpi2EvidenceFiles(fileList,{source='picker'}={}){
+  const files=[...(fileList||[])].filter(Boolean).map(file=>source==='clipboard'?kpi2ClipboardFile(file):file);
+  if(!files.length)return {files:[],rejectedForCapacity:0};
+  for(const file of files){
+    if(/heic|heif/i.test(`${file.type||''} ${file.name||''}`))throw new Error('Thiết bị chưa hỗ trợ HEIC/HEIF. Vui lòng chọn ảnh JPEG/WebP.');
+    if(!KPI2_EVIDENCE_MIME_TYPES.has(clean(file.type).toLowerCase()))throw new Error('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.');
+    if(Number(file.size)>KPI2_EVIDENCE_MAX_SOURCE_BYTES)throw new Error('Ảnh gốc vượt 20MB.');
+  }
+  const activeCount=kpi2StagedEvidence.filter(item=>!item.discardedAt).length,remaining=Math.max(0,KPI2_EVIDENCE_MAX_FILES-activeCount);
+  if(!remaining)throw new Error('Mỗi event chỉ được tối đa 2 ảnh. Hãy xóa ảnh cũ trước.');
+  return {files:files.slice(0,remaining),rejectedForCapacity:Math.max(0,files.length-remaining)};
+}
+function isKpi2TextEditable(target){return !!target?.closest?.('textarea,input:not([type="file"]),[contenteditable="true"]');}
+function kpi2ClipboardFiles(event){return [...(event.clipboardData?.items||[])].filter(item=>item.kind==='file').map(item=>item.getAsFile()).filter(Boolean);}
+function setKpi2EvidenceDragActive(active){$('kpi2EvidenceDropZone')?.classList.toggle('is-drag-active',active);}
+
 function kpi2EvidenceValue(row,camel,snake){return row?.[camel]??row?.[snake]??null;}
 function clearKpi2StagedEvidenceLocal(){
   kpi2StagedEvidence.forEach(item=>{if(item.previewUrl)URL.revokeObjectURL(item.previewUrl);});
   kpi2StagedEvidence=[];
   if($('kpi2EvidenceFiles'))$('kpi2EvidenceFiles').value='';
+  resetKpi2EvidenceDropState();
   renderKpi2StagedEvidence();
 }
 function renderKpi2StagedEvidence(){
@@ -5365,13 +5411,22 @@ async function stageKpi2Evidence(assignmentId,file){
   let row;try{row=await callCrmRpc('crm_kpi_stage_evidence',{p_evidence_id:id,p_assignment_id:assignmentId,p_object_path:path,p_original_name:name,p_mime_type:'image/webp',p_size_bytes:blob.size,p_sha256:hash});}catch(firstError){try{row=await callCrmRpc('crm_kpi_stage_evidence',{p_evidence_id:id,p_assignment_id:assignmentId,p_object_path:path,p_original_name:name,p_mime_type:'image/webp',p_size_bytes:blob.size,p_sha256:hash});}catch{throw new Error(`Ảnh đã upload nhưng chưa ghi được metadata. Không tự xóa mù; hãy báo admin với mã ${id}. Lỗi: ${authMessage(firstError)}`);}}
   return {id:row.id,assignmentId:kpi2EvidenceValue(row,'assignmentId','assignment_id')||assignmentId,objectPath:kpi2EvidenceValue(row,'objectPath','object_path')||path,originalName:kpi2EvidenceValue(row,'originalName','original_name')||name,status:clean(row.status||'STAGED').toUpperCase(),lockVersion:Number(kpi2EvidenceValue(row,'lockVersion','lock_version')||1),previewUrl:URL.createObjectURL(blob)};
 }
-async function handleKpi2EvidenceFiles(){
-  const input=$('kpi2EvidenceFiles'),assignmentId=clean($('kpi2ClaimAssignmentId')?.value),files=[...(input?.files||[])];if(!files.length||!assignmentId)return;
-  const active=kpi2StagedEvidence.filter(item=>!item.discardedAt);if(active.length+files.length>2){input.value='';return notice('Mỗi event chỉ được tối đa 2 ảnh. Hãy xóa ảnh cũ trước.',true);}
-  if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
-  kpi2EvidenceBusy=true;
-  try{for(const file of files){const item=await stageKpi2Evidence(assignmentId,file);kpi2StagedEvidence.push(item);renderKpi2StagedEvidence();}notice(`Đã tải ${files.length} ảnh. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.`);}finally{kpi2EvidenceBusy=false;input.value='';renderKpi2StagedEvidence();}
+async function handleKpi2EvidenceFiles(fileList,{source='picker'}={}){
+  const input=$('kpi2EvidenceFiles'),assignmentId=clean($('kpi2ClaimAssignmentId')?.value);let ownsBusy=false;
+  try{
+    if(!assignmentId)return notice('Hãy chọn KPI trước khi thêm minh chứng.',true);
+    const normalized=normalizeKpi2EvidenceFiles(fileList,{source}),files=normalized.files;if(!files.length)return;
+    if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
+    kpi2EvidenceBusy=true;ownsBusy=true;
+    for(const file of files){const item=await stageKpi2Evidence(assignmentId,file);kpi2StagedEvidence.push(item);renderKpi2StagedEvidence();}
+    const sourceLabel=source==='clipboard'?' từ clipboard':source==='drop'?' bằng kéo thả':'';notice(`Đã tải ${files.length} ảnh${sourceLabel}. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.${normalized.rejectedForCapacity?` Còn ${normalized.rejectedForCapacity} ảnh không được thêm vì giới hạn 2 ảnh.`:''}`);
+  }finally{if(ownsBusy)kpi2EvidenceBusy=false;if(input)input.value='';resetKpi2EvidenceDropState();renderKpi2StagedEvidence();}
 }
+function handleKpi2EvidenceDragEnter(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();kpi2EvidenceDragDepth+=1;setKpi2EvidenceDragActive(true);}
+function handleKpi2EvidenceDragOver(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();event.dataTransfer.dropEffect='copy';setKpi2EvidenceDragActive(true);}
+function handleKpi2EvidenceDragLeave(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();kpi2EvidenceDragDepth=Math.max(0,kpi2EvidenceDragDepth-1);if(!kpi2EvidenceDragDepth)setKpi2EvidenceDragActive(false);}
+function handleKpi2EvidenceDrop(event){event.preventDefault();resetKpi2EvidenceDropState();const files=[...(event.dataTransfer?.files||[])];if(!files.length)return;return runAction('', 'kpi2EvidenceUpload', 'Đang tải ảnh...',()=>handleKpi2EvidenceFiles(files,{source:'drop'}));}
+function handleKpi2EvidencePaste(event){if(isKpi2TextEditable(event.target))return;const files=kpi2ClipboardFiles(event);if(!files.length)return;event.preventDefault();return runAction('', 'kpi2EvidenceUpload', 'Đang tải ảnh...',()=>handleKpi2EvidenceFiles(files,{source:'clipboard'}));}
 async function discardKpi2StagedEvidence(evidenceId){
   const item=kpi2StagedEvidence.find(row=>clean(row.id)===clean(evidenceId));if(!item||item.discardedAt)return;
   if(kpi2EvidenceBusy)return notice('Một ảnh khác đang được xử lý.',true);
@@ -5436,11 +5491,12 @@ async function reviewSelectedKpi2Events(){
   notice(`Đã xử lý ${selected.length} event và tải lại dữ liệu.`);
 }
 
-async function viewKpi2Evidence(eventId){
+async function viewKpi2Evidence(eventId,evidenceId=''){
   let rows=kpi2Evidence.filter(e=>clean(e.event_id||e.eventId)===clean(eventId));
-  if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
-  const urls=[];for(const e of rows){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;urls.push(data.signedUrl);}
-  openDetailModal('Minh chứng KPI','Ảnh thu nhỏ · bấm vào ảnh để xem kích thước đầy đủ · liên kết có hiệu lực 2 phút',urls.length?`<div class="evidence-grid">${urls.map((url,index)=>`<a class="evidence-preview" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="Xem lớn minh chứng KPI ${index+1}"><img src="${esc(url)}" alt="Minh chứng KPI ${index+1}" loading="lazy"></a>`).join('')}</div>`:'<div class="muted">Không có ảnh.</div>');
+  if(!rows.length){const result=await supabase.from('kpi_evidence').select('id,event_id,object_path,original_name,mime_type,status').eq('event_id',eventId).eq('status','ATTACHED').limit(2);if(result.error)throw result.error;rows=result.data||[];}
+  if(evidenceId)rows=rows.filter(row=>clean(row.id)===clean(evidenceId));
+  const items=[];for(const e of rows.slice(0,2)){const {data,error}=await supabase.storage.from(KPI2_EVIDENCE_BUCKET).createSignedUrl(e.object_path,120);if(error)throw error;items.push({url:data.signedUrl,kind:kpiEvidenceMediaKind(e),mimeType:e.mime_type||e.mimeType,originalName:e.original_name||e.originalName,objectPath:e.object_path||e.objectPath});}
+  openDetailModal('Minh chứng KPI','Minh chứng đã gửi kèm Event · liên kết có hiệu lực 2 phút',kpiEvidenceViewerHtml(items),{variant:'evidence'});
 }
 
 function renderHealthCheck() {
@@ -8951,7 +9007,9 @@ document.addEventListener("click", e => {
   const kpi2CustomerId = e.target.closest("[data-kpi2-select-customer]")?.dataset.kpi2SelectCustomer;
   const kpi2ChangeCustomer = e.target.closest("[data-kpi2-change-customer]");
   const kpi2UnlinkCustomer = e.target.closest("[data-kpi2-unlink-customer]");
-  const kpi2EvidenceEventId = e.target.closest("[data-kpi2-view-evidence]")?.dataset.kpi2ViewEvidence;
+  const kpi2EvidenceAction = e.target.closest("[data-kpi2-view-evidence]");
+  const kpi2EvidenceEventId = kpi2EvidenceAction?.dataset.kpi2ViewEvidence;
+  const kpi2EvidenceId = kpi2EvidenceAction?.dataset.kpi2EvidenceId || '';
   const kpi2DiscardEvidenceId = e.target.closest("[data-kpi2-discard-evidence]")?.dataset.kpi2DiscardEvidence;
   const editCareLogId = e.target.closest("[data-edit-care-log]")?.dataset.editCareLog;
   const deleteCareLogId = e.target.closest("[data-delete-care-log]")?.dataset.deleteCareLog;
@@ -9081,7 +9139,7 @@ document.addEventListener("click", e => {
   if (kpi2CustomerId) selectKpi2Customer(kpi2CustomerId);
   if (kpi2ChangeCustomer) changeKpi2Customer();
   if (kpi2UnlinkCustomer) unlinkKpi2Customer();
-  if (kpi2EvidenceEventId) runAction(`kpi2Evidence:${kpi2EvidenceEventId}`, "kpi2Evidence", "Đang tạo link ảnh...", () => viewKpi2Evidence(kpi2EvidenceEventId));
+  if (kpi2EvidenceEventId) runAction(`kpi2Evidence:${kpi2EvidenceEventId}`, "kpi2Evidence", "Đang tạo link ảnh...", () => viewKpi2Evidence(kpi2EvidenceEventId,kpi2EvidenceId));
   if (kpi2DiscardEvidenceId) runAction(`kpi2Discard:${kpi2DiscardEvidenceId}`, "kpi2DiscardEvidence", "Đang xóa ảnh...", () => discardKpi2StagedEvidence(kpi2DiscardEvidenceId));
   if (editCareLogId) editCareLog(editCareLogId);
   if (deleteCareLogId) deleteCareLog(deleteCareLogId);
@@ -9234,7 +9292,12 @@ on("quoteProposalBtn", "click", () => openQuoteProposal(selectedCustomerId));
 on("kpi2CloseClaimBtn", "click", () => runAction("kpi2CloseClaimBtn", "kpi2CloseClaim", "Đang đóng...", closeKpi2Claim));
 on("kpi2ClaimAssignmentSelect", "change", e => runAction("kpi2ClaimAssignmentSelect", "kpi2ClaimAssignment", "Đang tải KPI...", () => configureKpi2ClaimAssignment(e.target.value,{preserveCustomer:true})));
 on("kpi2CustomerSearchInput", "input", e => scheduleKpi2CustomerSearch({value:e.target.value,session:kpi2ClaimSession}));
-on("kpi2EvidenceFiles", "change", () => runAction("", "kpi2EvidenceUpload", "Đang tải ảnh...", handleKpi2EvidenceFiles));
+on("kpi2EvidenceFiles", "change", e => runAction("", "kpi2EvidenceUpload", "Đang tải ảnh...",()=>handleKpi2EvidenceFiles(e.target.files,{source:'picker'})));
+on("kpi2EvidenceDropZone", "dragenter", handleKpi2EvidenceDragEnter);
+on("kpi2EvidenceDropZone", "dragover", handleKpi2EvidenceDragOver);
+on("kpi2EvidenceDropZone", "dragleave", handleKpi2EvidenceDragLeave);
+on("kpi2EvidenceDropZone", "drop", handleKpi2EvidenceDrop);
+on("kpi2SaleClaimPanel", "paste", handleKpi2EvidencePaste);
 on("kpi2SubmitBtn", "click", () => runAction("kpi2SubmitBtn", "kpi2Submit", "Đang gửi...", submitKpi2Claim));
 on("kpi2BulkReviewBtn", "click", () => runAction("kpi2BulkReviewBtn", "kpi2Review", "Đang xử lý...", reviewSelectedKpi2Events));
 on("kpi2SelectAllEvents", "change", e => document.querySelectorAll("[data-kpi2-review-event]").forEach(box => box.checked=e.target.checked));

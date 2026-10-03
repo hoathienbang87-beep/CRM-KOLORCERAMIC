@@ -187,8 +187,10 @@ check(/canvas\.toBlob/i.test(app) && /1\.5\*1024\*1024/.test(app) && /1920/.test
 check(/heic\|heif/i.test(app), "HEIC/HEIF explicit handling missing.");
 check(/navigator\.geolocation\.getCurrentPosition/i.test(app), "Required geolocation capture missing.");
 check(/createSignedUrl/i.test(app), "Signed evidence preview missing.");
-check(/class="evidence-preview"[\s\S]*target="_blank"[\s\S]*loading="lazy"/.test(app), "Evidence viewer must use bounded, clickable lazy previews.");
-check(/\.evidence-preview img\{[^}]*max-height:\s*220px[^}]*object-fit:\s*contain/i.test(css), "Evidence preview dimensions must be bounded.");
+check(/kpiEvidenceViewerHtml\(items\)/.test(app) && /variant:'evidence'/.test(app), "Evidence viewer must open large media after one click.");
+check(!/Ảnh thu nhỏ|class="evidence-preview"/.test(app), "Evidence viewer must not require a second thumbnail click.");
+check(/\.detail-modal\.is-evidence-viewer\{[^}]*width:min\(94vw,1400px\)[^}]*height:94vh/i.test(css), "Evidence viewer must use the large desktop modal.");
+check(/\.evidence-viewer-media\{[^}]*max-width:100%[^}]*object-fit:contain/i.test(css), "Evidence viewer must preserve media aspect ratio.");
 check(/kpi2OperationsPanel/.test(html) && /kpi2ProgressRows/.test(html), "KPI-2 operations panel missing.");
 check(/id="kpi2SaleHistoryPanel"/.test(html) && /id="kpi2SaleHistoryRows"/.test(html), "Sale proposal history workspace missing.");
 check(/function renderKpi2SaleHistory\b/.test(app) && /actor_user_id\)===actorId/.test(app), "Sale history must render only the authenticated Sale's events.");
