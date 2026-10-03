@@ -5,6 +5,7 @@ import {
 import {createCatalogAdminImport} from "./catalog-admin-import.js";
 
 const PAGE_SIZE = 40;
+const ACCESS_CHECK_TIMEOUT_MS = 8000;
 const OPTIONAL_TEXT_FIELDS = ["code","surface","color","category","collection","origin","description"];
 const URL_FIELDS = [["image_url","Ảnh đại diện"],["pdf_url","PDF URL"],["video_url","Video URL"],["more_info_url","Trang thông tin thêm"]];
 
@@ -37,9 +38,9 @@ function imageMarkup(product, className) {
     : `<span class="${className}">◇</span>`;
 }
 
-export function createCatalogAdminApp({api, root = document}) {
+export function createCatalogAdminApp({api, root = document, accessCheckTimeoutMs = ACCESS_CHECK_TIMEOUT_MS}) {
   const $ = id => root.getElementById(id);
-  const state = {profile:null,products:[],pagination:{total:0,offset:0,has_more:false},selected:null,loading:false,toastTimer:null,returnFocus:null};
+  const state = {profile:null,products:[],pagination:{total:0,offset:0,has_more:false},selected:null,loading:false,toastTimer:null,returnFocus:null,authUserId:"",authGeneration:0};
 
   function showOnly(viewId) {
     for (const id of ["adminLoadingView","adminLoginView","adminDeniedView","adminWorkspace"]) {
@@ -56,6 +57,7 @@ export function createCatalogAdminApp({api, root = document}) {
   function errorMessage(error) {
     const code = cleanText(error?.code).toUpperCase();
     const message = cleanText(error?.message);
+    if (message === "ACCESS_CHECK_TIMEOUT") return "Không thể xác minh quyền truy cập trong thời gian cho phép.";
     if (code === "42501" || /ADMIN_REQUIRED|permission|row-level/i.test(message)) return "Tài khoản không có quyền quản trị catalog.";
     if (code === "40001" || /VERSION_CONFLICT/i.test(message)) return "Sản phẩm vừa được cập nhật ở nơi khác. Hãy tải lại.";
     if (code === "P0002" || /NOT_FOUND/i.test(message)) return "Không tìm thấy sản phẩm.";
@@ -283,22 +285,51 @@ export function createCatalogAdminApp({api, root = document}) {
     finally { setBusy(false); }
   }
 
-  async function handleSession(session) {
-    if (!session?.user) { state.profile = null; showOnly("adminLoginView"); return; }
-    showOnly("adminLoadingView");
+  function profileWithTimeout(authUserId) {
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error("ACCESS_CHECK_TIMEOUT")), accessCheckTimeoutMs);
+    });
+    return Promise.race([api.profile(authUserId), timeout]).finally(() => clearTimeout(timeoutId));
+  }
+
+  async function handleSession(event, session) {
+    const generation = ++state.authGeneration;
+    if (!session?.user) {
+      state.profile = null;
+      state.authUserId = "";
+      showOnly("adminLoginView");
+      return;
+    }
+    const authUserId = cleanText(session.user.id);
+    const sameUser = Boolean(authUserId) && state.authUserId === authUserId && isAdminProfile(state.profile);
+    const backgroundRefresh = event === "TOKEN_REFRESHED" && sameUser;
+    if (!backgroundRefresh) showOnly("adminLoadingView");
     try {
-      const profile = await api.profile(session.user.id);
+      const profile = await profileWithTimeout(authUserId);
+      if (generation !== state.authGeneration) return;
       if (!isAdminProfile(profile)) {
+        state.profile = null;
+        state.authUserId = authUserId;
         $("adminDeniedMessage").textContent = profile ? `Tài khoản ${profile.email || session.user.email || "này"} không có quyền owner/admin đang hoạt động.` : "Tài khoản chưa được liên kết với hồ sơ nhân viên hợp lệ.";
         showOnly("adminDeniedView");
         return;
       }
       state.profile = profile;
+      state.authUserId = authUserId;
       $("adminProfileName").textContent = profile.name || profile.email || "Quản trị viên";
       $("adminProfileRole").textContent = cleanText(profile.role).toUpperCase();
       showOnly("adminWorkspace");
-      await loadProducts({resetOffset:true});
+      if (!backgroundRefresh || !state.products.length) await loadProducts({resetOffset:true});
     } catch (error) {
+      if (generation !== state.authGeneration) return;
+      if (sameUser && isAdminProfile(state.profile)) {
+        showOnly("adminWorkspace");
+        toast(error?.message === "ACCESS_CHECK_TIMEOUT" ? "Chưa thể xác minh lại quyền truy cập. Workspace hiện tại vẫn được giữ." : errorMessage(error), true);
+        return;
+      }
+      state.profile = null;
+      state.authUserId = authUserId;
       $("adminDeniedMessage").textContent = errorMessage(error);
       showOnly("adminDeniedView");
     }
@@ -332,8 +363,8 @@ export function createCatalogAdminApp({api, root = document}) {
     async start() {
       bind();
       const session = await api.getSession();
-      await handleSession(session);
-      api.onAuthStateChange(nextSession => handleSession(nextSession));
+      await handleSession("INITIAL_SESSION", session);
+      api.onAuthStateChange((event, nextSession) => handleSession(event, nextSession));
     },
     fatal(error) { $("adminDeniedMessage").textContent = errorMessage(error); showOnly("adminDeniedView"); },
     openDrawer,

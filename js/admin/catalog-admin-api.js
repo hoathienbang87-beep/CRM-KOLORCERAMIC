@@ -64,7 +64,13 @@ export function createCatalogAdminApi(client) {
       return data?.session || null;
     },
     onAuthStateChange(callback) {
-      const { data } = client.auth.onAuthStateChange((_event, session) => callback(session));
+      const { data } = client.auth.onAuthStateChange((event, session) => {
+        queueMicrotask(() => {
+          Promise.resolve()
+            .then(() => callback(event, session))
+            .catch(error => console.error("Catalog Admin auth transition failed", error));
+        });
+      });
       return () => data?.subscription?.unsubscribe?.();
     },
     async signIn(email, password) {
