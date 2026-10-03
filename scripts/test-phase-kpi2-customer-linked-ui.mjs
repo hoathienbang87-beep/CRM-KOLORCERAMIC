@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   buildKpiCustomerEventPayload,
+  customerKpiQuickActionHtml,
   createKpiCustomerSearchAdapter,
   createKpiEventFormState,
   eligibleKpiCustomerAssignments,
+  KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,
   kpiCustomerRelationMode,
   kpiCustomerSubmitError,
   normalizeKpiCustomer,
@@ -22,6 +24,12 @@ const none = assignment("none", "NONE", "KPI không gắn khách");
 const legacy = {assignment_id:"legacy", definition_snapshot:{name:"Legacy"}};
 const closed = {assignmentId:"closed",periodStatus:"CLOSED",definitionSnapshot:{name:"Closed",customer_relation_mode:"REQUIRED"}};
 const customer = {id:"customer-a", name:"Nguyễn A", company_name:"Công ty A", phone_raw:"0901000000", phone_normalized:"0901000000", address:"Hà Nội"};
+
+const quickAction = customerKpiQuickActionHtml(customer.id, true);
+check(quickAction.includes('data-kpi2-customer-entry="customer-a"') && quickAction.includes("Đề xuất KPI"), "Sale Customer row renders the KPI-2 quick action with canonical Customer id");
+check(customerKpiQuickActionHtml(customer.id, false) === "", "non-submit roles do not receive a Customer-row KPI action");
+check(customerKpiQuickActionHtml('customer-\"unsafe', true).includes("&quot;unsafe"), "Customer row action escapes the Customer id");
+check(KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE === "Hiện bạn chưa có KPI phù hợp để đề xuất cho khách hàng này.", "no-eligible state uses the approved business message");
 
 check(kpiCustomerRelationMode(required) === "REQUIRED", "REQUIRED comes from assignment snapshot");
 check(kpiCustomerRelationMode(optional) === "OPTIONAL", "OPTIONAL comes from assignment snapshot");
@@ -90,8 +98,15 @@ check(!app.includes("callCrmRpc('crm_kpi_search_accessible_customers'"), "UI doe
 check(/debounce\(\(\{value,session\}\)=>[\s\S]*,320\)/.test(app), "Customer search is debounced at 320ms");
 check(/kpi2CustomerEntryBtn[\s\S]*!isSale\(\)/.test(app), "Customer Detail action is Sale-gated");
 check(/id="kpi2CustomerEntryBtn"[^>]*>Đề xuất KPI</.test(view), "Customer Detail action exists");
+check(/customerKpiQuickActionHtml\(c\.id,isSale\(\)\)/.test(app), "every rendered Sale Customer row receives the shared quick-action markup");
+check(/data-kpi2-customer-entry[\s\S]*openKpi2ClaimFromCustomer\(kpi2CustomerEntryId\)/.test(app), "Customer-list click delegates to the same canonical Customer entry point");
+check(/openKpi2ClaimFromCustomer[\s\S]*customers\.find\(row=>clean\(row\.id\)===clean\(customerId\)\)[\s\S]*openKpi2EventForm\(\{customer,entryPoint:'customer'\}\)/.test(app), "clicked/newly rendered Customer resolves from live list state and enters the shared form");
+check((app.match(/KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE/g) || []).length === 3, "all Customer entry no-eligible exits share the approved message constant");
+check(/const canLabel = btn\?\.tagName === "BUTTON"[\s\S]*if \(canLabel\) \{[\s\S]*if \(label\) btn\.textContent = label/.test(app), "shared action runner preserves native select options while loading");
+check(/data-open-care="\$\{esc\(c\.id\)\}"[\s\S]*data-open-deal="\$\{esc\(c\.id\)\}"[\s\S]*customerKpiQuickActionHtml/.test(app), "care and deal actions remain beside the KPI quick action");
 check(["kpi2ClaimAssignmentSelect","kpi2CustomerSearchInput","kpi2CustomerSearchResults","kpi2SelectedCustomer","kpi2EventFields"].every(id => view.includes(`id="${id}"`)), "shared form contains assignment and Customer UI");
 check(!/Proposal|proposal/.test(app.slice(app.indexOf("async function openKpi2ClaimFromCustomer"), app.indexOf("async function runKpi2CustomerSearch"))), "Customer entry does not invoke legacy Proposal");
+check(!/kpi_proposals/.test(app.slice(app.indexOf("function renderCustomers"), app.indexOf("function excelCell"))), "Customer-list renderer has no legacy kpi_proposals dependency");
 check(/p_events:linkedPayload\.events/.test(app), "canonical submit sends only sanitized Customer-linked Event payloads");
 
 console.log(`KPI-2 Phase 3 Customer-linked Sale UI static: ${checks} checks PASS`);

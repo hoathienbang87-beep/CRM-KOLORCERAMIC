@@ -3,58 +3,44 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
+import {assertBrowserObservability,observeBrowserPage} from "./helpers/browser-observability.mjs";
 
 const entry=process.env.KPI2_PHASE4_PLAYWRIGHT_ENTRY,browserPath=process.env.KPI2_PHASE4_BROWSER_PATH;
 if(!entry||!browserPath)throw new Error("Set KPI2_PHASE4_PLAYWRIGHT_ENTRY and KPI2_PHASE4_BROWSER_PATH.");
 const {chromium}=await import(pathToFileURL(entry).href),root=path.resolve(import.meta.dirname,"..");
-const html=`<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/css/styles.css"></head><body><main id="employee"></main><main id="global"></main><aside id="live"></aside><div id="notice"></div><script type="module">import * as api from '/js/features/kpi-team.js';window.phase4=api;</script></body></html>`;
-const server=http.createServer((request,response)=>{const url=decodeURIComponent((request.url||"/").split("?")[0]);if(url==="/fixture.html"){response.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Connection":"close"});return response.end(html);}const file=path.resolve(root,url.replace(/^\//,""));if(!file.startsWith(root)||!fs.existsSync(file)){response.writeHead(404);return response.end();}response.writeHead(200,{"Content-Type":file.endsWith(".js")?"text/javascript":"text/css","Connection":"close"});fs.createReadStream(file).pipe(response);});
+const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/css/styles.css"><style>#employee{height:520px;overflow:auto}#customerDrawer{position:fixed;inset:20px;overflow:auto;background:#fff;z-index:31}#customerBackdrop{z-index:30}</style></head><body><main id="employee"></main><main id="global"></main><div id="customerBackdrop" class="drawer-backdrop hide"></div><aside id="customerDrawer" class="hide" role="dialog" aria-modal="true"><button id="customerDrawerClose" type="button">Đóng hồ sơ</button><div id="live"></div></aside><div id="notice"></div><script type="module">import * as api from '/js/features/kpi-team.js';window.phase4=api;</script></body></html>`;
+const server=http.createServer((request,response)=>{const url=decodeURIComponent((request.url||"/").split("?")[0]);if(url==="/fixture.html"){response.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Connection":"close"});return response.end(html);}if(url==="/favicon.ico"){response.writeHead(204);return response.end();}const file=path.resolve(root,url.replace(/^\//,""));if(!file.startsWith(root)||!fs.existsSync(file)){response.writeHead(404);return response.end();}response.writeHead(200,{"Content-Type":file.endsWith(".js")?"text/javascript":"text/css","Connection":"close"});fs.createReadStream(file).pipe(response);});
 await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
 const browser=await chromium.launch({executablePath:browserPath,headless:true});
 try{
-  const page=await browser.newPage({viewport:{width:390,height:900}});await page.goto(`http://127.0.0.1:${server.address().port}/fixture.html`,{waitUntil:"networkidle"});await page.waitForFunction(()=>!!window.phase4);
+  const page=await browser.newPage({viewport:{width:1440,height:900}}),observability=observeBrowserPage(page);await page.goto(`http://127.0.0.1:${server.address().port}/fixture.html`,{waitUntil:"networkidle"});await page.waitForFunction(()=>!!window.phase4);
   await page.evaluate(()=>{
     window.assignment={assignment_id:"a",employee_name:"Sale A",definition_snapshot:{code:"CARE",name:"Chăm sóc khách hàng"}};
     window.eventA={id:"a1",assignment_id:"a",actor_user_id:"sale-a",customer_id:"customer-a",customer_name_snapshot:"Nguyễn A",customer_company_name_snapshot:"Công ty ABC",customer_phone_snapshot:"0901",customer_address_snapshot:"Địa chỉ lịch sử rất dài nhưng không được làm vỡ bố cục card trên điện thoại",event_snapshot:{title:"Tư vấn",description:"Đã gửi catalogue",customerName:"Tên live không hợp lệ"},claimed_value:1,event_at:"2026-09-05T03:00:00Z",created_at:"2026-09-05T04:00:00Z",location_snapshot:{latitude:10},status:"PENDING",lock_version:4};
     window.vmA=phase4.managerKpiEventViewModel({event:eventA,assignment,saleName:"Sale A",evidenceCount:2});
-    employee.innerHTML=phase4.managerKpiEventCardHtml(vmA,{selectable:true});global.innerHTML=phase4.managerKpiEventCardHtml(vmA,{openAction:true});
+    employee.innerHTML='<div style="height:220px" data-scroll-before></div>'+phase4.managerKpiEventCardHtml(vmA,{selectable:true,focused:true})+'<div style="height:900px" data-scroll-after></div>';global.innerHTML=phase4.managerKpiEventCardHtml(vmA,{openAction:true});
     window.liveCustomers={"customer-a":{name:"Nguyễn A hiện tại",company:"Công ty XYZ",phone:"0988"}};
-    document.addEventListener("click",e=>{const id=e.target.closest("[data-kpi-current-customer]")?.dataset.kpiCurrentCustomer;if(!id)return;const current=liveCustomers[id];if(current)live.textContent=`${current.name} · ${current.company} · ${current.phone}`;else notice.textContent="Không thể mở hồ sơ khách hàng hiện tại.";});
+    const drawer=document.getElementById('customerDrawer'),backdrop=document.getElementById('customerBackdrop'),closeButton=document.getElementById('customerDrawerClose'),review=document.getElementById('employee');let savedScroll=0,returnFocus=null,openCount=0,closeCount=0;
+    const closeCustomer=()=>{closeCount+=1;drawer.classList.add('hide');backdrop.classList.add('hide');review.inert=false;review.scrollTop=savedScroll;returnFocus?.focus();};
+    const openCustomer=(button,id)=>{const current=liveCustomers[id];if(!current){notice.textContent="Không thể mở hồ sơ khách hàng hiện tại.";return;}savedScroll=review.scrollTop;returnFocus=button;openCount+=1;live.textContent=`${current.name} · ${current.company} · ${current.phone}`;drawer.classList.remove('hide');backdrop.classList.remove('hide');review.inert=true;closeButton.focus();};
+    document.addEventListener("click",domEvent=>{const button=domEvent.target.closest("[data-kpi-current-customer]");if(button)openCustomer(button,button.dataset.kpiCurrentCustomer);});closeButton.addEventListener('click',closeCustomer);backdrop.addEventListener('click',closeCustomer);
+    window.managerDrawerFixture={counts:()=>({openCount,closeCount}),setScroll:value=>{review.scrollTop=value;return review.scrollTop;},scroll:()=>review.scrollTop};
   });
 
-  // A. Linked Event context
-  const employeeText=await page.locator("#employee").textContent();
-  for(const value of ["Sale A","Chăm sóc khách hàng","Công ty ABC","Nguyễn A","0901","Địa chỉ lịch sử","Tư vấn","2 ảnh minh chứng","Thời gian thực hiện","Thời gian gửi","Chờ duyệt"])assert.match(employeeText,new RegExp(value));
-  assert.equal(await page.locator("#employee [data-kpi2-review-event]").getAttribute("data-version"),"4");
-  await page.locator("#employee [data-kpi2-review-event]").check();assert.equal(await page.locator("#employee [data-kpi2-review-event]").isChecked(),true);
-  assert.equal(await page.locator("#employee [data-kpi2-view-evidence]").isVisible(),true);
+  const employeeText=await page.locator("#employee").textContent();for(const value of ["Sale A","Chăm sóc khách hàng","Công ty ABC","Nguyễn A","0901","Địa chỉ lịch sử","Tư vấn","2 minh chứng","Thời gian thực hiện","Thời gian gửi","Chờ duyệt"])assert.match(employeeText,new RegExp(value));
+  const checkbox=page.locator("#employee [data-kpi2-review-event]");assert.equal(await checkbox.getAttribute("data-version"),"4");await checkbox.check();assert.equal(await checkbox.isChecked(),true);assert.equal(await page.locator("#employee [data-kpi2-view-evidence]").isVisible(),true);assert.equal(await page.locator('#global [data-kpi-team-open-event]').isVisible(),true);
 
-  // B/C. NONE and sparse
   await page.evaluate(()=>{const none=phase4.managerKpiEventViewModel({event:{id:"none",event_snapshot:{title:"NONE"},status:"PENDING"},assignment});live.insertAdjacentHTML("beforeend",phase4.managerKpiEventCardHtml(none));const sparse=phase4.managerKpiEventViewModel({event:{id:"sparse",customer_id:"s",customer_name_snapshot:"Khách S",event_snapshot:{title:"Sparse"}},assignment});live.insertAdjacentHTML("beforeend",phase4.managerKpiEventCardHtml(sparse));});
-  assert.equal(await page.locator('[data-kpi-manager-event="none"] .kpi-manager-customer').count(),0);
-  const sparseText=await page.locator('[data-kpi-manager-event="sparse"]').textContent();assert.match(sparseText,/Khách S/);assert.match(sparseText,/Chưa có thông tin/);assert.doesNotMatch(sparseText,/null|undefined/);
+  assert.equal(await page.locator('[data-kpi-manager-event="none"] .kpi-manager-customer').count(),0);const sparseText=await page.locator('[data-kpi-manager-event="sparse"]').textContent();assert.match(sparseText,/Khách S/);assert.match(sparseText,/Chưa có thông tin/);assert.doesNotMatch(sparseText,/null|undefined/);
 
-  // D. Historical snapshot and separate live navigation
-  await page.locator("#employee [data-kpi-current-customer]").click();
-  assert.match(await page.locator("#live").textContent(),/Công ty XYZ.*0988/s);
-  assert.match(await page.locator("#employee").textContent(),/Công ty ABC.*0901/s);
-  assert.doesNotMatch(await page.locator("#employee").textContent(),/Công ty XYZ|0988/);
+  const customerAction=page.locator("#employee [data-kpi-current-customer]"),drawer=page.locator('#customerDrawer'),backdrop=page.locator('#customerBackdrop'),openCustomerWithoutScroll=()=>customerAction.evaluate(node=>{node.focus({preventScroll:true});node.click();});await page.evaluate(()=>window.managerDrawerFixture.setScroll(180));const beforeScroll=await page.evaluate(()=>window.managerDrawerFixture.scroll());
+  await openCustomerWithoutScroll();assert.equal(await drawer.isVisible(),true);assert.equal(await backdrop.isVisible(),true);assert.equal(await page.locator('#employee').getAttribute('inert'),'');assert.match(await page.locator("#live").textContent(),/Công ty XYZ.*0988/s);assert.match(await page.locator("#employee").textContent(),/Công ty ABC.*0901/s);assert.doesNotMatch(await page.locator("#employee").textContent(),/Công ty XYZ|0988/);await page.locator('#customerDrawerClose').click();assert.equal(await drawer.isHidden(),true);assert.equal(await backdrop.isHidden(),true);assert.equal(await page.locator('#employee').getAttribute('inert'),null);assert.equal(await checkbox.isChecked(),true);assert.ok(Math.abs((await page.evaluate(()=>window.managerDrawerFixture.scroll()))-beforeScroll)<=1);assert.equal(await customerAction.evaluate(node=>document.activeElement===node),true);
+  await openCustomerWithoutScroll();await backdrop.click({position:{x:4,y:4}});assert.equal(await drawer.isHidden(),true);assert.equal(await checkbox.isChecked(),true);assert.deepEqual(await page.evaluate(()=>window.managerDrawerFixture.counts()),{openCount:2,closeCount:2});
 
-  // E/F. Archived/unavailable does not remove snapshot card
-  await page.evaluate(()=>{delete liveCustomers["customer-a"];notice.textContent="";});await page.locator("#global [data-kpi-current-customer]").click();
-  assert.match(await page.locator("#notice").textContent(),/Không thể mở/);assert.match(await page.locator("#global").textContent(),/Công ty ABC/);
-
-  // G/H. Same semantics across views and per-Event Customers
-  assert.equal(await page.locator("#employee .kpi-manager-customer").textContent(),await page.locator("#global .kpi-manager-customer").textContent());
-  await page.evaluate(()=>{const b=phase4.managerKpiEventViewModel({event:{...eventA,id:"b1",customer_id:"customer-b",customer_name_snapshot:"Khách B",customer_company_name_snapshot:"Công ty B"},assignment});global.insertAdjacentHTML("beforeend",phase4.managerKpiEventCardHtml(b));});
-  assert.match(await page.locator('[data-kpi-manager-event="a1"]').first().textContent(),/Nguyễn A/);assert.match(await page.locator('[data-kpi-manager-event="b1"]').textContent(),/Khách B/);
-
-  // I/J/K. Revision and review controls
-  await page.evaluate(()=>{const revision=phase4.managerKpiEventViewModel({event:{...eventA,id:"r2",revision_no:2,customer_phone_snapshot:"0988",status:"REJECTED",review_reason_code:"OUT_OF_SCOPE",manager_note:"Ngoài phạm vi"},assignment});global.insertAdjacentHTML("beforeend",phase4.managerKpiEventCardHtml(revision,{selectable:true}));});
-  const revisionText=await page.locator('[data-kpi-manager-event="r2"]').textContent();assert.match(revisionText,/0988/);assert.match(revisionText,/Bản bổ sung 2/);assert.match(revisionText,/OUT_OF_SCOPE/);assert.match(revisionText,/Ngoài phạm vi/);
-  assert.equal(await page.locator('[data-kpi-manager-event="r2"] [data-kpi2-review-event]').getAttribute("data-version"),"4");
-
-  // L. Mobile
-  for(const width of [390,360]){await page.setViewportSize({width,height:900});const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);assert.ok(overflow<=1,`Manager Event cards overflow at ${width}px`);}
-  console.log("KPI-2 Phase 4 browser UI: A-L snapshot/navigation/review/mobile contracts PASS");
+  await page.evaluate(()=>{delete liveCustomers["customer-a"];notice.textContent="";});await page.locator("#global [data-kpi-current-customer]").click();assert.match(await page.locator("#notice").textContent(),/Không thể mở/);assert.match(await page.locator("#global").textContent(),/Công ty ABC/);
+  assert.equal(await page.locator("#employee .kpi-manager-customer").textContent(),await page.locator("#global .kpi-manager-customer").textContent());await page.evaluate(()=>{const b=phase4.managerKpiEventViewModel({event:{...eventA,id:"b1",customer_id:"customer-b",customer_name_snapshot:"Khách B",customer_company_name_snapshot:"Công ty B"},assignment});global.insertAdjacentHTML("beforeend",phase4.managerKpiEventCardHtml(b));});assert.match(await page.locator('[data-kpi-manager-event="a1"]').first().textContent(),/Nguyễn A/);assert.match(await page.locator('[data-kpi-manager-event="b1"]').textContent(),/Khách B/);
+  await page.evaluate(()=>{const revision=phase4.managerKpiEventViewModel({event:{...eventA,id:"r2",revision_no:2,customer_phone_snapshot:"0988",status:"REJECTED",review_reason_code:"OUT_OF_SCOPE",manager_note:"Ngoài phạm vi"},assignment});global.insertAdjacentHTML("beforeend",phase4.managerKpiEventCardHtml(revision,{selectable:true}));});const revisionText=await page.locator('[data-kpi-manager-event="r2"]').textContent();assert.match(revisionText,/0988/);assert.match(revisionText,/Bản bổ sung 2/);assert.match(revisionText,/OUT_OF_SCOPE/);assert.match(revisionText,/Ngoài phạm vi/);
+  for(const [width,height] of [[1440,900],[768,1024],[390,844]]){await page.setViewportSize({width,height});const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);assert.ok(overflow<=1,`Manager Event cards overflow at ${width}px`);await page.evaluate(()=>{liveCustomers['customer-a']={name:'Nguyễn A hiện tại',company:'Công ty XYZ',phone:'0988'};});await openCustomerWithoutScroll();assert.equal(await page.locator('#customerDrawerClose').isVisible(),true);await page.locator('#customerDrawerClose').click();}
+  assertBrowserObservability(observability);
+  console.log("KPI-2 Phase 4 browser UI: snapshot/navigation/drawer close-back/context/responsive contracts PASS");
 }finally{await browser.close();server.closeAllConnections?.();await new Promise(resolve=>server.close(resolve));}
