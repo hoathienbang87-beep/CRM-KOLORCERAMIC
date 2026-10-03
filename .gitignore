@@ -99,7 +99,10 @@ exports/
 !scripts/extract-catalog-xlsx-readonly.py
 __pycache__/
 /supabase/.temp/
+/.codex-smoke/
+/.codex-prod-readonly.env
 /supabase/.branches/
+/supabaseconfig.toml
 *.dump
 *.backup
 *.xlsx
