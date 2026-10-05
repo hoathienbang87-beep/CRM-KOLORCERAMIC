@@ -1,4 +1,4 @@
-import { createSupabaseBrowserClient } from "./shared/supabase-client.js";
+import { createSupabaseBrowserClient, readSupabaseBrowserConfig } from "./shared/supabase-client.js";
 
 export const app = {};
 export const db = {};
@@ -711,6 +711,7 @@ export async function signInWithEmailAndPassword(_auth, email, password) {
 export class GoogleAuthProvider {}
 
 export async function signInWithPopup() {
+  const config = readSupabaseBrowserConfig();
   if (!config.url || !config.anonKey || config.url.includes("example.supabase.co")) {
     throw new Error("Thiếu cấu hình Supabase Auth. Kiểm tra file js/supabase-config.js.");
   }

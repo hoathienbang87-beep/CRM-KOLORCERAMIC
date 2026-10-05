@@ -198,6 +198,9 @@ const pagingState = {
 };
 let pendingLoginSuccessNotice = false;
 let authBootstrapGeneration = 0;
+const CUSTOMER_OWNER_UNASSIGNED_VALUE = "__UNASSIGNED__";
+const customerOwnerIntent = {kind:"unset", value:"", explicit:false, unavailable:false};
+let customerCreatePartialState = null;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI2_EVIDENCE_BUCKET = "kpi2-evidence";
 const KPI2_EVIDENCE_SIGNED_URL_SECONDS = 120;
@@ -687,10 +690,10 @@ function fillSelect(id, values, placeholder="-- Chọn --", allLabel="") {
 function ownerOptions() {
   const activeUserProfiles = users
     .filter(u => u.active !== false && clean(u.lifecycleStatus || "active").toLowerCase() === "active" && !["admin","owner"].includes(clean(u.role).toLowerCase()))
-    .map(u => ({name: clean(u.name || u.email), email: clean(u.email)}))
+    .map(u => ({id: clean(u.id || u.uid), name: clean(u.name || u.email), email: clean(u.email)}))
     .filter(u => u.name && u.email);
   if (activeUserProfiles.length) return activeUserProfiles;
-  const self = {name: ownerName(), email: ownerEmail()};
+  const self = {id: clean(appUser?.id || appUser?.uid), name: ownerName(), email: ownerEmail()};
   return self.name && self.email ? [self] : [];
 }
 
@@ -713,6 +716,147 @@ function reportOwnerKeys() {
 function ownerProfileByValue(value) {
   const key = clean(value);
   return ownerOptions().find(o => clean(o.email) === key || clean(o.name) === key) || {name:key, email:key};
+}
+
+function setCustomerOwnerIntent(value, explicit = true) {
+  const key = clean(value);
+  customerOwnerIntent.explicit = explicit;
+  customerOwnerIntent.unavailable = false;
+  if (key === CUSTOMER_OWNER_UNASSIGNED_VALUE) {
+    customerOwnerIntent.kind = "unassigned";
+    customerOwnerIntent.value = "";
+  } else if (key) {
+    customerOwnerIntent.kind = "sale";
+    customerOwnerIntent.value = key;
+  } else {
+    customerOwnerIntent.kind = "unset";
+    customerOwnerIntent.value = "";
+  }
+}
+
+function syncCustomerCreateActionState() {
+  const button = $("saveCustomerBtn");
+  if (!button) return;
+  if (customerCreatePartialState) {
+    button.disabled = true;
+    button.textContent = "Khách đã tạo · cần xử lý phân công";
+    button.dataset.customerCreatePartial = "true";
+    return;
+  }
+  if (button.dataset.customerCreatePartial === "true") {
+    button.disabled = false;
+    button.textContent = "Lưu khách";
+    delete button.dataset.customerCreatePartial;
+  }
+}
+
+function resetCustomerCreateState() {
+  setCustomerOwnerIntent("", false);
+  customerCreatePartialState = null;
+  syncCustomerCreateActionState();
+}
+
+function hydrateCustomerOwnerSelect() {
+  const element = $("owner");
+  if (!element) return;
+  const previousDomValue = clean(element.value);
+  if (!customerOwnerIntent.explicit && previousDomValue) setCustomerOwnerIntent(previousDomValue, false);
+  const profiles = ownerOptions();
+  fillSelect("owner", profiles);
+
+  const unassignedOption = document.createElement("option");
+  unassignedOption.value = CUSTOMER_OWNER_UNASSIGNED_VALUE;
+  unassignedOption.textContent = "Chưa phân công (hàng chờ phân bổ)";
+  element.add(unassignedOption, Math.min(1, element.options.length));
+
+  if (!isManager()) {
+    element.value = ownerEmail();
+    customerOwnerIntent.unavailable = false;
+    return;
+  }
+  if (customerOwnerIntent.kind === "unassigned") {
+    element.value = CUSTOMER_OWNER_UNASSIGNED_VALUE;
+    customerOwnerIntent.unavailable = false;
+    return;
+  }
+  if (customerOwnerIntent.kind !== "sale") {
+    element.value = "";
+    customerOwnerIntent.unavailable = false;
+    return;
+  }
+
+  const intended = clean(customerOwnerIntent.value);
+  const profile = profiles.find(item => clean(item.email) === intended || clean(item.name) === intended);
+  if (profile) {
+    customerOwnerIntent.value = clean(profile.email);
+    customerOwnerIntent.unavailable = false;
+    element.value = clean(profile.email);
+    return;
+  }
+
+  const unavailableOption = document.createElement("option");
+  unavailableOption.value = intended;
+  unavailableOption.textContent = `Đã chọn trước đó (${intended}) · không còn khả dụng`;
+  unavailableOption.disabled = true;
+  element.append(unavailableOption);
+  element.value = intended;
+  customerOwnerIntent.unavailable = true;
+}
+
+function customerOwnerSelectionForSubmit() {
+  if (!isManager()) {
+    const email = ownerEmail();
+    const name = ownerName();
+    if (!email && !name) return {error:"Sale phải có hồ sơ người phụ trách hợp lệ trước khi tạo khách."};
+    return {kind:"sale", profile:{id:clean(appUser?.id || appUser?.uid), name, email}, intendedEmail:email};
+  }
+
+  if (!customerOwnerIntent.explicit) setCustomerOwnerIntent($("owner")?.value || "", false);
+  if (customerOwnerIntent.kind === "unset") {
+    return {error:"Vui lòng chọn nhân viên phụ trách hoặc chọn Chưa phân công."};
+  }
+  if (customerOwnerIntent.kind === "unassigned") {
+    return {kind:"unassigned", profile:{id:"", name:"", email:""}, intendedEmail:""};
+  }
+
+  const intended = clean(customerOwnerIntent.value);
+  const profile = ownerOptions().find(item => clean(item.email) === intended || clean(item.name) === intended);
+  if (customerOwnerIntent.unavailable || !profile || !clean(profile.email)) {
+    return {error:"Nhân viên phụ trách đã chọn không còn khả dụng. Vui lòng chọn lại trước khi lưu."};
+  }
+  if (normalizeKey(profile.email) !== normalizeKey(intended)) {
+    return {error:"Không xác nhận được nhân viên phụ trách đã chọn. Vui lòng chọn lại trước khi lưu."};
+  }
+  return {kind:"sale", profile, intendedEmail:clean(profile.email)};
+}
+
+function normalizeCustomerCreateResult(value) {
+  let row = Array.isArray(value) ? value[0] : value;
+  if (row && typeof row === "object" && row.data != null && row.id == null) row = Array.isArray(row.data) ? row.data[0] : row.data;
+  if (!row || typeof row !== "object") row = {};
+  const assignedValue = row.assigned;
+  const assigned = assignedValue === true || clean(assignedValue).toLowerCase() === "true"
+    ? true
+    : assignedValue === false || clean(assignedValue).toLowerCase() === "false" ? false : null;
+  return {
+    id: clean(row.id || row.customerId || row.customer_id),
+    assigned,
+    ownerUserId: clean(row.ownerUserId || row.owner_user_id),
+    ownerEmail: clean(row.ownerEmail || row.owner_email)
+  };
+}
+
+function setCustomerCreatePartialState(result, intendedOwnerEmail) {
+  customerCreatePartialState = {
+    customerId: clean(result.id),
+    intendedOwnerEmail: clean(intendedOwnerEmail),
+    assigned: result.assigned,
+    ownerUserId: clean(result.ownerUserId),
+    ownerEmail: clean(result.ownerEmail)
+  };
+  syncCustomerCreateActionState();
+  const identity = customerCreatePartialState.customerId || "không xác định được mã";
+  notice(`Khách hàng ${identity} đã được tạo nhưng chưa xác nhận đúng phân công. Không bấm lưu lại; hãy mở khách đã tạo và xử lý qua quy trình phân công.`, true);
 }
 
 function hydrateOwnerDependentFilters() {
@@ -761,7 +905,7 @@ function hydrateSelects() {
   fillSelect("customerType", settings.customerTypes);
   fillSelect("potentialLevel", settings.potentialLevels || DEFAULT_SETTINGS.potentialLevels);
   hydrateChannelOptions();
-  fillSelect("owner", ownerOptions());
+  hydrateCustomerOwnerSelect();
   fillSelect("editSource", settings.sources);
   fillSelect("editCustomerType", settings.customerTypes);
   fillSelect("editPotentialLevel", settings.potentialLevels || DEFAULT_SETTINGS.potentialLevels);
@@ -6208,13 +6352,14 @@ function clearDealEditMode() {
 }
 
 function clearForm() {
+  resetCustomerCreateState();
   ["name","phone","address","customerCompanyName","need","note"].forEach(id => { if ($(id)) $(id).value = ""; });
   ["source","channel","customerType","partnerType","partnerActivity","partnerLevel","partnerCapacity"].forEach(id => { if ($(id)) $(id).value = ""; });
   if ($("potentialLevel")) $("potentialLevel").value = "Bình thường";
   renderPhoneHint();
   hydrateChannelOptions();
   togglePartnerFields();
-  if (isManager()) $("owner").value = "";
+  hydrateCustomerOwnerSelect();
   restoreInterestProduct($("need"), {});
   $("name")?.focus();
 }
@@ -6239,8 +6384,16 @@ function renderPhoneHint() {
 }
 
 async function saveCustomer() {
+  if (customerCreatePartialState) {
+    const identity = customerCreatePartialState.customerId || "chưa xác định";
+    notice(`Khách hàng ${identity} đã được tạo. Hãy đặt lại form có chủ ý trước khi tạo khách khác.`, true);
+    syncCustomerCreateActionState();
+    return;
+  }
+  const ownerSelection = customerOwnerSelectionForSubmit();
+  if (ownerSelection.error) return notice(ownerSelection.error, true);
   const phone = phoneNorm($("phone").value);
-  const selectedOwner = isManager() ? ownerProfileByValue($("owner").value) : {name: ownerName(), email: ownerEmail()};
+  const selectedOwner = ownerSelection.profile;
   const owner = clean(selectedOwner.name);
   const selectedOwnerEmail = clean(selectedOwner.email);
   const data = {
@@ -6264,13 +6417,31 @@ async function saveCustomer() {
   if (!data.name) return notice("Vui lòng nhập tên khách.", true);
   if (!data.channel) return notice("Vui lòng chọn kênh chi tiết.", true);
   if (isPartnerChannel(data.channel) && !data.companyName) return notice("Vui lòng nhập tên công ty.", true);
-  if (!isManager() && !data.ownerEmail && !data.owner) return notice("Sale phải là người phụ trách khách vừa tạo.", true);
+  if (ownerSelection.kind === "sale" && !data.ownerEmail) return notice("Không xác nhận được email nhân viên phụ trách. Vui lòng chọn lại trước khi lưu.", true);
 
   try {
     const customerRef = doc(collection(db, "customers"));
-    await callCrmRpc("crm_create_customer", {p_customer: {...data, id: customerRef.id}});
+    const result = normalizeCustomerCreateResult(await callCrmRpc("crm_create_customer", {p_customer: {...data, id: customerRef.id}}));
+    if (!result.id) {
+      setCustomerCreatePartialState(result, ownerSelection.intendedEmail);
+      return;
+    }
+    if (ownerSelection.kind === "sale") {
+      const expectedId = clean(selectedOwner.id);
+      const emailMatches = normalizeKey(result.ownerEmail) === normalizeKey(ownerSelection.intendedEmail);
+      const idMatches = !expectedId || (result.ownerUserId && normalizeKey(result.ownerUserId) === normalizeKey(expectedId));
+      if (result.assigned !== true || !emailMatches || !idMatches) {
+        setCustomerCreatePartialState(result, ownerSelection.intendedEmail);
+        return;
+      }
+    } else if (result.assigned !== false || result.ownerEmail || result.ownerUserId) {
+      setCustomerCreatePartialState(result, "");
+      return;
+    }
     clearForm();
-    notice("Đã lưu khách mới.");
+    notice(ownerSelection.kind === "sale"
+      ? "Đã lưu khách mới và phân công cho nhân viên."
+      : "Đã lưu khách mới vào hàng chờ phân bổ.");
   } catch (err) {
     const duplicateCustomerId = duplicateCustomerIdFromError(err);
     if (duplicateCustomerId) {
@@ -9375,8 +9546,12 @@ on("syncPhoneBtn", "click", () => runAction("syncPhoneBtn", "syncPhone", "Đang 
 on("syncOwnerBtn", "click", () => runAction("syncOwnerBtn", "syncOwner", "Đang đồng bộ...", syncOwnerEmail));
 on("importBtn", "click", () => $("importFile").click());
 on("importFile", "change", handleImportFile);
-on("saveCustomerBtn", "click", () => runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer));
+on("saveCustomerBtn", "click", async () => {
+  await runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer);
+  syncCustomerCreateActionState();
+});
 on("clearBtn", "click", clearForm);
+on("owner", "change", event => setCustomerOwnerIntent(event.target.value, true));
 on("phone", "input", renderPhoneHint);
 ["need","editNeed","careNeed"].forEach(id => on(id, "input", event => clearInterestProductIfChanged(event.target)));
 on("enableNotifyBtn", "click", () => runAction("enableNotifyBtn", "enableNotify", "Đang bật...", enableBrowserNotifications));
