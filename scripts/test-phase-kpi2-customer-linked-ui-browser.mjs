@@ -39,12 +39,14 @@ try {
     customerSearchPanel.classList.remove("hide"); customerSearchPanel.removeAttribute("inert"); customerSearchPanel.setAttribute("aria-hidden","false");
     kpi2OperationsPanel.classList.remove("hide"); kpi2SaleClaimPanel.classList.remove("hide");
     const api = window.kpiPhase3;
-    window.required = {assignmentId:"required",periodStatus:"ACTIVE",definitionSnapshot:{name:"KPI REQUIRED",customer_relation_mode:"REQUIRED"}};
-    window.optional = {assignmentId:"optional",periodStatus:"ACTIVE",definitionSnapshot:{name:"KPI OPTIONAL",customer_relation_mode:"OPTIONAL"}};
-    window.none = {assignmentId:"none",periodStatus:"ACTIVE",definitionSnapshot:{name:"KPI NONE",customer_relation_mode:"NONE"}};
+    window.required = {assignmentId:"required",periodStatus:"ACTIVE",definitionSnapshot:{name:"KPI REQUIRED",customer_relation_mode:"REQUIRED",evidence_required:true,max_images_per_event:1}};
+    window.optional = {assignmentId:"optional",periodStatus:"ACTIVE",definitionSnapshot:{name:"KPI OPTIONAL",customer_relation_mode:"OPTIONAL",evidence_required:false,max_images_per_event:2}};
+    window.none = {assignmentId:"none",periodStatus:"ACTIVE",definitionSnapshot:{name:"KPI NONE",customer_relation_mode:"NONE",evidence_required:false,max_images_per_event:0}};
+    window.social = {assignmentId:"social",periodStatus:"ACTIVE",definitionSnapshot:{name:"SOCIAL VIDEO",customer_relation_mode:"NONE",evidence_required:true,max_images_per_event:1}};
     window.customerA = {id:"customer-a",name:"Nguyễn A",company_name:"Công ty A",phone_raw:"0901000000",address:"Hà Nội"};
     window.phase3State = api.createKpiEventFormState();
-    window.phase3Refs = {assignmentArea:kpi2ClaimAssignmentArea,assignmentSelect:kpi2ClaimAssignmentSelect,assignmentHint:kpi2ClaimAssignmentHint,customerArea:kpi2CustomerArea,customerLabel:kpi2CustomerLabel,customerSearchInput:kpi2CustomerSearchInput,customerSearchWrap:kpi2CustomerSearchWrap,customerSearchResults:kpi2CustomerSearchResults,selectedCustomer:kpi2SelectedCustomer,eventFields:kpi2EventFields,submit:kpi2SubmitBtn};
+    window.phase3SubmitCalls = [];
+    window.phase3Refs = {assignmentArea:kpi2ClaimAssignmentArea,assignmentSelect:kpi2ClaimAssignmentSelect,assignmentHint:kpi2ClaimAssignmentHint,customerArea:kpi2CustomerArea,customerLabel:kpi2CustomerLabel,customerSearchInput:kpi2CustomerSearchInput,customerSearchWrap:kpi2CustomerSearchWrap,customerSearchResults:kpi2CustomerSearchResults,selectedCustomer:kpi2SelectedCustomer,eventFields:kpi2EventFields,submit:kpi2SubmitBtn,evidenceArea:kpi2EvidenceArea,evidenceLabel:kpi2EvidenceLabel,evidenceDropZone:kpi2EvidenceDropZone,evidenceInput:kpi2EvidenceFiles};
     window.renderPhase3 = () => api.renderKpiCustomerLinkUi(phase3State, phase3Refs);
     window.phase3Customers = [customerA];
     window.renderCustomerQuickActions = () => {
@@ -60,6 +62,11 @@ try {
       api.setKpiEventCustomer(phase3State, customer);
       api.setKpiEventAssignment(phase3State, required, {preserveCustomer:true});
       renderPhase3();
+    });
+    kpi2SubmitBtn.addEventListener("click", () => {
+      const validation = api.validateKpiEvidenceCount(phase3State, phase3State.evidence.length);
+      kpi2LocationStatus.textContent = validation.message;
+      if (validation.ok) phase3SubmitCalls.push([...phase3State.evidence]);
     });
     renderCustomerQuickActions();
   });
@@ -86,21 +93,34 @@ try {
   // A. NONE
   await page.evaluate(() => { kpiPhase3.setKpiEventAssignment(phase3State, none); phase3State.assignmentOptions=[none]; renderPhase3(); });
   assert.equal(await page.locator("#kpi2CustomerArea").isVisible(), false, "NONE hides Customer UI");
+  assert.equal(await page.locator("#kpi2EvidenceArea").isVisible(), false, "Evidence NONE hides Evidence UI");
+  assert.equal(await page.locator("#kpi2EvidenceFiles").isDisabled(), true, "Evidence NONE disables the picker");
   assert.equal(await page.locator("#kpi2SubmitBtn").isEnabled(), true, "NONE preserves submit behavior");
 
   // B. REQUIRED
   await page.evaluate(() => { kpiPhase3.setKpiEventAssignment(phase3State, required); phase3State.assignmentOptions=[required]; renderPhase3(); });
   assert.equal(await page.locator("#kpi2CustomerArea").isVisible(), true, "REQUIRED shows selector");
   assert.equal(await page.locator("#kpi2CustomerLabel").textContent(), "Khách hàng *");
+  assert.equal(await page.locator("#kpi2EvidenceArea").isVisible(), true, "Evidence REQUIRED shows Evidence UI");
+  assert.equal(await page.locator("#kpi2EvidenceLabel").textContent(), "Ảnh minh chứng (bắt buộc, tối đa 1)");
   assert.equal(await page.locator("#kpi2SubmitBtn").isDisabled(), true, "REQUIRED blocks submit without Customer");
   await page.evaluate(() => { kpiPhase3.setKpiEventCustomer(phase3State, customerA); renderPhase3(); });
   assert.equal(await page.locator("#kpi2SubmitBtn").isEnabled(), true, "REQUIRED enables submit after selection");
+  await page.locator("#kpi2SubmitBtn").click();
+  assert.equal(await page.evaluate(() => phase3SubmitCalls.length),0,"REQUIRED zero Evidence never reaches the mocked submit transport");
+  assert.match(await page.locator("#kpi2LocationStatus").textContent(),/bắt buộc ít nhất 1 ảnh/,"REQUIRED zero displays local validation");
+  await page.evaluate(() => { phase3State.evidence=["evidence-one"]; });
+  await page.locator("#kpi2SubmitBtn").click();
+  assert.deepEqual(await page.evaluate(() => phase3SubmitCalls),[["evidence-one"]],"REQUIRED one Evidence reaches the mocked submit transport with exactly one ID");
   const selectedText = await page.locator("#kpi2SelectedCustomer").textContent();
   assert.match(selectedText, /Nguyễn A/); assert.match(selectedText, /Công ty A/);
 
   // C/D. OPTIONAL empty and linked/unlink UI
   await page.evaluate(() => { kpiPhase3.setKpiEventAssignment(phase3State, optional, {preserveCustomer:false}); phase3State.assignmentOptions=[optional]; renderPhase3(); });
   assert.equal(await page.locator("#kpi2SubmitBtn").isEnabled(), true, "OPTIONAL empty can submit");
+  assert.equal(await page.locator("#kpi2EvidenceLabel").textContent(), "Ảnh minh chứng (không bắt buộc, tối đa 2)");
+  await page.locator("#kpi2SubmitBtn").click();
+  assert.deepEqual(await page.evaluate(() => phase3SubmitCalls),[["evidence-one"],[]],"OPTIONAL zero Evidence reaches the mocked submit transport with an empty ID list");
   await page.evaluate(() => { kpiPhase3.setKpiEventCustomer(phase3State, customerA); renderPhase3(); });
   assert.equal(await page.locator("[data-kpi2-unlink-customer]").isVisible(), true, "OPTIONAL linked can unlink");
   assert.equal(await page.locator("#kpi2SelectedCustomer input").count(), 0, "selected Customer panel is read-only");
@@ -131,6 +151,14 @@ try {
   const stale = await page.evaluate(() => { kpiPhase3.setKpiEventCustomer(phase3State,customerA); kpiPhase3.setKpiEventAssignment(phase3State,none,{preserveCustomer:true}); return {customer:phase3State.customer,payload:kpiPhase3.buildKpiCustomerEventPayload(phase3State,[{customerId:"stale"}])}; });
   assert.equal(stale.customer, null, "NONE clears prior Customer");
   assert.equal("customerId" in stale.payload.events[0], false, "NONE payload omits stale Customer");
+
+  // Evidence and Customer contracts remain independent; assignment switches refresh all state.
+  const independent = await page.evaluate(() => { kpiPhase3.setKpiEventAssignment(phase3State,social); phase3State.assignmentOptions=[social]; renderPhase3(); return {customerMode:phase3State.customerRelationMode,evidenceMode:phase3State.evidenceMode,evidenceMax:phase3State.evidenceMax}; });
+  assert.deepEqual(independent,{customerMode:"NONE",evidenceMode:"REQUIRED",evidenceMax:1},"SOCIAL_VIDEO-style assignment keeps Customer NONE and Evidence REQUIRED independently");
+  assert.equal(await page.locator("#kpi2CustomerArea").isVisible(),false);
+  assert.equal(await page.locator("#kpi2EvidenceLabel").textContent(),"Ảnh minh chứng (bắt buộc, tối đa 1)");
+  const switched = await page.evaluate(() => { phase3State.evidence=["stale-a"]; kpiPhase3.setKpiEventAssignment(phase3State,none); phase3State.assignmentOptions=[none]; renderPhase3(); return {mode:phase3State.evidenceMode,count:phase3State.evidence.length}; });
+  assert.deepEqual(switched,{mode:"NONE",count:0},"REQUIRED to NONE clears incompatible local Evidence state");
 
   for (const [width,height] of [[1440,900],[768,1024],[390,844]]) {
     await page.setViewportSize({width,height});

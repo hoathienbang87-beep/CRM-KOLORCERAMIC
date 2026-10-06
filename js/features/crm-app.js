@@ -95,6 +95,7 @@ import {
   eligibleKpiCustomerAssignments,
   KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,
   kpiCustomerSubmitError,
+  validateKpiEvidenceCount,
   normalizeKpiCustomer,
   renderKpiCustomerLinkUi,
   resetKpiEventFormState,
@@ -5418,7 +5419,8 @@ function renderKpi2ReviewQueue(){
 function kpi2ClaimRefs(){return {
   assignmentArea:$('kpi2ClaimAssignmentArea'),assignmentSelect:$('kpi2ClaimAssignmentSelect'),assignmentHint:$('kpi2ClaimAssignmentHint'),
   customerArea:$('kpi2CustomerArea'),customerLabel:$('kpi2CustomerLabel'),customerSearchInput:$('kpi2CustomerSearchInput'),customerSearchWrap:$('kpi2CustomerSearchWrap'),
-  customerSearchResults:$('kpi2CustomerSearchResults'),selectedCustomer:$('kpi2SelectedCustomer'),eventFields:$('kpi2EventFields'),submit:$('kpi2SubmitBtn')
+  customerSearchResults:$('kpi2CustomerSearchResults'),selectedCustomer:$('kpi2SelectedCustomer'),eventFields:$('kpi2EventFields'),submit:$('kpi2SubmitBtn'),
+  evidenceArea:$('kpi2EvidenceArea'),evidenceLabel:$('kpi2EvidenceLabel'),evidenceDropZone:$('kpi2EvidenceDropZone'),evidenceInput:$('kpi2EvidenceFiles')
 };}
 function renderKpi2ClaimCustomerUi(){renderKpiCustomerLinkUi(kpi2ClaimState,kpi2ClaimRefs());}
 function resetKpi2ClaimDom(){
@@ -5434,6 +5436,7 @@ async function configureKpi2ClaimAssignment(assignmentId,{preserveCustomer=true}
   if(previousId&&previousId!==clean(assignmentId))clearKpi2StagedEvidenceLocal();
   if(!restoreKpi2StagedEvidence(assignmentId)){notice('Hãy gửi hoặc hủy các ảnh đang chờ của KPI hiện tại trước.',true);return false;}
   setKpiEventAssignment(kpi2ClaimState,row,{preserveCustomer});
+  kpi2ClaimState.evidence=kpi2StagedEvidence.filter(item=>!item.discardedAt).map(item=>item.id);
   $('kpi2ClaimAssignmentId').value=assignmentId;$('kpi2ClaimTitle').textContent=`${kpi2ClaimState.revision?'Bổ sung event':'Gửi event'} · ${kpi2DefinitionName(row)}`;
   const snapshot=kpi2Field(row,"definitionSnapshot","definition_snapshot")||{},hybrid=!kpi2ClaimState.revision&&['HYBRID','AUTO'].includes(clean(snapshot.kpi_type).toUpperCase());
   $('kpi2HybridCandidateArea').classList.toggle('hide',!hybrid);$('kpi2ManualEventArea').classList.toggle('hide',hybrid);
@@ -5499,7 +5502,6 @@ async function compressKpi2Image(file){
   let quality=.86,blob;do{blob=await new Promise(r=>canvas.toBlob(r,'image/webp',quality));quality-=.08;}while(blob&&blob.size>1.5*1024*1024&&quality>=.46);if(!blob||blob.size>1.5*1024*1024)throw new Error('Không thể nén ảnh xuống dưới 1.5MB.');return blob;
 }
 
-const KPI2_EVIDENCE_MAX_FILES=2;
 const KPI2_EVIDENCE_MAX_SOURCE_BYTES=20*1024*1024;
 const KPI2_EVIDENCE_MIME_TYPES=new Set(['image/jpeg','image/png','image/webp']);
 function resetKpi2EvidenceDropState(){kpi2EvidenceDragDepth=0;$('kpi2EvidenceDropZone')?.classList.remove('is-drag-active');}
@@ -5516,8 +5518,9 @@ function normalizeKpi2EvidenceFiles(fileList,{source='picker'}={}){
     if(!KPI2_EVIDENCE_MIME_TYPES.has(clean(file.type).toLowerCase()))throw new Error('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.');
     if(Number(file.size)>KPI2_EVIDENCE_MAX_SOURCE_BYTES)throw new Error('Ảnh gốc vượt 20MB.');
   }
-  const activeCount=kpi2StagedEvidence.filter(item=>!item.discardedAt).length,remaining=Math.max(0,KPI2_EVIDENCE_MAX_FILES-activeCount);
-  if(!remaining)throw new Error('Mỗi event chỉ được tối đa 2 ảnh. Hãy xóa ảnh cũ trước.');
+  const max=Math.max(0,Number(kpi2ClaimState.evidenceMax)||0),activeCount=kpi2StagedEvidence.filter(item=>!item.discardedAt).length,remaining=Math.max(0,max-activeCount);
+  if(kpi2ClaimState.evidenceMode==='NONE')throw new Error('KPI này không nhận ảnh minh chứng.');
+  if(!remaining)throw new Error(`Mỗi event chỉ được tối đa ${max} ảnh minh chứng. Hãy xóa ảnh cũ trước.`);
   return {files:files.slice(0,remaining),rejectedForCapacity:Math.max(0,files.length-remaining)};
 }
 function isKpi2TextEditable(target){return !!target?.closest?.('textarea,input:not([type="file"]),[contenteditable="true"]');}
@@ -5535,10 +5538,12 @@ function clearKpi2StagedEvidenceLocal(){
 function renderKpi2StagedEvidence(){
   const target=$('kpi2StagedEvidenceList');if(!target)return;
   const rows=kpi2StagedEvidence.filter(item=>!item.discardedAt);
+  kpi2ClaimState.evidence=rows.map(item=>item.id);
   target.innerHTML=rows.length?rows.map(item=>{
     const pending=item.status==='ARCHIVED',busy=kpi2EvidenceBusy&&item.busy;
     return `<div class="kpi2-staged-evidence-item ${pending?'is-pending':''}">${item.previewUrl?`<img src="${esc(item.previewUrl)}" alt="Ảnh đang chờ gửi">`:`<span class="pill">Ảnh</span>`}<div><div class="evidence-name">${esc(item.originalName||'minh-chung.webp')}</div><div class="muted">${pending?'Đang chờ xóa file khỏi Storage':'Đã tải lên, chưa gửi'}${item.error?` · ${esc(item.error)}`:''}</div></div><button class="small danger" type="button" data-kpi2-discard-evidence="${esc(item.id)}" ${busy?'disabled':''}>${busy?'Đang xóa...':pending?'Thử xóa lại':'Xóa ảnh'}</button></div>`;
   }).join(''):'<span class="muted">Chưa chọn ảnh.</span>';
+  renderKpi2ClaimCustomerUi();
 }
 function restoreKpi2StagedEvidence(assignmentId){
   if(kpi2StagedEvidence.some(item=>clean(item.assignmentId)!==clean(assignmentId)&&!item.discardedAt))return false;
@@ -5559,11 +5564,12 @@ async function handleKpi2EvidenceFiles(fileList,{source='picker'}={}){
   const input=$('kpi2EvidenceFiles'),assignmentId=clean($('kpi2ClaimAssignmentId')?.value);let ownsBusy=false;
   try{
     if(!assignmentId)return notice('Hãy chọn KPI trước khi thêm minh chứng.',true);
+    if(kpi2ClaimState.evidenceMode==='NONE')return notice('KPI này không nhận ảnh minh chứng.',true);
     const normalized=normalizeKpi2EvidenceFiles(fileList,{source}),files=normalized.files;if(!files.length)return;
     if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
     kpi2EvidenceBusy=true;ownsBusy=true;
     for(const file of files){const item=await stageKpi2Evidence(assignmentId,file);kpi2StagedEvidence.push(item);renderKpi2StagedEvidence();}
-    const sourceLabel=source==='clipboard'?' từ clipboard':source==='drop'?' bằng kéo thả':'';notice(`Đã tải ${files.length} ảnh${sourceLabel}. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.${normalized.rejectedForCapacity?` Còn ${normalized.rejectedForCapacity} ảnh không được thêm vì giới hạn 2 ảnh.`:''}`);
+    const sourceLabel=source==='clipboard'?' từ clipboard':source==='drop'?' bằng kéo thả':'';notice(`Đã tải ${files.length} ảnh${sourceLabel}. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.${normalized.rejectedForCapacity?` Còn ${normalized.rejectedForCapacity} ảnh không được thêm vì giới hạn ${kpi2ClaimState.evidenceMax} ảnh.`:''}`);
   }finally{if(ownsBusy)kpi2EvidenceBusy=false;if(input)input.value='';resetKpi2EvidenceDropState();renderKpi2StagedEvidence();}
 }
 function handleKpi2EvidenceDragEnter(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();kpi2EvidenceDragDepth+=1;setKpi2EvidenceDragActive(true);}
@@ -5600,7 +5606,7 @@ async function submitKpi2Claim(){
   if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
   const customerValidation=buildKpiCustomerEventPayload(kpi2ClaimState,[]);if(!revisionEventId&&!customerValidation.ok){kpi2ClaimState.errors.submit=customerValidation.message;return notice(customerValidation.message,true);}
   const pendingDiscard=kpi2StagedEvidence.some(item=>item.status==='ARCHIVED'&&!item.discardedAt);if(pendingDiscard)return notice('Có ảnh đang chờ xóa. Hãy bấm Thử xóa lại trước khi gửi.',true);
-  const evidence=kpi2StagedEvidence.filter(item=>clean(item.assignmentId)===assignmentId&&item.status==='STAGED'&&!item.discardedAt).map(item=>item.id);if(evidence.length>2)return notice('Tối đa 2 ảnh mỗi event.',true);
+  const evidence=kpi2StagedEvidence.filter(item=>clean(item.assignmentId)===assignmentId&&item.status==='STAGED'&&!item.discardedAt).map(item=>item.id),evidenceValidation=validateKpiEvidenceCount(kpi2ClaimState,evidence.length);if(!evidenceValidation.ok){kpi2ClaimState.errors.submit=evidenceValidation.message;return notice(evidenceValidation.message,true);}
   kpi2ClaimState.submitting=true;renderKpi2ClaimCustomerUi();
   try{
     if(revisionEventId){

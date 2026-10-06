@@ -15,7 +15,9 @@ check(/\.kpi2-evidence-dropzone\.is-drag-active/.test(css),"drag-active state ha
 check(/@media\(max-width:600px\)[\s\S]*kpi2-evidence-desktop-help\{display:none\}/.test(css),"desktop-only helper is hidden on mobile");
 
 check(/function normalizeKpi2EvidenceFiles\(/.test(app),"one canonical file normalizer exists");
-check(/KPI2_EVIDENCE_MAX_FILES=2/.test(app),"evidence limit remains two");
+check(!/KPI2_EVIDENCE_MAX_FILES=2/.test(app),"evidence capacity is no longer hardcoded to two");
+check(/Number\(kpi2ClaimState\.evidenceMax\)/.test(app),"evidence capacity comes from selected assignment state");
+check(/kpi2ClaimState\.evidenceMode==='NONE'/.test(app),"NONE mode blocks Evidence staging");
 for(const type of ["image/jpeg","image/png","image/webp"])check(app.includes(`'${type}'`),`normalizer permits ${type}`);
 check(/KPI2_EVIDENCE_MAX_SOURCE_BYTES=20\*1024\*1024/.test(app),"20MB source limit remains unchanged");
 check(/handleKpi2EvidenceFiles\(e\.target\.files,\{source:'picker'\}\)/.test(app),"picker uses the canonical handler");
@@ -27,6 +29,7 @@ check(/isKpi2TextEditable\(event\.target\)\)return;[\s\S]*event\.preventDefault\
 check(/clipboardData\?\.items/.test(app)&&/item\.kind==='file'/.test(app),"clipboard reads file items only");
 check(/kpi-evidence-paste-\$\{Date\.now\(\)\}/.test(app),"unnamed clipboard files receive a safe local name");
 check(/files\.slice\(0,remaining\)/.test(app)&&/rejectedForCapacity/.test(app),"multiple input respects remaining capacity without replacement");
+check(/validateKpiEvidenceCount\(kpi2ClaimState,evidence\.length\)/.test(app),"submit uses shared min/max Evidence validation");
 check(/resetKpi2EvidenceDropState\(\);\s*renderKpi2StagedEvidence/.test(app),"form cleanup clears temporary drag state");
 check((app.match(/on\("kpi2SaleClaimPanel", "paste"/g)||[]).length===1,"paste listener is registered once");
 check(!/addEventListener\(['"]paste['"]/.test(app),"no duplicate ad-hoc paste listener exists");

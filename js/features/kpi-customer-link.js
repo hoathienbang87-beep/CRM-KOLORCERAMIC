@@ -1,4 +1,5 @@
 const CUSTOMER_MODES = new Set(["REQUIRED", "OPTIONAL", "NONE"]);
+const EVIDENCE_MODES = new Set(["REQUIRED", "OPTIONAL", "NONE"]);
 const EMPTY_CUSTOMER_VALUE = "Chưa có thông tin";
 
 export const KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE = "Hiện bạn chưa có KPI phù hợp để đề xuất cho khách hàng này.";
@@ -21,6 +22,34 @@ export function kpiCustomerRelationMode(assignment) {
   const snapshot = assignment?.definitionSnapshot ?? assignment?.definition_snapshot ?? {};
   const mode = text(snapshot.customer_relation_mode ?? snapshot.customerRelationMode).toUpperCase();
   return CUSTOMER_MODES.has(mode) ? mode : "NONE";
+}
+
+export function kpiEvidenceContract(assignment) {
+  const snapshot = assignment?.definitionSnapshot ?? assignment?.definition_snapshot ?? {};
+  const rawMax = Number(snapshot.max_images_per_event ?? snapshot.maxImagesPerEvent);
+  const max = Number.isFinite(rawMax) ? Math.max(0, Math.min(2, Math.trunc(rawMax))) : 2;
+  const requiredValue = snapshot.evidence_required ?? snapshot.evidenceRequired;
+  const required = requiredValue === true || text(requiredValue).toLowerCase() === "true";
+  const mode = max === 0 ? "NONE" : required ? "REQUIRED" : "OPTIONAL";
+  return {mode, min: mode === "REQUIRED" ? 1 : 0, max, required: mode === "REQUIRED"};
+}
+
+export function kpiEvidenceLabel(state) {
+  const mode = EVIDENCE_MODES.has(text(state?.evidenceMode).toUpperCase()) ? text(state.evidenceMode).toUpperCase() : "NONE";
+  const max = Math.max(0, Number(state?.evidenceMax) || 0);
+  if (mode === "REQUIRED") return `Ảnh minh chứng (bắt buộc, tối đa ${max})`;
+  if (mode === "OPTIONAL") return `Ảnh minh chứng (không bắt buộc, tối đa ${max})`;
+  return "KPI này không yêu cầu ảnh minh chứng";
+}
+
+export function validateKpiEvidenceCount(state, evidenceCount) {
+  const mode = EVIDENCE_MODES.has(text(state?.evidenceMode).toUpperCase()) ? text(state.evidenceMode).toUpperCase() : "NONE";
+  const max = Math.max(0, Number(state?.evidenceMax) || 0);
+  const count = Math.max(0, Number(evidenceCount) || 0);
+  if (mode === "NONE" && count > 0) return {ok: false, message: "KPI này không nhận ảnh minh chứng."};
+  if (mode === "REQUIRED" && count < 1) return {ok: false, message: "KPI này bắt buộc ít nhất 1 ảnh minh chứng."};
+  if (count > max) return {ok: false, message: `Mỗi event chỉ được tối đa ${max} ảnh minh chứng.`};
+  return {ok: true, message: ""};
 }
 
 export function normalizeKpiCustomer(row) {
@@ -51,6 +80,10 @@ export function createKpiEventFormState() {
     assignmentOptions: [],
     customer: null,
     customerRelationMode: "NONE",
+    evidenceMode: "NONE",
+    evidenceRequired: false,
+    evidenceMin: 0,
+    evidenceMax: 0,
     customerLocked: false,
     revision: false,
     eventContent: "",
@@ -71,8 +104,16 @@ export function resetKpiEventFormState(state) {
 }
 
 export function setKpiEventAssignment(state, assignment, {preserveCustomer = true} = {}) {
+  const previousAssignmentId = assignmentId(state.assignment);
+  const nextAssignmentId = assignmentId(assignment);
   state.assignment = assignment || null;
   state.customerRelationMode = assignment ? kpiCustomerRelationMode(assignment) : "NONE";
+  const evidenceContract = assignment ? kpiEvidenceContract(assignment) : {mode: "NONE", min: 0, max: 0, required: false};
+  state.evidenceMode = evidenceContract.mode;
+  state.evidenceRequired = evidenceContract.required;
+  state.evidenceMin = evidenceContract.min;
+  state.evidenceMax = evidenceContract.max;
+  if (previousAssignmentId !== nextAssignmentId) state.evidence = [];
   state.errors = {};
   if (!preserveCustomer || state.customerRelationMode === "NONE") state.customer = null;
   return state;
@@ -190,6 +231,14 @@ export function renderKpiCustomerLinkUi(state, refs) {
   if (refs.selectedCustomer) {
     refs.selectedCustomer.classList.toggle("hide", !showCustomer || !state.customer);
     refs.selectedCustomer.innerHTML = showCustomer ? selectedKpiCustomerHtml(state) : "";
+  }
+  const showEvidence = hasAssignment && state.evidenceMode !== "NONE";
+  refs.evidenceArea?.classList.toggle("hide", !showEvidence);
+  if (refs.evidenceLabel) refs.evidenceLabel.textContent = kpiEvidenceLabel(state);
+  if (refs.evidenceInput) refs.evidenceInput.disabled = state.submitting || !showEvidence;
+  if (refs.evidenceDropZone) {
+    refs.evidenceDropZone.setAttribute("aria-disabled", String(state.submitting || !showEvidence));
+    refs.evidenceDropZone.setAttribute("tabindex", showEvidence && !state.submitting ? "0" : "-1");
   }
   if (refs.submit) refs.submit.disabled = state.submitting || !hasAssignment || (state.customerRelationMode === "REQUIRED" && !state.customer);
 }
