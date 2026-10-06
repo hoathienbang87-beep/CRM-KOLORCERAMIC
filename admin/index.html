@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Quản trị Catalog · Kolorceramic</title>
+  <link rel="stylesheet" href="/css/catalog-admin.css?v=20260925-06b">
+</head>
+<body>
+  <div class="admin-bg" aria-hidden="true"></div>
+
+  <section id="adminLoadingView" class="center-view" aria-live="polite">
+    <div class="auth-card"><div class="spinner" aria-hidden="true"></div><b>Đang kiểm tra quyền truy cập…</b></div>
+  </section>
+
+  <section id="adminLoginView" class="center-view hide" aria-labelledby="loginTitle">
+    <form id="adminLoginForm" class="auth-card">
+      <span class="eyebrow">KOLORCERAMIC · CATALOG</span>
+      <h1 id="loginTitle">Đăng nhập quản trị</h1>
+      <p>Không gian riêng để kiểm tra và cập nhật thông tin sản phẩm.</p>
+      <label>Email<input id="adminLoginEmail" type="email" autocomplete="email" required></label>
+      <label>Mật khẩu<input id="adminLoginPassword" type="password" autocomplete="current-password" required></label>
+      <button class="button primary" type="submit">Đăng nhập</button>
+      <button id="adminGoogleLogin" class="button secondary" type="button">Tiếp tục với Google</button>
+      <div id="adminLoginError" class="form-error" role="alert"></div>
+      <small>Chỉ owner hoặc admin đang hoạt động được phép truy cập.</small>
+    </form>
+  </section>
+
+  <section id="adminDeniedView" class="center-view hide" aria-labelledby="deniedTitle">
+    <div class="auth-card">
+      <span class="eyebrow warning">QUYỀN TRUY CẬP</span>
+      <h1 id="deniedTitle">Tài khoản chưa có quyền</h1>
+      <p id="adminDeniedMessage">Khu vực này dành cho owner và admin.</p>
+      <a class="button secondary" href="/crm">Quay về CRM</a>
+      <button id="adminDeniedLogout" class="button primary" type="button">Đăng xuất</button>
+    </div>
+  </section>
+
+  <section id="adminWorkspace" class="admin-shell hide" aria-hidden="true">
+    <aside class="sidebar">
+      <a class="brand" href="/admin/" aria-label="Trang quản trị catalog">
+        <span class="brand-mark">K</span>
+        <span><b>KOLOR</b><small>Catalog Admin</small></span>
+      </a>
+      <nav aria-label="Điều hướng quản trị">
+        <button class="nav-item active" type="button" data-admin-page="catalog" aria-current="page"><span>▦</span> Sản phẩm</button>
+        <button class="nav-item" type="button" data-admin-page="import"><span>⇧</span> Import</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div><small>Đăng nhập với</small><b id="adminProfileName">—</b><span id="adminProfileRole">—</span></div>
+        <button id="adminLogout" class="text-button" type="button">Đăng xuất</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section id="adminCatalogPage" data-admin-view="catalog">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">QUẢN TRỊ WEBSITE</span>
+          <h1>Danh mục sản phẩm</h1>
+          <p>Cập nhật nội dung, trạng thái và hình ảnh dùng cho website.</p>
+        </div>
+        <button id="adminReload" class="button secondary compact" type="button">↻ Tải lại</button>
+      </header>
+
+      <section class="stats" aria-label="Tổng quan danh mục">
+        <article><span>Tổng kết quả</span><b id="adminTotal">0</b></article>
+        <article><span>Trang hiện tại</span><b id="adminPageCount">0</b></article>
+        <article><span>Bộ lọc</span><b id="adminFilterSummary">Tất cả</b></article>
+      </section>
+
+      <section class="catalog-panel" id="catalog">
+        <form id="adminFilters" class="filters" role="search">
+          <label class="search-field"><span class="sr-only">Tìm sản phẩm</span><input id="adminSearch" type="search" placeholder="Tìm theo tên, mã, bề mặt…"><button type="submit">Tìm</button></label>
+          <label><span>Hoàn thiện</span><select id="adminStatusFilter"><option value="">Tất cả</option><option value="READY">Sẵn sàng</option><option value="UPDATING">Đang cập nhật</option></select></label>
+          <label><span>Hoạt động</span><select id="adminActiveFilter"><option value="">Tất cả</option><option value="true">Đang dùng</option><option value="false">Đã lưu trữ</option></select></label>
+          <label><span>Website</span><select id="adminPublishedFilter"><option value="">Tất cả</option><option value="true">Đã đăng</option><option value="false">Chưa đăng</option></select></label>
+          <button id="adminClearFilters" class="button ghost compact" type="button">Xóa lọc</button>
+        </form>
+
+        <div id="adminCatalogStatus" class="catalog-status" role="status">Đang tải danh mục…</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Sản phẩm</th><th>Quy cách</th><th>Bề mặt</th><th>Giá/m²</th><th>Trạng thái</th><th>Cập nhật</th><th></th></tr></thead>
+            <tbody id="adminProductRows"></tbody>
+          </table>
+        </div>
+        <div id="adminProductCards" class="product-cards"></div>
+        <div id="adminEmpty" class="empty hide"><b>Không có sản phẩm phù hợp</b><span>Hãy thử thay đổi từ khóa hoặc bộ lọc.</span></div>
+        <footer class="pager"><button id="adminPrevPage" class="button secondary compact" type="button">← Trang trước</button><span id="adminPageLabel">Trang 1</span><button id="adminNextPage" class="button secondary compact" type="button">Trang sau →</button></footer>
+      </section>
+      </section>
+
+      <section id="adminImportPage" class="hide" data-admin-view="import" aria-labelledby="adminImportTitle">
+        <header class="topbar">
+          <div><span class="eyebrow">IMPORT CÓ KIỂM DUYỆT</span><h1 id="adminImportTitle">Cập nhật catalog</h1><p>Luôn xem trước, xử lý xung đột và phê duyệt trước khi áp dụng.</p></div>
+          <button id="adminImportReload" class="button secondary compact" type="button">↻ Tải lịch sử</button>
+        </header>
+
+        <section class="import-layout">
+          <form id="adminImportForm" class="import-card import-form">
+            <div><span class="eyebrow">BƯỚC 1</span><h2>Tạo bản xem trước</h2><p>Excel được phân tích có cấu trúc. PDF chỉ được đưa vào hàng chờ OCR và không thể áp dụng trực tiếp.</p></div>
+            <div class="form-grid">
+              <label>Chế độ<select id="adminImportMode"><option value="PRICE_UPDATE_ONLY">Chỉ cập nhật giá</option><option value="CATALOG_IMPORT">Nhập/cập nhật catalog</option></select></label>
+              <label>Nhà cung cấp<input id="adminImportSupplier" required placeholder="Tên nhà cung cấp"></label>
+              <label>Ngày hiệu lực<input id="adminImportEffectiveDate" type="date" required></label>
+              <label>File nguồn<input id="adminImportFile" type="file" accept=".xlsx,.xls,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf" required></label>
+            </div>
+            <div class="import-actions"><button id="adminImportPreviewButton" class="button primary" type="submit">Phân tích và xem trước</button><span id="adminImportFileMeta" class="muted"></span></div>
+            <div id="adminImportMessage" class="import-message" role="status" aria-live="polite"></div>
+          </form>
+
+          <section id="adminImportPreviewPanel" class="import-card hide" aria-live="polite">
+            <div class="import-heading"><div><span class="eyebrow">BƯỚC 2</span><h2 id="adminImportBatchTitle">Bản xem trước</h2><p id="adminImportBatchMeta"></p></div><div id="adminImportBatchBadges" class="badges"></div></div>
+            <div class="import-stats"><article><span>Tổng dòng</span><b id="adminImportTotalRows">0</b></article><article><span>Tạo mới</span><b id="adminImportCreateRows">0</b></article><article><span>Cập nhật</span><b id="adminImportUpdateRows">0</b></article><article><span>Cần xử lý</span><b id="adminImportConflictRows">0</b></article></div>
+            <div class="import-toolbar"><label>Trạng thái<select id="adminImportRowFilter"><option value="">Tất cả</option><option value="READY">Sẵn sàng</option><option value="UPDATING">Đang cập nhật</option><option value="CONFLICT">Xung đột</option><option value="EXCLUDED_BY_REVIEW">Đã loại</option></select></label><span id="adminImportFilteredCount" class="muted"></span></div>
+            <div class="table-wrap"><table class="import-table"><thead><tr><th>Dòng</th><th>Sản phẩm</th><th>Quy cách</th><th>Giá hiện tại</th><th>Giá đề xuất</th><th>Chênh lệch</th><th>Quyết định</th></tr></thead><tbody id="adminImportRows"></tbody></table></div>
+            <div id="adminImportRowCards" class="import-row-cards"></div>
+            <footer class="import-gate"><p id="adminImportGateHelp">Bản xem trước không thay đổi catalog.</p><div><button id="adminImportApprove" class="button secondary" type="button">Duyệt batch</button><button id="adminImportApply" class="button primary" type="button">Áp dụng</button></div></footer>
+          </section>
+
+          <section class="import-card">
+            <div class="import-heading"><div><span class="eyebrow">LỊCH SỬ</span><h2>Các batch gần đây</h2></div><label>Trạng thái<select id="adminImportHistoryFilter"><option value="">Tất cả</option><option value="STAGED">Chờ xử lý</option><option value="READY">Sẵn sàng</option><option value="APPLIED">Đã áp dụng</option><option value="CANCELLED">Đã rollback</option><option value="FAILED">Lỗi</option></select></label></div>
+            <div id="adminImportHistory" class="import-history"><p class="muted">Đang tải lịch sử…</p></div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </section>
+
+  <div id="adminDrawerBackdrop" class="drawer-backdrop hide" aria-hidden="true"></div>
+  <aside id="adminProductDrawer" class="drawer hide" role="dialog" aria-modal="true" aria-labelledby="adminDrawerTitle" inert>
+    <header><div><span class="eyebrow">CHI TIẾT CATALOG</span><h2 id="adminDrawerTitle">Sản phẩm</h2><p id="adminDrawerMeta">—</p></div><button id="adminDrawerClose" class="icon-button" type="button" aria-label="Đóng">×</button></header>
+    <form id="adminProductForm">
+      <section class="drawer-section image-editor">
+        <div id="adminImageFrame" class="image-frame"><img id="adminImagePreview" alt="Xem trước ảnh sản phẩm"><span id="adminImageFallback">Chưa có ảnh xem trước</span></div>
+        <label>URL ảnh đại diện<input id="adminImageUrl" name="image_url" type="url" inputmode="url" placeholder="https://…"></label>
+        <small>Chỉ dùng URL HTTPS bên ngoài. Ứng dụng không tải ảnh lên Supabase Storage.</small>
+      </section>
+
+      <section class="drawer-section form-grid">
+        <label>Mã sản phẩm<input id="adminCode" name="code" autocomplete="off"></label>
+        <label>Tên sản phẩm <em>*</em><input id="adminName" name="name" required></label>
+        <label>Rộng (mm)<input id="adminWidth" name="width_mm" inputmode="numeric"></label>
+        <label>Dài (mm)<input id="adminHeight" name="height_mm" inputmode="numeric"></label>
+        <label>Bề mặt<input id="adminSurface" name="surface"></label>
+        <label>Màu<input id="adminColor" name="color"></label>
+        <label>Danh mục<input id="adminCategory" name="category"></label>
+        <label>Bộ sưu tập<input id="adminCollection" name="collection"></label>
+        <label>Xuất xứ<input id="adminOrigin" name="origin"></label>
+        <label>Giá/m² (VNĐ)<input id="adminPrice" name="price_per_m2" inputmode="numeric" placeholder="1.915.000"></label>
+        <label>Ngày hiệu lực giá<input id="adminPriceDate" name="price_effective_date" type="date"></label>
+        <label class="full">Mô tả<textarea id="adminDescription" name="description" rows="4"></textarea></label>
+        <label class="full">Gallery URLs — mỗi dòng một URL<textarea id="adminGallery" name="gallery_urls" rows="3" placeholder="https://…"></textarea></label>
+        <label>PDF URL<input id="adminPdfUrl" name="pdf_url" type="url"></label>
+        <label>Video URL<input id="adminVideoUrl" name="video_url" type="url"></label>
+        <label class="full">Trang thông tin thêm<input id="adminMoreInfoUrl" name="more_info_url" type="url"></label>
+      </section>
+
+      <section class="drawer-section state-editor">
+        <div><b>Trạng thái hiển thị</b><p>Dữ liệu thiếu tên, quy cách hoặc giá sẽ tự chuyển về “Đang cập nhật”.</p></div>
+        <label class="switch"><input id="adminActiveState" type="checkbox"><span></span> Đang hoạt động</label>
+        <label class="switch"><input id="adminPublishedState" type="checkbox"><span></span> Đăng lên website</label>
+        <button id="adminSaveState" class="button secondary" type="button">Lưu trạng thái</button>
+      </section>
+
+      <div id="adminFormError" class="form-error" role="alert"></div>
+      <footer class="drawer-actions"><button id="adminCancelEdit" class="button secondary" type="button">Hủy</button><button id="adminSaveProduct" class="button primary" type="submit">Lưu nội dung</button></footer>
+    </form>
+  </aside>
+
+  <div id="adminToast" class="toast hide" role="status" aria-live="polite"></div>
+
+  <script src="/js/vendor/supabase/supabase.js"></script>
+  <script src="/js/supabase-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script type="module" src="/js/admin/catalog-admin-bootstrap.js?v=20260925-06b"></script>
+</body>
+</html>

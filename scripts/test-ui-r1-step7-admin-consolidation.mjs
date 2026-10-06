@@ -31,7 +31,7 @@ assert.match(adapter, /const merged = \{ \.\.\.oldData, \.\.\.oldRaw, \.\.\.\(ro
 assert.match(adapter, /row\.data = merged;[\s\S]*?row\.raw_data = merged/);
 assert.match(app, /if \(!Object\.keys\(patch\)\.length\) return/);
 assert.match(app, /saveSettingsAndVerify[\s\S]*?getDoc/);
-assert.match(html, /href="\/css\/styles\.css"/);
+assert.match(html, /href="\/css\/styles\.css(?:\?[^\"]+)?"/);
 assert.match(html, /src="\/js\//);
 assert.match(app, /renderAdminAuditPage\(\)/);
 assert.doesNotMatch(html.slice(html.indexOf('id="adminAuditPage"'), html.indexOf('id="adminTrashHost"')), /data-(delete|edit|mutate)-audit|Xóa audit/i);

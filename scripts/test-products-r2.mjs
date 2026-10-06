@@ -18,34 +18,23 @@ const firebase = read("js/firebase.js");
 const html = read("index.html");
 const shell = read("js/components/app-shell.js");
 const sql = read("supabase-phase-product-r2-clean-rebuild.sql");
+const accessSql = read("supabase/migrations/20260924040300_catalog_integration_02b.sql");
 let checks = 0;
 const check = (value, message) => { assert.ok(value, message); checks++; };
 
-check(/id: "products"[^\n]*hash: "#\/products"/.test(shell), "Giữ canonical Product route");
-check(html.includes('id="productsPanel"'), "Giữ Product panel trong CRM-UI-R1 shell");
-for (const id of [
-  "productWidthCmInput","productHeightCmInput","productPricePerM2Input",
-  "productPricePerBoxInput","productPricePerPieceInput","productPiecesPerBoxInput",
-  "productSqmPerBoxInput","productPriceEffectiveDateInput","productCreatedByText",
-  "productCreatedAtText","productUpdatedByText","productUpdatedAtText","productHistoryList"
-]) check(html.includes(`id="${id}"`), `Có UI R2 ${id}`);
-check(!html.includes('id="productSizeInput"') && !html.includes('id="productPriceInput"'), "Đã retire input R1");
-check(/<th>Giá\/m²<\/th>/.test(html) && /Giá\/hộp/.test(html) && /Giá\/viên/.test(html), "Price labels có unit rõ ràng");
+check(!/id: "products"[^\n]*hash: "#\/products"/.test(shell), "Product management route đã retire khỏi CRM");
+check(!html.includes('id="productsPanel"') && !html.includes('id="productDrawer"'), "Product management DOM đã retire khỏi CRM");
+check(!/crm_(create_product|update_product|set_product_active)/.test(app), "CRM runtime không còn gọi Product mutation RPC");
+check(/callCrmRpc\("crm_list_products"/.test(app), "CRM giữ read adapter cho nghiệp vụ");
+check(["quote","deal","proposal","inventory"].every(context => app.includes(`data-product-selector-context="${context}"`)), "CRM giữ product selector nghiệp vụ");
+check(/path: "\/admin"[^\n]*capability: "admin"/.test(shell), "Owner/admin được hướng sang /admin");
+for (const signature of ["crm_create_product\\(jsonb\\)", "crm_update_product\\(uuid,bigint,jsonb\\)", "crm_set_product_active\\(uuid,bigint,boolean\\)"])
+  check(new RegExp(`revoke all on function public\\.${signature} from public, anon, authenticated`, "i").test(accessSql), `Legacy mutation ${signature} bị revoke`);
 check(!/xóa sản phẩm|deleteProduct/i.test(html + app), "Không có hard-delete Product UI");
-
-const productRuntime = app.slice(app.indexOf("// PRODUCT-R2:"), app.indexOf("const quoteStatusOptions"));
-for (const rpc of ["crm_list_products","crm_create_product","crm_update_product","crm_set_product_active","crm_list_product_price_history"])
-  check(productRuntime.includes(rpc), `Runtime dùng ${rpc}`);
-check(productRuntime.includes('const canEditProduct = () => ["sale","manager","admin","owner"]'), "Sale được create/update trên UI");
-check(/!p \|\| !isManager\(\)/.test(productRuntime), "Archive control chỉ Manager+");
-check(productRuntime.includes("p_expected_version:productDrawerOriginal.version"), "Update gửi expected version");
-check(productRuntime.includes("Không có thay đổi để lưu"), "UI no-op không gửi mutation");
-check(productRuntime.includes("createdByName") && productRuntime.includes("updatedByName"), "Hiển thị actor create/update");
-check(productRuntime.includes("crm_list_product_price_history"), "Hiển thị history qua RPC");
 
 check(app.includes("selected?.pricePerM2") && app.includes('unit: selected ? "m²" : ""'), "Quote dùng R2 price_per_m2 và unit m²");
 check(!/product\?\.price\b|selected\?\.price\b/.test(app), "Không còn Product R1 default price consumer");
-check(app.includes("product?.stockQuantity") && !productRuntime.includes("inventoryMovements.reduce"), "Stock Product không tính từ ledger");
+check(app.includes("product?.stockQuantity"), "Kho và báo cáo giữ stock adapter");
 check(!/normalizeKey\(item\.name\) === normalizeKey\(p\.name\)/.test(app), "Không match historical deal bằng Product name");
 
 const productMap = firebase.slice(firebase.indexOf('case "products":'), firebase.indexOf('case "kpiRules":'));
@@ -59,9 +48,9 @@ check(sql.includes("alter column id type uuid"), "Migration dùng native UUID");
 check(sql.includes("code_normalized text generated always"), "Generated normalized code");
 check(sql.includes("product_price_history"), "Có immutable Product price history");
 check(sql.includes("product_price_history_immutable"), "History update/delete bị chặn");
-check(sql.includes("crm_update_product(uuid,bigint,jsonb)"), "Canonical update signature");
+check(sql.includes("crm_update_product(uuid,bigint,jsonb)"), "Canonical update signature vẫn tồn tại để rollback lịch sử");
 check(sql.includes("public.crm_current_app_user_id()"), "Actor server-side");
-check(!sql.includes("crm_stage_product_import") && !sql.includes("crm_confirm_product_import"), "Không expose import RPC chưa hoàn chỉnh");
+check(!sql.includes("crm_stage_product_import") && !sql.includes("crm_confirm_product_import"), "Không expose import RPC chưa hoàn chỉnh ở migration R2");
 check(/revoke all on public\.products from anon, authenticated/.test(sql), "Direct Product write bị revoke");
 
 assert.equal(productDecimal("007.500", {scale:3,allowZero:false,label:"Size"}), "7.5"); checks++;
@@ -105,4 +94,4 @@ assert.equal(productError({message:"SQL secret"}), "Không thể lưu thay đổ
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 check(new Set(ids).size === ids.length, "HTML IDs unique");
-console.log(`Product R2 static/helper PASS (${checks} checks).`);
+console.log(`Product R2 helper/read-adapter regression PASS (${checks} checks).`);

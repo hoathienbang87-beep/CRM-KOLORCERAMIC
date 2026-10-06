@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>E-STRUCTURE™ | KOLORCERAMIC</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body { margin: 0; min-height: 100%; background: #000; }
+
+    body { overflow: hidden; color: #fff; }
+
+    button { font: inherit; }
+
+    .experience {
+      position: relative;
+      display: grid;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+      isolation: isolate;
+      background: #000;
+    }
+
+    .experience__video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .experience::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      z-index: 1;
+      height: min(52vh, 440px);
+      pointer-events: none;
+      background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, .82));
+    }
+
+    .status {
+      position: absolute;
+      inset: 50% auto auto 50%;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 255, 255, .78);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .status::before {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, .28);
+      border-top-color: #fff;
+      border-radius: 50%;
+      content: "";
+      animation: spin .8s linear infinite;
+    }
+
+    .status[hidden],
+    .error[hidden],
+    .motion-button[hidden] { display: none; }
+
+    .error {
+      position: absolute;
+      inset: 50% auto auto 50%;
+      z-index: 3;
+      width: min(86vw, 360px);
+      margin: 0;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 255, 255, .88);
+      text-align: center;
+    }
+
+    .overlay {
+      position: relative;
+      z-index: 2;
+      align-self: end;
+      width: min(100%, 680px);
+      padding: 28px max(20px, env(safe-area-inset-right)) max(28px, calc(20px + env(safe-area-inset-bottom))) max(20px, env(safe-area-inset-left));
+    }
+
+    .overlay h1 {
+      margin: 0;
+      font-size: clamp(28px, 8vw, 46px);
+      line-height: 1;
+      letter-spacing: .02em;
+      text-shadow: 0 2px 22px rgba(0, 0, 0, .7);
+    }
+
+    .overlay p {
+      margin: 9px 0 20px;
+      color: rgba(255, 255, 255, .78);
+      font-size: clamp(14px, 3.7vw, 17px);
+      letter-spacing: .01em;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    .sound-button,
+    .motion-button {
+      min-height: 48px;
+      border: 1px solid rgba(255, 255, 255, .42);
+      border-radius: 999px;
+      padding: 11px 18px;
+      background: rgba(8, 8, 8, .62);
+      color: #fff;
+      font-weight: 750;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      touch-action: manipulation;
+    }
+
+    .sound-button:hover,
+    .motion-button:hover { background: rgba(255, 255, 255, .16); }
+
+    .debug-panel {
+      position: absolute;
+      top: max(10px, env(safe-area-inset-top));
+      right: 10px;
+      z-index: 4;
+      width: min(94vw, 430px);
+      max-height: 42vh;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,.3);
+      border-radius: 10px;
+      background: rgba(0,0,0,.78);
+      color: #dff7df;
+      font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .debug-panel[hidden] { display: none; }
+
+    .sound-button:focus-visible,
+    .motion-button:focus-visible {
+      outline: 3px solid #fff;
+      outline-offset: 3px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (min-width: 700px) {
+      .overlay { padding-left: 40px; padding-bottom: max(40px, calc(24px + env(safe-area-inset-bottom))); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .status::before { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="experience">
+    <video
+      id="experienceVideo"
+      class="experience__video"
+      autoplay
+      muted
+      playsinline
+      webkit-playsinline
+      loop
+      preload="metadata"
+      aria-label="Video giới thiệu công nghệ E-STRUCTURE"
+    >
+      <source src="/videos/e-structure.mp4" type="video/mp4">
+    </video>
+
+    <p id="loadingStatus" class="status" role="status">Đang tải video…</p>
+    <p id="errorStatus" class="error" role="alert" hidden>Không thể tải video.</p>
+    <pre id="debugPanel" class="debug-panel" hidden></pre>
+
+    <section class="overlay" aria-labelledby="experienceTitle">
+      <h1 id="experienceTitle">E-STRUCTURE™</h1>
+      <p>Digital Surface Structure Technology</p>
+      <div class="actions">
+        <button id="soundButton" class="sound-button" type="button" aria-label="Bật âm thanh">🔊 Bật âm thanh</button>
+        <button id="motionButton" class="motion-button" type="button" aria-label="Phát video" hidden>▶ Phát video</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const video = document.getElementById("experienceVideo");
+      const soundButton = document.getElementById("soundButton");
+      const motionButton = document.getElementById("motionButton");
+      const loadingStatus = document.getElementById("loadingStatus");
+      const errorStatus = document.getElementById("errorStatus");
+      const debugEnabled = new URLSearchParams(window.location.search).get("debug") === "1";
+      const debugPanel = document.getElementById("debugPanel");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const eventLog = [];
+      let playResult = "not attempted";
+      let rejectionName = "—";
+      let rejectionMessage = "—";
+      let autoplayAttempts = 0;
+      let playingSeen = false;
+      let autoplayStopped = false;
+
+      video.muted = true;
+      video.defaultMuted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+
+      const errorSummary = () => {
+        if (!video.error) return "none";
+        return `code=${video.error.code} message=${video.error.message || "—"}`;
+      };
+
+      const renderDebug = () => {
+        if (!debugEnabled) return;
+        debugPanel.hidden = false;
+        debugPanel.textContent = [
+          `autoplay attr=${video.hasAttribute("autoplay")} muted=${video.muted} defaultMuted=${video.defaultMuted}`,
+          `paused=${video.paused} playsInline=${video.playsInline} readyState=${video.readyState} networkState=${video.networkState}`,
+          `currentTime=${Number.isFinite(video.currentTime) ? video.currentTime.toFixed(2) : "—"} duration=${Number.isFinite(video.duration) ? video.duration.toFixed(2) : "—"}`,
+          `video.error=${errorSummary()}`,
+          `visibility=${document.visibilityState} reducedMotion=${reduceMotion} saveData=${navigator.connection?.saveData ?? "—"}`,
+          `play() result=${playResult} rejection=${rejectionName}: ${rejectionMessage}`,
+          `autoplay attempts=${autoplayAttempts} playingSeen=${playingSeen}`,
+          "events:", ...eventLog
+        ].join("\n");
+      };
+
+      const logEvent = (name) => {
+        eventLog.push(`${new Date().toISOString().slice(11, 23)} ${name} paused=${video.paused} t=${video.currentTime.toFixed(2)}`);
+        if (eventLog.length > 24) eventLog.shift();
+        renderDebug();
+      };
+
+      const showFallback = () => { motionButton.hidden = false; };
+
+      const renderSoundState = () => {
+        const muted = video.muted;
+        soundButton.textContent = muted ? "🔊 Bật âm thanh" : "🔇 Tắt âm thanh";
+        soundButton.setAttribute("aria-label", muted ? "Bật âm thanh" : "Tắt âm thanh");
+      };
+
+      const showReady = () => {
+        loadingStatus.hidden = true;
+        errorStatus.hidden = true;
+      };
+
+      video.addEventListener("loadeddata", () => {
+        showReady();
+        logEvent("loadeddata");
+      });
+
+      video.addEventListener("playing", () => {
+        playingSeen = true;
+        showReady();
+        motionButton.hidden = true;
+        logEvent("playing");
+      });
+
+      ["loadstart", "loadedmetadata", "canplay", "canplaythrough", "play", "pause", "waiting", "stalled", "suspend", "error", "ended"].forEach((name) => video.addEventListener(name, () => logEvent(name)));
+
+      const attemptAutoplay = (reason = "initial") => {
+        if (playingSeen || autoplayStopped || autoplayAttempts >= 2) return;
+        autoplayAttempts += 1;
+        video.muted = true;
+        video.defaultMuted = true;
+        playResult = `pending (${reason})`;
+        renderDebug();
+        const playPromise = video.play();
+        Promise.resolve(playPromise).then(() => {
+          playResult = "fulfilled";
+          renderDebug();
+        }).catch((error) => {
+          playResult = "rejected";
+          rejectionName = error?.name || "UnknownError";
+          rejectionMessage = error?.message || String(error);
+          renderDebug();
+          if (rejectionName === "NotAllowedError") {
+            autoplayStopped = true;
+            showFallback();
+          }
+        });
+      };
+
+      video.addEventListener("loadedmetadata", () => attemptAutoplay("loadedmetadata"));
+      video.addEventListener("canplay", () => attemptAutoplay("canplay"));
+
+      video.addEventListener("error", () => {
+        loadingStatus.hidden = true;
+        errorStatus.hidden = false;
+        soundButton.disabled = true;
+        motionButton.hidden = true;
+        logEvent("error");
+      });
+
+      soundButton.addEventListener("click", async () => {
+        const nextMuted = !video.muted;
+        video.muted = nextMuted;
+
+        try {
+          if (video.paused) await video.play();
+        } catch (error) {
+          rejectionName = error?.name || "UnknownError";
+          rejectionMessage = error?.message || String(error);
+          video.muted = true;
+        }
+
+        renderSoundState();
+      });
+
+      motionButton.addEventListener("click", async () => {
+        try {
+          video.muted = true;
+          video.defaultMuted = true;
+          await video.play();
+          autoplayStopped = false;
+          motionButton.hidden = true;
+          playResult = "fulfilled (fallback click)";
+        } catch (error) {
+          rejectionName = error?.name || "UnknownError";
+          rejectionMessage = error?.message || String(error);
+          video.muted = true;
+          renderSoundState();
+        }
+        renderDebug();
+      });
+
+      renderSoundState();
+      renderDebug();
+      attemptAutoplay();
+    })();
+  </script>
+</body>
+</html>

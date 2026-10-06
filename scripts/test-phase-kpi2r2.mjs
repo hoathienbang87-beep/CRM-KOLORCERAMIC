@@ -64,7 +64,7 @@ check(/\.storage\.from\(KPI2_EVIDENCE_BUCKET\)\.remove/.test(app), "Frontend Sto
 check(/crm_kpi_finalize_discard_staged_evidence/.test(app), "Frontend finalize-discard RPC missing.");
 check(app.indexOf("crm_kpi_request_discard_staged_evidence") < app.indexOf(".storage.from(KPI2_EVIDENCE_BUCKET).remove") && app.indexOf(".storage.from(KPI2_EVIDENCE_BUCKET).remove") < app.indexOf("crm_kpi_finalize_discard_staged_evidence"), "Frontend discard step order is unsafe.");
 check(/Bạn có muốn hủy/.test(app), "Cancel form prompt missing.");
-check(/active\.length\+files\.length>2/.test(app), "Upload replacement/max-two guard missing.");
+check(/Number\(kpi2ClaimState\.evidenceMax\)/.test(app) && /remaining=Math\.max\(0,max-activeCount\)/.test(app) && /files\.slice\(0,remaining\)/.test(app), "Upload guard must enforce the selected assignment max without replacement.");
 check(/pendingDiscard/.test(app), "Submit must block while discard is incomplete.");
 check(!/service_role|sb_secret_/i.test(app), "Frontend must not include privileged key paths.");
 

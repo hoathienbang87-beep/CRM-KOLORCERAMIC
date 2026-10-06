@@ -6,7 +6,7 @@ const html = await readFile(new URL("index.html", root), "utf8");
 const app = await readFile(new URL("js/features/crm-app.js", root), "utf8");
 
 const overview = html.slice(html.indexOf('id="overviewDashboard"'), html.indexOf('id="reportsPanel"'));
-const reports = html.slice(html.indexOf('id="reportsPanel"'), html.indexOf('id="productsPanel"'));
+const reports = html.slice(html.indexOf('id="reportsPanel"'), html.indexOf('id="needCarePanel"'));
 assert.match(overview, /id="overviewCustomerCharts"[\s\S]*?Tổng quan khách hàng/);
 assert.match(overview, /Khách hàng theo kênh[\s\S]*?id="channelReportChart"[\s\S]*?Tăng trưởng khách hàng theo tháng[\s\S]*?id="growthChart"/);
 for (const id of ["growthChart", "channelReportChart"]) assert.equal((html.match(new RegExp(`id="${id}"`, "g")) || []).length, 1);

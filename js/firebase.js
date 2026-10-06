@@ -1,20 +1,10 @@
-const config = window.CRM_SUPABASE_CONFIG || {};
-const createClient = window.supabase?.createClient;
-if (!createClient) {
-  throw new Error("Không tải được thư viện Supabase. Hãy kiểm tra mạng hoặc CDN jsdelivr.");
-}
+import { createSupabaseBrowserClient, readSupabaseBrowserConfig } from "./shared/supabase-client.js";
+
 export const app = {};
 export const db = {};
 export const auth = {};
 
-export const supabase = createClient(config.url || "https://example.supabase.co", config.anonKey || "anon-key", {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storageKey: "crm-kolor-supabase-auth"
-  }
-});
+export const supabase = createSupabaseBrowserClient({authMode:"authenticated"});
 
 const tableMap = {
   users: "app_users",
@@ -293,6 +283,10 @@ function rowFor(ref, input) {
         unit: first(data.unit, null),
         qty: first(data.qty, 1),
         unit_price: first(data.unitPrice, data.unit_price, 0),
+        width_mm_snapshot: data.widthMmSnapshot ?? data.width_mm_snapshot ?? null,
+        height_mm_snapshot: data.heightMmSnapshot ?? data.height_mm_snapshot ?? null,
+        surface_snapshot: data.surfaceSnapshot ?? data.surface_snapshot ?? null,
+        list_price_snapshot: data.listPriceSnapshot ?? data.list_price_snapshot ?? null,
         discount_amount: first(data.discountAmount, data.discount_amount, 0),
         line_total: first(data.lineTotal, data.line_total, 0),
         sort_order: first(data.sortOrder, data.sort_order, 0),
@@ -717,6 +711,7 @@ export async function signInWithEmailAndPassword(_auth, email, password) {
 export class GoogleAuthProvider {}
 
 export async function signInWithPopup() {
+  const config = readSupabaseBrowserConfig();
   if (!config.url || !config.anonKey || config.url.includes("example.supabase.co")) {
     throw new Error("Thiếu cấu hình Supabase Auth. Kiểm tra file js/supabase-config.js.");
   }

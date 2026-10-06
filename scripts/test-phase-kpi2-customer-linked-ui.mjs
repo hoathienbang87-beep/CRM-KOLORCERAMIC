@@ -2,15 +2,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   buildKpiCustomerEventPayload,
+  customerKpiQuickActionHtml,
   createKpiCustomerSearchAdapter,
   createKpiEventFormState,
   eligibleKpiCustomerAssignments,
+  KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,
   kpiCustomerRelationMode,
   kpiCustomerSubmitError,
+  kpiEvidenceContract,
+  kpiEvidenceLabel,
   normalizeKpiCustomer,
   resetKpiEventFormState,
   setKpiEventAssignment,
-  setKpiEventCustomer
+  setKpiEventCustomer,
+  validateKpiEvidenceCount
 } from "../js/features/kpi-customer-link.js";
 
 let checks = 0;
@@ -22,6 +27,16 @@ const none = assignment("none", "NONE", "KPI không gắn khách");
 const legacy = {assignment_id:"legacy", definition_snapshot:{name:"Legacy"}};
 const closed = {assignmentId:"closed",periodStatus:"CLOSED",definitionSnapshot:{name:"Closed",customer_relation_mode:"REQUIRED"}};
 const customer = {id:"customer-a", name:"Nguyễn A", company_name:"Công ty A", phone_raw:"0901000000", phone_normalized:"0901000000", address:"Hà Nội"};
+const evidenceAssignment = (id, evidenceRequired, max, customerMode = "NONE") => ({assignmentId:id, periodStatus:"ACTIVE", definitionSnapshot:{name:id, customer_relation_mode:customerMode, evidence_required:evidenceRequired, max_images_per_event:max}});
+const evidenceRequired = evidenceAssignment("evidence-required", true, 1, "REQUIRED");
+const evidenceOptional = evidenceAssignment("evidence-optional", false, 2, "OPTIONAL");
+const evidenceNone = evidenceAssignment("evidence-none", true, 0, "NONE");
+
+const quickAction = customerKpiQuickActionHtml(customer.id, true);
+check(quickAction.includes('data-kpi2-customer-entry="customer-a"') && quickAction.includes("Đề xuất KPI"), "Sale Customer row renders the KPI-2 quick action with canonical Customer id");
+check(customerKpiQuickActionHtml(customer.id, false) === "", "non-submit roles do not receive a Customer-row KPI action");
+check(customerKpiQuickActionHtml('customer-\"unsafe', true).includes("&quot;unsafe"), "Customer row action escapes the Customer id");
+check(KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE === "Hiện bạn chưa có KPI phù hợp để đề xuất cho khách hàng này.", "no-eligible state uses the approved business message");
 
 check(kpiCustomerRelationMode(required) === "REQUIRED", "REQUIRED comes from assignment snapshot");
 check(kpiCustomerRelationMode(optional) === "OPTIONAL", "OPTIONAL comes from assignment snapshot");
@@ -30,6 +45,11 @@ check(kpiCustomerRelationMode(legacy) === "NONE", "legacy assignment safely fall
 check(kpiCustomerRelationMode({definition_snapshot:{customer_relation_mode:"BROKEN"}}) === "NONE", "invalid mode safely falls back to NONE");
 check(eligibleKpiCustomerAssignments([required, optional, none, legacy, closed]).length === 2, "Customer entry excludes NONE, legacy and non-ACTIVE assignments");
 
+check(JSON.stringify(kpiEvidenceContract(evidenceRequired)) === JSON.stringify({mode:"REQUIRED",min:1,max:1,required:true}), "Evidence REQUIRED derives from assignment snapshot");
+check(JSON.stringify(kpiEvidenceContract(evidenceOptional)) === JSON.stringify({mode:"OPTIONAL",min:0,max:2,required:false}), "Evidence OPTIONAL derives from assignment snapshot");
+check(JSON.stringify(kpiEvidenceContract(evidenceNone)) === JSON.stringify({mode:"NONE",min:0,max:0,required:false}), "max zero overrides evidence_required and derives NONE");
+check(kpiEvidenceContract({definition_snapshot:{evidence_required:false}}).max === 2, "legacy snapshot follows backend max fallback");
+
 const normalized = normalizeKpiCustomer(customer);
 check(normalized.id === "customer-a", "Customer VM keeps id");
 check(normalized.companyName === "Công ty A", "Customer VM normalizes company");
@@ -37,7 +57,19 @@ check(normalized.phoneRaw === "0901000000", "Customer VM normalizes phone");
 check(normalized.address === "Hà Nội", "Customer VM normalizes address");
 
 const state = createKpiEventFormState();
-check(["assignment","customer","customerRelationMode","eventContent","eventTime","claimedValue","evidence","location","note","submitting","errors"].every(key => key in state), "shared form state covers Event and Customer concerns");
+check(["assignment","customer","customerRelationMode","evidenceMode","evidenceRequired","evidenceMin","evidenceMax","eventContent","eventTime","claimedValue","evidence","location","note","submitting","errors"].every(key => key in state), "shared form state covers Customer and Evidence contracts");
+setKpiEventAssignment(state, evidenceRequired);
+check(state.evidenceMode === "REQUIRED" && state.evidenceRequired && state.evidenceMin === 1 && state.evidenceMax === 1, "assignment transition freezes REQUIRED max one in form state");
+check(kpiEvidenceLabel(state) === "Ảnh minh chứng (bắt buộc, tối đa 1)", "REQUIRED label is assignment-aware");
+check(!validateKpiEvidenceCount(state, 0).ok && /ít nhất 1 ảnh/.test(validateKpiEvidenceCount(state, 0).message), "REQUIRED zero is locally rejected");
+check(validateKpiEvidenceCount(state, 1).ok, "REQUIRED one is accepted");
+check(!validateKpiEvidenceCount(state, 2).ok, "REQUIRED max one rejects two");
+state.evidence=["evidence-a"];
+setKpiEventAssignment(state, evidenceNone);
+check(state.evidenceMode === "NONE" && state.evidence.length === 0, "switching REQUIRED to NONE clears incompatible local evidence state");
+check(validateKpiEvidenceCount(state, 0).ok && !validateKpiEvidenceCount(state, 1).ok, "NONE accepts zero and rejects Evidence");
+setKpiEventAssignment(state, evidenceOptional);
+check(state.evidenceMode === "OPTIONAL" && validateKpiEvidenceCount(state, 0).ok && validateKpiEvidenceCount(state, 2).ok && !validateKpiEvidenceCount(state, 3).ok, "OPTIONAL accepts zero through max and blocks max plus one");
 setKpiEventAssignment(state, required);
 check(state.customerRelationMode === "REQUIRED", "assignment transition sets REQUIRED mode");
 let payload = buildKpiCustomerEventPayload(state, [{sourceType:"MANUAL"}]);
@@ -90,8 +122,18 @@ check(!app.includes("callCrmRpc('crm_kpi_search_accessible_customers'"), "UI doe
 check(/debounce\(\(\{value,session\}\)=>[\s\S]*,320\)/.test(app), "Customer search is debounced at 320ms");
 check(/kpi2CustomerEntryBtn[\s\S]*!isSale\(\)/.test(app), "Customer Detail action is Sale-gated");
 check(/id="kpi2CustomerEntryBtn"[^>]*>Đề xuất KPI</.test(view), "Customer Detail action exists");
+check(/customerKpiQuickActionHtml\(c\.id,isSale\(\)\)/.test(app), "every rendered Sale Customer row receives the shared quick-action markup");
+check(/data-kpi2-customer-entry[\s\S]*openKpi2ClaimFromCustomer\(kpi2CustomerEntryId\)/.test(app), "Customer-list click delegates to the same canonical Customer entry point");
+check(/openKpi2ClaimFromCustomer[\s\S]*customers\.find\(row=>clean\(row\.id\)===clean\(customerId\)\)[\s\S]*openKpi2EventForm\(\{customer,entryPoint:'customer'\}\)/.test(app), "clicked/newly rendered Customer resolves from live list state and enters the shared form");
+check((app.match(/KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE/g) || []).length === 3, "all Customer entry no-eligible exits share the approved message constant");
+check(/const canLabel = btn\?\.tagName === "BUTTON"[\s\S]*if \(canLabel\) \{[\s\S]*if \(label\) btn\.textContent = label/.test(app), "shared action runner preserves native select options while loading");
+check(/data-open-care="\$\{esc\(c\.id\)\}"[\s\S]*data-open-deal="\$\{esc\(c\.id\)\}"[\s\S]*customerKpiQuickActionHtml/.test(app), "care and deal actions remain beside the KPI quick action");
 check(["kpi2ClaimAssignmentSelect","kpi2CustomerSearchInput","kpi2CustomerSearchResults","kpi2SelectedCustomer","kpi2EventFields"].every(id => view.includes(`id="${id}"`)), "shared form contains assignment and Customer UI");
 check(!/Proposal|proposal/.test(app.slice(app.indexOf("async function openKpi2ClaimFromCustomer"), app.indexOf("async function runKpi2CustomerSearch"))), "Customer entry does not invoke legacy Proposal");
+check(!/kpi_proposals/.test(app.slice(app.indexOf("function renderCustomers"), app.indexOf("function excelCell"))), "Customer-list renderer has no legacy kpi_proposals dependency");
 check(/p_events:linkedPayload\.events/.test(app), "canonical submit sends only sanitized Customer-linked Event payloads");
+check(/validateKpiEvidenceCount\(kpi2ClaimState,evidence\.length\)[\s\S]*callCrmRpc\('crm_kpi_submit_events'/.test(app), "Evidence validation runs before the canonical submit RPC");
+check(/kpi2ClaimState\.evidenceMode==='NONE'[\s\S]*return notice\('KPI này không nhận ảnh minh chứng\.'/s.test(app), "NONE blocks staging before the upload path");
+check(!/KPI2_EVIDENCE_MAX_FILES=2/.test(app), "Event Evidence capacity is no longer a hardcoded global two");
 
 console.log(`KPI-2 Phase 3 Customer-linked Sale UI static: ${checks} checks PASS`);

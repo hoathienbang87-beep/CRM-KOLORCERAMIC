@@ -1,6 +1,14 @@
-import { productQuantity, productMoney, productSizeLabel, productFromCanonical, productChanges, productError } from "./product-catalog.js";
-import { createProductImportController } from "./product-import-ui.js";
-import { uploadProductImportSource } from "./product-import-client.js";
+import { productQuantity, productMoney, productSizeLabel, productFromCanonical } from "./product-catalog.js";
+import {
+  createCrmProductSelector,
+  crmProductLabel,
+  crmProductSize,
+  crmProductWebsiteUrl,
+  decodeProductSnapshot,
+  encodeProductSnapshot,
+  quoteSnapshotFromItem,
+  quoteSnapshotFromProduct
+} from "./crm-product-selector.js";
 import { CRM_NAV_ITEMS, CUSTOMER_WORKSPACES, KPI_WORKSPACES, REPORT_WORKSPACES, CRM_HASH_ROUTES, normalizeWorkspaceHash, workspaceForHash } from "../components/app-shell.js";
 import {
   auth,
@@ -87,6 +95,7 @@ import {
   eligibleKpiCustomerAssignments,
   KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,
   kpiCustomerSubmitError,
+  validateKpiEvidenceCount,
   normalizeKpiCustomer,
   renderKpiCustomerLinkUi,
   resetKpiEventFormState,
@@ -185,12 +194,14 @@ let renderQueuedWhileHidden = false;
 const pagingState = {
   customers: {limit: 40, step: 40},
   tasks: {limit: 30, step: 30},
-  products: {limit: 80, step: 80},
   saleActivity: {limit: 80, step: 80},
   adminAudit: {limit: 80, step: 80}
 };
 let pendingLoginSuccessNotice = false;
 let authBootstrapGeneration = 0;
+const CUSTOMER_OWNER_UNASSIGNED_VALUE = "__UNASSIGNED__";
+const customerOwnerIntent = {kind:"unset", value:"", explicit:false, unavailable:false};
+let customerCreatePartialState = null;
 const KPI_EVIDENCE_BUCKET = "kpi-evidence";
 const KPI2_EVIDENCE_BUCKET = "kpi2-evidence";
 const KPI2_EVIDENCE_SIGNED_URL_SECONDS = 120;
@@ -254,6 +265,66 @@ async function callCrmRpc(name, args = {}) {
   const {data, error} = await supabase.rpc(name, rpcValue(args));
   if (error) throw error;
   return data;
+}
+
+let crmProductSelector = null;
+function catalogSelector() {
+  if (!crmProductSelector) crmProductSelector = createCrmProductSelector({rpc: callCrmRpc});
+  return crmProductSelector;
+}
+
+function openProductWebsite(product) {
+  if (!product) return notice("Không tìm thấy sản phẩm để mở website.", true);
+  const url = crmProductWebsiteUrl(product, window.location.origin);
+  if (url) window.open(url, "_blank", "noopener");
+}
+
+function rememberInterestProduct(input, product) {
+  if (!input || !product) return;
+  const snapshot = quoteSnapshotFromProduct(product);
+  input.value = crmProductLabel(product);
+  input.dataset.productSnapshot = encodeProductSnapshot(snapshot);
+  input.dataset.productSelectionValue = input.value;
+  const websiteButton = document.querySelector(`[data-product-website-for="${input.id}"]`);
+  if (websiteButton) {
+    websiteButton.dataset.productSnapshot = input.dataset.productSnapshot;
+    websiteButton.classList.remove("hide");
+  }
+  input.dispatchEvent(new Event("input", {bubbles:true}));
+}
+
+function interestProductFields(input) {
+  const snapshot = decodeProductSnapshot(input?.dataset.productSnapshot || "");
+  if (!snapshot.productId) return {};
+  return {
+    needProductId: snapshot.productId,
+    needProductCode: snapshot.productSku || "",
+    needProductSnapshot: snapshot
+  };
+}
+
+function restoreInterestProduct(input, source = {}) {
+  if (!input) return;
+  const snapshot = source.needProductSnapshot || (source.needProductId ? {
+    productId: source.needProductId,
+    productSku: source.needProductCode || "",
+    productName: source.need || ""
+  } : null);
+  input.dataset.productSnapshot = snapshot ? encodeProductSnapshot(snapshot) : "";
+  input.dataset.productSelectionValue = snapshot ? input.value : "";
+  const websiteButton = document.querySelector(`[data-product-website-for="${input.id}"]`);
+  if (websiteButton) {
+    websiteButton.dataset.productSnapshot = input.dataset.productSnapshot;
+    websiteButton.classList.toggle("hide", !snapshot?.productId);
+  }
+}
+
+function clearInterestProductIfChanged(input) {
+  if (!input?.dataset.productSnapshot) return;
+  if (clean(input.value) === clean(input.dataset.productSelectionValue)) return;
+  input.dataset.productSnapshot = "";
+  input.dataset.productSelectionValue = "";
+  document.querySelector(`[data-product-website-for="${input.id}"]`)?.classList.add("hide");
 }
 
 const searchAccessibleKpiCustomers = createKpiCustomerSearchAdapter(callCrmRpc);
@@ -377,8 +448,7 @@ const viewDependencies = {
   customers: ["customers", "customerAssignments", "careLogs", "deals", "settings", "users"],
   kpi: ["kpiPeriods", "kpiDefinitions", "kpiAssignments", "users"],
   reports: ["customers", "careLogs", "deals", "auditLogs", "settings", "users"],
-  admin: ["customers", "customerAssignments", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings"],
-  products: ["products"]
+  admin: ["customers", "customerAssignments", "careLogs", "deals", "users", "auditLogs", "settings", "companySettings"]
 };
 const scheduleRenderAll = debounce(() => {
   if (document.hidden) {
@@ -401,7 +471,7 @@ function markDirty(...names) {
 }
 
 function activeViewKey() {
-  return ["customers","kpi","reports","admin","products"].includes(activeMainView) ? activeMainView : "crm";
+  return ["customers","kpi","reports","admin"].includes(activeMainView) ? activeMainView : "crm";
 }
 
 function activeViewNeedsRender() {
@@ -458,9 +528,6 @@ function goToRoute(path) {
   window.history.pushState({}, "", path);
   showApp();
 }
-
-const productImportController=createProductImportController({rpc:callCrmRpc,notice,sourceUploader:({batchId,file})=>uploadProductImportSource({supabaseClient:supabase,batchId,file})});
-productImportController.bind();
 
 const workspaceByMainView = view => CRM_NAV_ITEMS.find(item => item.mainView === view);
 const canUseNavItem = item => item?.capability === "crm"
@@ -547,7 +614,8 @@ function navigateToWorkspace(target, {replace = false} = {}) {
   }
   if (item.path) {
     setMobileNavigationOpen(false, {restoreFocus:false});
-    return goToRoute(item.path);
+    window.location.assign(item.path);
+    return item;
   }
   if (window.location.hash !== item.hash) {
     const method = replace ? "replaceState" : "pushState";
@@ -623,10 +691,10 @@ function fillSelect(id, values, placeholder="-- Chọn --", allLabel="") {
 function ownerOptions() {
   const activeUserProfiles = users
     .filter(u => u.active !== false && clean(u.lifecycleStatus || "active").toLowerCase() === "active" && !["admin","owner"].includes(clean(u.role).toLowerCase()))
-    .map(u => ({name: clean(u.name || u.email), email: clean(u.email)}))
+    .map(u => ({id: clean(u.id || u.uid), name: clean(u.name || u.email), email: clean(u.email)}))
     .filter(u => u.name && u.email);
   if (activeUserProfiles.length) return activeUserProfiles;
-  const self = {name: ownerName(), email: ownerEmail()};
+  const self = {id: clean(appUser?.id || appUser?.uid), name: ownerName(), email: ownerEmail()};
   return self.name && self.email ? [self] : [];
 }
 
@@ -649,6 +717,147 @@ function reportOwnerKeys() {
 function ownerProfileByValue(value) {
   const key = clean(value);
   return ownerOptions().find(o => clean(o.email) === key || clean(o.name) === key) || {name:key, email:key};
+}
+
+function setCustomerOwnerIntent(value, explicit = true) {
+  const key = clean(value);
+  customerOwnerIntent.explicit = explicit;
+  customerOwnerIntent.unavailable = false;
+  if (key === CUSTOMER_OWNER_UNASSIGNED_VALUE) {
+    customerOwnerIntent.kind = "unassigned";
+    customerOwnerIntent.value = "";
+  } else if (key) {
+    customerOwnerIntent.kind = "sale";
+    customerOwnerIntent.value = key;
+  } else {
+    customerOwnerIntent.kind = "unset";
+    customerOwnerIntent.value = "";
+  }
+}
+
+function syncCustomerCreateActionState() {
+  const button = $("saveCustomerBtn");
+  if (!button) return;
+  if (customerCreatePartialState) {
+    button.disabled = true;
+    button.textContent = "Khách đã tạo · cần xử lý phân công";
+    button.dataset.customerCreatePartial = "true";
+    return;
+  }
+  if (button.dataset.customerCreatePartial === "true") {
+    button.disabled = false;
+    button.textContent = "Lưu khách";
+    delete button.dataset.customerCreatePartial;
+  }
+}
+
+function resetCustomerCreateState() {
+  setCustomerOwnerIntent("", false);
+  customerCreatePartialState = null;
+  syncCustomerCreateActionState();
+}
+
+function hydrateCustomerOwnerSelect() {
+  const element = $("owner");
+  if (!element) return;
+  const previousDomValue = clean(element.value);
+  if (!customerOwnerIntent.explicit && previousDomValue) setCustomerOwnerIntent(previousDomValue, false);
+  const profiles = ownerOptions();
+  fillSelect("owner", profiles);
+
+  const unassignedOption = document.createElement("option");
+  unassignedOption.value = CUSTOMER_OWNER_UNASSIGNED_VALUE;
+  unassignedOption.textContent = "Chưa phân công (hàng chờ phân bổ)";
+  element.add(unassignedOption, Math.min(1, element.options.length));
+
+  if (!isManager()) {
+    element.value = ownerEmail();
+    customerOwnerIntent.unavailable = false;
+    return;
+  }
+  if (customerOwnerIntent.kind === "unassigned") {
+    element.value = CUSTOMER_OWNER_UNASSIGNED_VALUE;
+    customerOwnerIntent.unavailable = false;
+    return;
+  }
+  if (customerOwnerIntent.kind !== "sale") {
+    element.value = "";
+    customerOwnerIntent.unavailable = false;
+    return;
+  }
+
+  const intended = clean(customerOwnerIntent.value);
+  const profile = profiles.find(item => clean(item.email) === intended || clean(item.name) === intended);
+  if (profile) {
+    customerOwnerIntent.value = clean(profile.email);
+    customerOwnerIntent.unavailable = false;
+    element.value = clean(profile.email);
+    return;
+  }
+
+  const unavailableOption = document.createElement("option");
+  unavailableOption.value = intended;
+  unavailableOption.textContent = `Đã chọn trước đó (${intended}) · không còn khả dụng`;
+  unavailableOption.disabled = true;
+  element.append(unavailableOption);
+  element.value = intended;
+  customerOwnerIntent.unavailable = true;
+}
+
+function customerOwnerSelectionForSubmit() {
+  if (!isManager()) {
+    const email = ownerEmail();
+    const name = ownerName();
+    if (!email && !name) return {error:"Sale phải có hồ sơ người phụ trách hợp lệ trước khi tạo khách."};
+    return {kind:"sale", profile:{id:clean(appUser?.id || appUser?.uid), name, email}, intendedEmail:email};
+  }
+
+  if (!customerOwnerIntent.explicit) setCustomerOwnerIntent($("owner")?.value || "", false);
+  if (customerOwnerIntent.kind === "unset") {
+    return {error:"Vui lòng chọn nhân viên phụ trách hoặc chọn Chưa phân công."};
+  }
+  if (customerOwnerIntent.kind === "unassigned") {
+    return {kind:"unassigned", profile:{id:"", name:"", email:""}, intendedEmail:""};
+  }
+
+  const intended = clean(customerOwnerIntent.value);
+  const profile = ownerOptions().find(item => clean(item.email) === intended || clean(item.name) === intended);
+  if (customerOwnerIntent.unavailable || !profile || !clean(profile.email)) {
+    return {error:"Nhân viên phụ trách đã chọn không còn khả dụng. Vui lòng chọn lại trước khi lưu."};
+  }
+  if (normalizeKey(profile.email) !== normalizeKey(intended)) {
+    return {error:"Không xác nhận được nhân viên phụ trách đã chọn. Vui lòng chọn lại trước khi lưu."};
+  }
+  return {kind:"sale", profile, intendedEmail:clean(profile.email)};
+}
+
+function normalizeCustomerCreateResult(value) {
+  let row = Array.isArray(value) ? value[0] : value;
+  if (row && typeof row === "object" && row.data != null && row.id == null) row = Array.isArray(row.data) ? row.data[0] : row.data;
+  if (!row || typeof row !== "object") row = {};
+  const assignedValue = row.assigned;
+  const assigned = assignedValue === true || clean(assignedValue).toLowerCase() === "true"
+    ? true
+    : assignedValue === false || clean(assignedValue).toLowerCase() === "false" ? false : null;
+  return {
+    id: clean(row.id || row.customerId || row.customer_id),
+    assigned,
+    ownerUserId: clean(row.ownerUserId || row.owner_user_id),
+    ownerEmail: clean(row.ownerEmail || row.owner_email)
+  };
+}
+
+function setCustomerCreatePartialState(result, intendedOwnerEmail) {
+  customerCreatePartialState = {
+    customerId: clean(result.id),
+    intendedOwnerEmail: clean(intendedOwnerEmail),
+    assigned: result.assigned,
+    ownerUserId: clean(result.ownerUserId),
+    ownerEmail: clean(result.ownerEmail)
+  };
+  syncCustomerCreateActionState();
+  const identity = customerCreatePartialState.customerId || "không xác định được mã";
+  notice(`Khách hàng ${identity} đã được tạo nhưng chưa xác nhận đúng phân công. Không bấm lưu lại; hãy mở khách đã tạo và xử lý qua quy trình phân công.`, true);
 }
 
 function hydrateOwnerDependentFilters() {
@@ -697,7 +906,7 @@ function hydrateSelects() {
   fillSelect("customerType", settings.customerTypes);
   fillSelect("potentialLevel", settings.potentialLevels || DEFAULT_SETTINGS.potentialLevels);
   hydrateChannelOptions();
-  fillSelect("owner", ownerOptions());
+  hydrateCustomerOwnerSelect();
   fillSelect("editSource", settings.sources);
   fillSelect("editCustomerType", settings.customerTypes);
   fillSelect("editPotentialLevel", settings.potentialLevels || DEFAULT_SETTINGS.potentialLevels);
@@ -1278,31 +1487,6 @@ function productByAnyValue(value) {
   )) || null;
 }
 
-function productSearchText(p) {
-  return normalizeKey([p.code, p.name, productSizeLabel(p), p.surface, p.origin, p.pricePerM2, p.pricePerBox, p.pricePerPiece].join(" "));
-}
-
-function hydrateProductFilters() {
-  if (!$("productFilterSize")) return;
-  fillSelect("productFilterSize", uniq(products.map(productSizeLabel).filter(value => value !== "—")).sort(), "", "Tất cả kích thước");
-  fillSelect("productFilterSurface", uniq(products.map(p => p.surface)).sort(), "", "Tất cả bề mặt");
-  fillSelect("productFilterOrigin", uniq(products.map(p => p.origin)).sort(), "", "Tất cả xuất xứ");
-}
-
-function visibleProducts() {
-  const q = normalizeKey($("productSearchBox")?.value);
-  const size = clean($("productFilterSize")?.value);
-  const surface = clean($("productFilterSurface")?.value);
-  const origin = clean($("productFilterOrigin")?.value);
-  return products.filter(p => {
-    if (q && !productSearchText(p).includes(q)) return false;
-    if (size && productSizeLabel(p) !== size) return false;
-    if (surface && clean(p.surface) !== surface) return false;
-    if (origin && clean(p.origin) !== origin) return false;
-    return true;
-  });
-}
-
 function renderProductOptions() {
   const el = $("productOptions");
   if (!el) return;
@@ -1333,6 +1517,9 @@ function inventorySignedQty(type, qty) {
 function hydrateInventoryProductOptions() {
   const el = $("inventoryProduct");
   if (!el) return;
+  if (!document.querySelector('[data-product-selector-context="inventory"]')) {
+    el.insertAdjacentHTML("afterend", '<div class="product-inline-actions"><button class="small" type="button" data-product-selector-context="inventory">Chọn từ catalog</button></div>');
+  }
   const current = el.value;
   el.innerHTML = `<option value="">-- Chọn sản phẩm --</option>` + products.map(p => {
     return `<option value="${esc(p.id)}">${esc([productSku(p), p.name, `Tồn ${productStockText(p)}`].filter(Boolean).join(" · "))}</option>`;
@@ -1365,7 +1552,7 @@ function renderInventory() {
   if (!$("inventoryRows")) return;
   $("inventoryFormPanel")?.classList.toggle("hide", !isManager());
   hydrateInventoryProductOptions();
-  const visible = visibleProducts();
+  const visible = products;
   const knownStock = visible.map(productInventoryQty).filter(qty => qty !== null);
   const totalStock = knownStock.reduce((sum,qty) => sum + qty, 0);
   const inStock = knownStock.filter(qty => qty > 0).length;
@@ -1437,7 +1624,7 @@ async function saveInventoryMovement() {
     qty
   }).catch(() => {});
   clearInventoryForm();
-  renderProducts();
+  renderInventory();
   notice("Đã lưu phiếu kho.");
 }
 
@@ -1460,222 +1647,28 @@ async function softDeleteInventoryMovement(id) {
   notice("Đã xóa mềm phiếu kho.");
 }
 
-// PRODUCT-R2: clean typed catalog. Product stock is a nullable manual reference;
-// inventory_movements is not the Product stock authority. All mutations use RPC.
-let productDrawerEditingId = null;
-let productDrawerOriginal = null;
-let productsLoading = true;
-let productsLoadError = false;
+// Catalog stays read-only in CRM because quotes, orders, reports and inventory
+// still consume product snapshots. Catalog mutations live only in /admin.
 let productsReadGeneration = 0;
-let productHistoryGeneration = 0;
-const canEditProduct = () => ["sale","manager","admin","owner"].includes(roleKey());
 async function reloadProducts() {
   const generation = ++productsReadGeneration;
   try {
     const rows = await callCrmRpc("crm_list_products", {});
     if (generation !== productsReadGeneration) return;
     products = rows.map(productFromCanonical);
-    productsLoadError = false;
   } catch {
     if (generation !== productsReadGeneration) return;
-    productsLoadError = true;
+    return;
   }
   if (generation === productsReadGeneration) {
-    productsLoading = false;
-    renderProducts();
+    renderProductOptions();
+    hydrateInventoryProductOptions();
+    renderInventory();
   }
-}
-
-function productUpdatedByLabel(p) {
-  const who = p?.updatedByUserId ? clean(p?.updatedByName) : "";
-  const when = p?.updatedAt ? toDate(p.updatedAt) : null;
-  const whenText = when && !Number.isNaN(when.getTime()) ? when.toLocaleString("vi-VN") : "";
-  if (!whenText && !who) return "Chưa có thông tin người cập nhật.";
-  if (!who) return `Cập nhật cuối: ${whenText} · Chưa có thông tin người cập nhật`;
-  if (!whenText) return `Cập nhật cuối bởi ${who}`;
-  return `Cập nhật cuối: ${whenText} · bởi ${who}`;
 }
 
 function productStockText(p) {
   return productQuantity(p?.stockQuantity);
-}
-
-function productActorLabel(id, name) {
-  if (!id) return "Chưa có thông tin";
-  return clean(name) || "Nhân viên không còn tên hiển thị";
-}
-
-function productTimeLabel(value) {
-  const date = value ? toDate(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString("vi-VN") : "Chưa có thông tin";
-}
-
-function renderProductAuditMeta(p) {
-  $("productCreatedByText").textContent = p ? productActorLabel(p.createdByUserId, p.createdByName) : "Sẽ ghi khi lưu";
-  $("productCreatedAtText").textContent = p ? productTimeLabel(p.createdAt) : "Sẽ ghi khi lưu";
-  $("productUpdatedByText").textContent = p ? productActorLabel(p.updatedByUserId, p.updatedByName) : "Sẽ ghi khi lưu";
-  $("productUpdatedAtText").textContent = p ? productTimeLabel(p.updatedAt) : "Sẽ ghi khi lưu";
-}
-
-function renderProductHistory(rows, loading = false, failed = false) {
-  const target = $("productHistoryList");
-  if (!target) return;
-  if (loading) return void (target.innerHTML = `<div class="muted">Đang tải lịch sử giá...</div>`);
-  if (failed) return void (target.innerHTML = `<div class="muted">Không tải được lịch sử giá.</div>`);
-  target.innerHTML = rows.length ? rows.map(row => {
-    const effective = row.effective_date ? new Date(`${row.effective_date}T00:00:00`).toLocaleDateString("vi-VN") : "—";
-    const source = row.source_type === "PDF_IMPORT" ? "PDF Import" : "Thủ công";
-    return `<article class="product-history-item">
-      <b>Hiệu lực ${esc(effective)}</b>
-      <div class="product-history-prices">
-        <span>Giá/m²: ${esc(productMoney(row.price_per_m2))}</span>
-        ${row.price_per_box == null ? "" : `<span>Giá/hộp: ${esc(productMoney(row.price_per_box))}</span>`}
-        ${row.price_per_piece == null ? "" : `<span>Giá/viên: ${esc(productMoney(row.price_per_piece))}</span>`}
-      </div>
-      <div class="product-history-meta">Nguồn: ${esc(source)} · Cập nhật bởi ${esc(productActorLabel(row.changed_by_user_id, row.changed_by_name))} · ${esc(productTimeLabel(row.changed_at))}</div>
-    </article>`;
-  }).join("") : `<div class="muted">Chưa có lịch sử giá.</div>`;
-}
-
-async function reloadProductHistory(productId) {
-  const generation = ++productHistoryGeneration;
-  renderProductHistory([], true);
-  try {
-    const rows = await callCrmRpc("crm_list_product_price_history", {p_product_id:productId});
-    if (generation !== productHistoryGeneration || productDrawerEditingId !== productId) return;
-    renderProductHistory(rows || []);
-  } catch {
-    if (generation === productHistoryGeneration && productDrawerEditingId === productId) renderProductHistory([], false, true);
-  }
-}
-
-function renderProducts() {
-  if (!$("productsPanel")) return;
-  $("addProductBtn")?.classList.toggle("hide", !canEditProduct());
-  hydrateProductFilters();
-  renderProductOptions();
-  const rows = visibleProducts();
-  const page = productsLoading || productsLoadError ? [] : pageRows("products", rows);
-  const message = productsLoading ? "Đang tải sản phẩm..." : productsLoadError ? "Không tải được danh sách sản phẩm." : products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm.";
-  const empty = `<div class="muted" role="status" style="padding:14px">${message}</div>`;
-
-  $("productRows").innerHTML = page.length ? page.map(p => `
-      <tr data-open-product="${esc(p.id)}" style="cursor:pointer" class="${p.active ? "" : "row-fail"}">
-        <td>${esc(productSku(p) || "—")}</td>
-        <td>${esc(p.name || "—")}${p.active ? "" : `<div><span class="pill red">Ngừng sử dụng</span></div>`}</td>
-        <td>${esc(productSizeLabel(p))}</td>
-        <td><b>${esc(productMoney(p.pricePerM2))}</b></td>
-        <td>${esc(productMoney(p.pricePerBox))}</td>
-        <td>${esc(productStockText(p))}</td>
-        <td>${esc(productTimeLabel(p.updatedAt))}<div class="muted">${esc(productActorLabel(p.updatedByUserId, p.updatedByName))}</div></td>
-      </tr>
-    `).join("") : `<tr><td colspan="7">${empty}</td></tr>`;
-
-  $("productCardList").innerHTML = page.length ? page.map(p => `
-      <div class="product-card" data-open-product="${esc(p.id)}">
-        <div class="product-card-main">
-          <div><b>${esc(p.name || productSku(p) || "Sản phẩm")}</b><div class="muted">${esc(productSku(p) || "Chưa có mã")} · ${esc(productSizeLabel(p))}${p.active ? "" : " · Ngừng sử dụng"}</div></div>
-          <div class="product-card-price"><b>Giá/m² ${esc(productMoney(p.pricePerM2))}</b><div class="muted">Tồn: ${esc(productStockText(p))}</div></div>
-        </div>
-      </div>
-    `).join("") : empty;
-
-  renderPager("productPager", "products", rows.length, "sản phẩm");
-  if(typeof productImportController!=="undefined") productImportController.render();
-}
-
-function openProductDrawer(id) {
-  const p = id ? products.find(x => x.id === id) : null;
-  if (id && !p) return notice("Không tìm thấy sản phẩm.", true);
-  if (!id && !canEditProduct()) return notice("Bạn không có quyền tạo sản phẩm.", true);
-  productDrawerOriginal = p ? { ...p } : null;
-  productDrawerEditingId = id || null;
-  $("productDrawerTitle").textContent = p ? (p.name || productSku(p) || "Sản phẩm") : "Thêm sản phẩm";
-  $("productDrawerMeta").textContent = p ? productUpdatedByLabel(p) : "Sản phẩm mới";
-  $("productCodeInput").value = p ? (productSku(p) || "") : "";
-  $("productNameInput").value = p ? (p.name || "") : "";
-  $("productWidthCmInput").value = p?.widthCm ?? "";
-  $("productHeightCmInput").value = p?.heightCm ?? "";
-  $("productSurfaceInput").value = p ? (p.surface || "") : "";
-  $("productOriginInput").value = p ? (p.origin || "") : "";
-  $("productPricePerM2Input").value = p?.pricePerM2 ?? "";
-  $("productPricePerBoxInput").value = p?.pricePerBox ?? "";
-  $("productPricePerPieceInput").value = p?.pricePerPiece ?? "";
-  $("productPiecesPerBoxInput").value = p?.piecesPerBox ?? "";
-  $("productSqmPerBoxInput").value = p?.sqmPerBox ?? "";
-  $("productPriceEffectiveDateInput").value = p?.priceEffectiveDate || todayIso();
-  $("productStockInput").value = p && p.stockQuantity !== null && p.stockQuantity !== undefined ? String(p.stockQuantity) : "";
-  const editing = !p;
-  $("productDrawer").querySelectorAll("input").forEach(input => input.disabled = !editing);
-  $("editProductBtn").classList.toggle("hide", editing);
-  $("saveProductBtn").classList.toggle("hide", !editing);
-  $("archiveProductBtn").classList.toggle("hide", !p || !isManager());
-  $("archiveProductBtn").textContent = p?.active ? "Ngừng sử dụng" : "Kích hoạt lại";
-  renderProductAuditMeta(p);
-  if (p) reloadProductHistory(p.id); else renderProductHistory([]);
-  rememberOverlayFocus("productDrawer");
-  setViewHidden("productDrawerBackdrop", false);
-  setViewHidden("productDrawer", false);
-  requestAnimationFrame(() => $("closeProductDrawerBtn")?.focus());
-}
-
-function closeProductDrawer() {
-  productHistoryGeneration++;
-  setViewHidden("productDrawerBackdrop", true);
-  setViewHidden("productDrawer", true);
-  productDrawerEditingId = null;
-  restoreOverlayFocus("productDrawer");
-}
-
-async function saveProductDrawer() {
-  let changes;
-  try {
-    changes = productChanges({
-      code: $("productCodeInput").value, name: $("productNameInput").value,
-      width_cm: $("productWidthCmInput").value, height_cm: $("productHeightCmInput").value,
-      surface: $("productSurfaceInput").value, origin: $("productOriginInput").value,
-      price_per_m2: $("productPricePerM2Input").value,
-      price_per_box: $("productPricePerBoxInput").value,
-      price_per_piece: $("productPricePerPieceInput").value,
-      pieces_per_box: $("productPiecesPerBoxInput").value,
-      sqm_per_box: $("productSqmPerBoxInput").value,
-      stock_quantity: $("productStockInput").value,
-      price_effective_date: $("productPriceEffectiveDateInput").value
-    }, productDrawerOriginal);
-  } catch (error) { return notice(error.message, true); }
-  try {
-    const id = productDrawerEditingId;
-    if (!id && !canEditProduct()) return notice("Bạn không có quyền tạo sản phẩm.", true);
-    if (id && !Object.keys(changes).length) return notice("Không có thay đổi để lưu.");
-    const result = id
-      ? await callCrmRpc("crm_update_product", {p_product_id: id, p_expected_version:productDrawerOriginal.version, p_changes: changes})
-      : await callCrmRpc("crm_create_product", {p_product: changes});
-    const saved = productFromCanonical(result);
-    productsReadGeneration++;
-    const idx = products.findIndex(p => p.id === saved.id);
-    if (idx >= 0) products[idx] = saved; else products.unshift(saved);
-    renderProducts();
-    openProductDrawer(saved.id);
-    notice("Đã lưu sản phẩm.");
-  } catch (error) { notice(productError(error), true); }
-}
-
-async function toggleProductActive() {
-  const p = productDrawerOriginal;
-  if (!p || !isManager()) return notice("Bạn không có quyền thay đổi trạng thái sản phẩm.", true);
-  const next = !p.active;
-  if (!confirm(`${next ? "Kích hoạt lại" : "Ngừng sử dụng"} sản phẩm “${p.name}”?`)) return;
-  try {
-    const result = await callCrmRpc("crm_set_product_active", {
-      p_product_id:p.id,p_expected_version:p.version,p_active:next
-    });
-    const saved = productFromCanonical(result);
-    const index = products.findIndex(item => item.id === saved.id);
-    if (index >= 0) products[index] = saved;
-    renderProducts();
-    openProductDrawer(saved.id);
-    notice(next ? "Đã kích hoạt lại sản phẩm." : "Đã ngừng sử dụng sản phẩm.");
-  } catch (error) { notice(productError(error), true); }
 }
 
 const quoteStatusOptions = [
@@ -1731,11 +1724,13 @@ function hydrateQuoteSelects() {
 
 function quoteItemTemplate(item={}) {
   const product = item.productId ? productByAnyValue(item.productId) : productByAnyValue(item.productName || item.productSku || item.product || "");
-  const productText = item.productLabel || item.productName || item.product || (product ? productLabel(product) : "");
+  const snapshot = quoteSnapshotFromItem(item, product);
+  const productText = item.productLabel || snapshot.productName || item.product || (product ? productLabel(product) : "");
   const unitPrice = Number(item.unitPrice ?? item.price ?? product?.pricePerM2 ?? 0);
   return `<div class="quote-item-row" data-quote-item>
-    <input type="hidden" data-quote-product-id value="${esc(item.productId || product?.id || "")}">
-    <div class="field"><label>Sản phẩm</label><input data-quote-product list="productOptions" value="${esc(productText)}" placeholder="Gõ tên/mã sản phẩm"></div>
+    <input type="hidden" data-quote-product-id value="${esc(snapshot.productId || product?.id || "")}">
+    <input type="hidden" data-quote-product-snapshot value="${esc(encodeProductSnapshot(snapshot))}">
+    <div class="field"><label>Sản phẩm</label><input data-quote-product list="productOptions" value="${esc(productText)}" placeholder="Gõ tên/mã sản phẩm"><div class="product-inline-actions"><button class="small" type="button" data-product-selector-context="quote">Chọn sản phẩm</button><button class="small ${snapshot.productId ? "" : "hide"}" type="button" data-product-website-row="quote">Xem website</button></div></div>
     <div class="field"><label>SL</label><input data-quote-qty type="number" min="0" step="0.01" value="${esc(item.qty || 1)}"></div>
     <div class="field"><label>Đơn giá</label><input data-quote-price type="number" min="0" step="1000" value="${esc(unitPrice || 0)}"></div>
     <div class="field"><label>Chiết khấu</label><input data-quote-discount type="number" min="0" step="1000" value="${esc(item.discountAmount || 0)}"></div>
@@ -1767,16 +1762,24 @@ function clearQuoteForm() {
 function collectQuoteItems() {
   return [...document.querySelectorAll("[data-quote-item]")].map((row, index) => {
     const productValue = clean(row.querySelector("[data-quote-product]").value);
-    const selected = productByAnyValue(clean(row.querySelector("[data-quote-product-id]").value) || productValue);
+    const catalogSelected = productByAnyValue(clean(row.querySelector("[data-quote-product-id]").value) || productValue);
+    const storedSnapshot = decodeProductSnapshot(row.querySelector("[data-quote-product-snapshot]")?.value || "");
+    const snapshot = storedSnapshot.productId ? storedSnapshot : (catalogSelected ? quoteSnapshotFromProduct(catalogSelected) : {});
+    const selected = catalogSelected || (snapshot.productId ? snapshot : null);
     const qty = Number(row.querySelector("[data-quote-qty]").value || 0);
     const unitPrice = Number(row.querySelector("[data-quote-price]").value || selected?.pricePerM2 || 0);
     const discountAmount = Number(row.querySelector("[data-quote-discount]").value || 0);
     const lineTotal = Math.max(0, qty * unitPrice - discountAmount);
     return {
-      productId: selected?.id || clean(row.querySelector("[data-quote-product-id]").value),
-      productSku: selected?.code || "",
-      productName: selected?.name || productValue,
-      productLabel: selected ? productLabel(selected) : productValue,
+      productId: snapshot.productId || clean(row.querySelector("[data-quote-product-id]").value),
+      productSku: snapshot.productSku || selected?.code || "",
+      productName: snapshot.productName || productValue,
+      productLabel: productValue,
+      widthMmSnapshot: snapshot.widthMmSnapshot ?? null,
+      heightMmSnapshot: snapshot.heightMmSnapshot ?? null,
+      surfaceSnapshot: snapshot.surfaceSnapshot || null,
+      listPriceSnapshot: snapshot.listPriceSnapshot ?? null,
+      catalogVersionSnapshot: snapshot.catalogVersionSnapshot ?? null,
       unit: selected ? "m²" : "",
       qty,
       unitPrice,
@@ -1816,12 +1819,17 @@ function applyProductToQuoteInput(input) {
   const p = productByAnyValue(input.value);
   if (!p) {
     row.querySelector("[data-quote-product-id]").value = "";
+    row.querySelector("[data-quote-product-snapshot]").value = "";
+    row.querySelector("[data-product-website-row]")?.classList.add("hide");
     updateQuoteTotals();
     return;
   }
+  const snapshot = quoteSnapshotFromProduct(p);
   input.value = productLabel(p);
   row.querySelector("[data-quote-product-id]").value = p.id || "";
+  row.querySelector("[data-quote-product-snapshot]").value = encodeProductSnapshot(snapshot);
   row.querySelector("[data-quote-price]").value = Number(p.pricePerM2 || 0);
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
   updateQuoteTotals();
 }
 
@@ -1959,6 +1967,8 @@ function openQuoteDetail(quoteId) {
       ${items.map(item => `<div class="detail-row">
         <b>${esc(item.productName || item.productSku || "Sản phẩm")}</b>
         <div class="detail-meta">
+          ${item.widthMmSnapshot && item.heightMmSnapshot ? `<span>Quy cách: ${esc(Number(item.widthMmSnapshot) / 10)} × ${esc(Number(item.heightMmSnapshot) / 10)} cm</span>` : ""}
+          ${item.surfaceSnapshot ? `<span>Bề mặt: ${esc(item.surfaceSnapshot)}</span>` : ""}
           <span>SL: ${esc(item.qty || 0)}</span>
           <span>Đơn giá: ${esc(money(item.unitPrice || 0))}</span>
           <span>CK: ${esc(money(item.discountAmount || 0))}</span>
@@ -2008,6 +2018,11 @@ function quoteOrderItems(q, items) {
     price: Number(item.unitPrice || 0),
     discountAmount: Number(item.discountAmount || 0),
     lineTotal: Number(item.lineTotal || 0),
+    widthMmSnapshot: item.widthMmSnapshot ?? null,
+    heightMmSnapshot: item.heightMmSnapshot ?? null,
+    surfaceSnapshot: item.surfaceSnapshot || null,
+    listPriceSnapshot: item.listPriceSnapshot ?? item.unitPrice ?? null,
+    catalogVersionSnapshot: item.catalogVersionSnapshot ?? null,
     sortOrder: index,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
@@ -2118,13 +2133,71 @@ function applyProductToDealInput(input) {
   const meta = row.querySelector("[data-deal-product-meta]");
   if (!p) {
     row.querySelector("[data-deal-product-id]").value = "";
+    row.querySelector("[data-deal-product-snapshot]").value = "";
+    row.querySelector("[data-product-website-row]")?.classList.add("hide");
     if (meta) meta.textContent = "";
     return;
   }
   input.value = productLabel(p);
   row.querySelector("[data-deal-product-id]").value = p.id || "";
+  row.querySelector("[data-deal-product-snapshot]").value = encodeProductSnapshot(quoteSnapshotFromProduct(p));
   row.querySelector("[data-deal-code]").value = p.code || "";
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
   if (meta) meta.textContent = [productSizeLabel(p), p.surface, p.origin, `Giá/m² ${productMoney(p.pricePerM2)}`].filter(Boolean).join(" · ");
+}
+
+function applyCatalogProductToQuoteRow(row, product) {
+  if (!row || !product) return;
+  const snapshot = quoteSnapshotFromProduct(product);
+  row.querySelector("[data-quote-product]").value = crmProductLabel(product);
+  row.querySelector("[data-quote-product-id]").value = product.id || "";
+  row.querySelector("[data-quote-product-snapshot]").value = encodeProductSnapshot(snapshot);
+  row.querySelector("[data-quote-price]").value = Number(product.pricePerM2 || 0);
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
+  updateQuoteTotals();
+}
+
+function applyCatalogProductToDealRow(row, product) {
+  if (!row || !product) return;
+  const snapshot = quoteSnapshotFromProduct(product);
+  row.querySelector("[data-deal-product]").value = crmProductLabel(product);
+  row.querySelector("[data-deal-product-id]").value = product.id || "";
+  row.querySelector("[data-deal-product-snapshot]").value = encodeProductSnapshot(snapshot);
+  row.querySelector("[data-deal-code]").value = product.code || "";
+  row.querySelector("[data-product-website-row]")?.classList.remove("hide");
+  const meta = row.querySelector("[data-deal-product-meta]");
+  if (meta) meta.textContent = [crmProductSize(product), product.surface, `Giá/m² ${productMoney(product.pricePerM2)}`].filter(Boolean).join(" · ");
+}
+
+function openCatalogSelectorFor(button) {
+  const context = clean(button?.dataset.productSelectorContext);
+  if (!context) return;
+  const row = button.closest("[data-quote-item],[data-deal-item]");
+  const inputId = clean(button.dataset.productInput);
+  const customerId = clean(button.dataset.customerId);
+  const initialSearch = context === "interest" ? clean($(inputId)?.value) : clean(row?.querySelector("[data-quote-product],[data-deal-product]")?.value);
+  catalogSelector().open({
+    heading: context === "proposal" ? "Chọn sản phẩm cho báo giá/đề xuất" : "Chọn sản phẩm từ catalog",
+    initialSearch,
+    onSelect: product => {
+      if (context === "quote") applyCatalogProductToQuoteRow(row, product);
+      if (context === "deal") applyCatalogProductToDealRow(row, product);
+      if (context === "interest") rememberInterestProduct($(inputId), product);
+      if (context === "inventory") selectInventoryProduct(product.id, "in");
+      if (context === "proposal") {
+        createDealFromQuote(customerId);
+        applyCatalogProductToDealRow(document.querySelector("[data-deal-item]"), product);
+      }
+    }
+  });
+}
+
+function productFromSnapshotButton(button) {
+  const row = button.closest("[data-quote-item],[data-deal-item]");
+  const encoded = row?.querySelector("[data-quote-product-snapshot],[data-deal-product-snapshot]")?.value
+    || button.dataset.productSnapshot || "";
+  const snapshot = decodeProductSnapshot(encoded);
+  return snapshot.productId ? {id:snapshot.productId, code:snapshot.productSku, name:snapshot.productName} : null;
 }
 
 function stopWatchers() {
@@ -2267,9 +2340,7 @@ function watchData() {
     }, err => notice("Lỗi tải cấu hình công ty: " + authMessage(err), true)));
   }
 
-  productsLoading = true;
-  productsLoadError = false;
-  unsubscribers.push(onSnapshot(collection(db, "products"), () => reloadProducts(), () => { productsLoading = false; productsLoadError = true; renderProducts(); }));
+  unsubscribers.push(onSnapshot(collection(db, "products"), () => reloadProducts(), () => {}));
 
   if (isManager()) {
     unsubscribers.push(onSnapshot(collection(db, "kpiPeriods"), snap => applySnap("kpiPeriods", snap), err => notice("Lỗi tải kỳ KPI mới: " + authMessage(err), true)));
@@ -2515,7 +2586,6 @@ const crmViewIds = ["overviewDashboard"];
 const customerViewIds = CUSTOMER_WORKSPACES.map(workspace => workspace.panelId);
 const kpiViewIds = ["kpiHubPanel","kpiTeamPanel","kpiFoundationPanel","kpi2OperationsPanel"];
 const reportsViewIds = ["reportsPanel"];
-const productsViewIds = ["productsPanel"];
 
 function renderCrmView() {
   renderExecutiveDashboard();
@@ -2566,13 +2636,12 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
   const previousCustomerWorkspace = activeCustomerWorkspace;
   const previousKpiWorkspace = activeKpiWorkspace;
   const previousReportWorkspace = activeReportWorkspace;
-  activeMainView = ["customers","kpi","reports","products"].includes(view) ? view : "crm";
+  activeMainView = ["customers","kpi","reports"].includes(view) ? view : "crm";
   if (activeMainView === "reports" && !isManager()) activeMainView = "crm";
   const isCustomerView = activeMainView === "customers";
   const isKpiView = activeMainView === "kpi";
   const isReportsView = activeMainView === "reports";
-  const isProductsView = activeMainView === "products";
-  const isOtherView = isCustomerView || isKpiView || isReportsView || isProductsView;
+  const isOtherView = isCustomerView || isKpiView || isReportsView;
   if (isCustomerView) activeCustomerWorkspace = CUSTOMER_WORKSPACES.some(item => item.customerWorkspace === customerWorkspace) ? customerWorkspace : activeCustomerWorkspace || "hub";
   if (isKpiView) {
     const requestedKpiWorkspace = kpiWorkspace || activeKpiWorkspace || "hub";
@@ -2587,7 +2656,6 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
     $("overviewDashboard")?.classList.remove("hide");
   }
   applyCustomerWorkspaceVisibility(isCustomerView);
-  productsViewIds.forEach(id => $(id)?.classList.toggle("hide", !isProductsView));
   document.querySelector(".chart-grid")?.classList.toggle("hide", isOtherView);
   REPORT_WORKSPACES.forEach(workspace => {
     const panel = $(workspace.panelId);
@@ -2608,7 +2676,6 @@ function setMainView(view, {syncHash = true, customerWorkspace = null, kpiWorksp
     if (activeCustomerWorkspace === "care") renderNeedCare();
     if (activeCustomerWorkspace === "allocation") renderUnassignedPool();
   }
-  if (isProductsView) renderProducts();
   if (isKpiView) {
     renderKpiHub();
     if (isManager() && ["team","history"].includes(activeKpiWorkspace)) {
@@ -3302,6 +3369,7 @@ function openQuoteProposal(customerId) {
     <div class="detail-row">
       <b>${esc(p.name || p.code || "Sản phẩm")}</b>
       <div class="muted">${esc([p.code, productSizeLabel(p), p.surface, p.origin, `Giá/m² ${productMoney(p.pricePerM2)}`].filter(Boolean).join(" · "))}</div>
+      <div class="actions"><button class="small" type="button" data-product-website-id="${esc(p.id)}">Xem website</button></div>
     </div>
   `).join("") : `<div class="muted">Chưa gợi ý được sản phẩm từ nhu cầu hiện tại.</div>`;
   openDetailModal(
@@ -3321,6 +3389,7 @@ function openQuoteProposal(customerId) {
           </div>
           <div class="muted" style="margin-top:8px;white-space:pre-wrap">${esc(quoteCustomerSummary(c))}</div>
           <div class="actions" style="margin-top:10px">
+            <button class="small primary" type="button" data-product-selector-context="proposal" data-customer-id="${esc(c.id)}">Chọn sản phẩm cho đề xuất</button>
             <button class="small primary" type="button" data-quote-create-deal="${esc(c.id)}">Tạo đơn từ báo giá</button>
             <button class="small" type="button" data-quote-open-template="${esc(c.id)}">Mở template báo giá</button>
             <button class="small" type="button" data-quote-copy="${esc(c.id)}">Copy thông tin</button>
@@ -5350,7 +5419,8 @@ function renderKpi2ReviewQueue(){
 function kpi2ClaimRefs(){return {
   assignmentArea:$('kpi2ClaimAssignmentArea'),assignmentSelect:$('kpi2ClaimAssignmentSelect'),assignmentHint:$('kpi2ClaimAssignmentHint'),
   customerArea:$('kpi2CustomerArea'),customerLabel:$('kpi2CustomerLabel'),customerSearchInput:$('kpi2CustomerSearchInput'),customerSearchWrap:$('kpi2CustomerSearchWrap'),
-  customerSearchResults:$('kpi2CustomerSearchResults'),selectedCustomer:$('kpi2SelectedCustomer'),eventFields:$('kpi2EventFields'),submit:$('kpi2SubmitBtn')
+  customerSearchResults:$('kpi2CustomerSearchResults'),selectedCustomer:$('kpi2SelectedCustomer'),eventFields:$('kpi2EventFields'),submit:$('kpi2SubmitBtn'),
+  evidenceArea:$('kpi2EvidenceArea'),evidenceLabel:$('kpi2EvidenceLabel'),evidenceDropZone:$('kpi2EvidenceDropZone'),evidenceInput:$('kpi2EvidenceFiles')
 };}
 function renderKpi2ClaimCustomerUi(){renderKpiCustomerLinkUi(kpi2ClaimState,kpi2ClaimRefs());}
 function resetKpi2ClaimDom(){
@@ -5366,6 +5436,7 @@ async function configureKpi2ClaimAssignment(assignmentId,{preserveCustomer=true}
   if(previousId&&previousId!==clean(assignmentId))clearKpi2StagedEvidenceLocal();
   if(!restoreKpi2StagedEvidence(assignmentId)){notice('Hãy gửi hoặc hủy các ảnh đang chờ của KPI hiện tại trước.',true);return false;}
   setKpiEventAssignment(kpi2ClaimState,row,{preserveCustomer});
+  kpi2ClaimState.evidence=kpi2StagedEvidence.filter(item=>!item.discardedAt).map(item=>item.id);
   $('kpi2ClaimAssignmentId').value=assignmentId;$('kpi2ClaimTitle').textContent=`${kpi2ClaimState.revision?'Bổ sung event':'Gửi event'} · ${kpi2DefinitionName(row)}`;
   const snapshot=kpi2Field(row,"definitionSnapshot","definition_snapshot")||{},hybrid=!kpi2ClaimState.revision&&['HYBRID','AUTO'].includes(clean(snapshot.kpi_type).toUpperCase());
   $('kpi2HybridCandidateArea').classList.toggle('hide',!hybrid);$('kpi2ManualEventArea').classList.toggle('hide',hybrid);
@@ -5431,7 +5502,6 @@ async function compressKpi2Image(file){
   let quality=.86,blob;do{blob=await new Promise(r=>canvas.toBlob(r,'image/webp',quality));quality-=.08;}while(blob&&blob.size>1.5*1024*1024&&quality>=.46);if(!blob||blob.size>1.5*1024*1024)throw new Error('Không thể nén ảnh xuống dưới 1.5MB.');return blob;
 }
 
-const KPI2_EVIDENCE_MAX_FILES=2;
 const KPI2_EVIDENCE_MAX_SOURCE_BYTES=20*1024*1024;
 const KPI2_EVIDENCE_MIME_TYPES=new Set(['image/jpeg','image/png','image/webp']);
 function resetKpi2EvidenceDropState(){kpi2EvidenceDragDepth=0;$('kpi2EvidenceDropZone')?.classList.remove('is-drag-active');}
@@ -5448,8 +5518,9 @@ function normalizeKpi2EvidenceFiles(fileList,{source='picker'}={}){
     if(!KPI2_EVIDENCE_MIME_TYPES.has(clean(file.type).toLowerCase()))throw new Error('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.');
     if(Number(file.size)>KPI2_EVIDENCE_MAX_SOURCE_BYTES)throw new Error('Ảnh gốc vượt 20MB.');
   }
-  const activeCount=kpi2StagedEvidence.filter(item=>!item.discardedAt).length,remaining=Math.max(0,KPI2_EVIDENCE_MAX_FILES-activeCount);
-  if(!remaining)throw new Error('Mỗi event chỉ được tối đa 2 ảnh. Hãy xóa ảnh cũ trước.');
+  const max=Math.max(0,Number(kpi2ClaimState.evidenceMax)||0),activeCount=kpi2StagedEvidence.filter(item=>!item.discardedAt).length,remaining=Math.max(0,max-activeCount);
+  if(kpi2ClaimState.evidenceMode==='NONE')throw new Error('KPI này không nhận ảnh minh chứng.');
+  if(!remaining)throw new Error(`Mỗi event chỉ được tối đa ${max} ảnh minh chứng. Hãy xóa ảnh cũ trước.`);
   return {files:files.slice(0,remaining),rejectedForCapacity:Math.max(0,files.length-remaining)};
 }
 function isKpi2TextEditable(target){return !!target?.closest?.('textarea,input:not([type="file"]),[contenteditable="true"]');}
@@ -5467,10 +5538,12 @@ function clearKpi2StagedEvidenceLocal(){
 function renderKpi2StagedEvidence(){
   const target=$('kpi2StagedEvidenceList');if(!target)return;
   const rows=kpi2StagedEvidence.filter(item=>!item.discardedAt);
+  kpi2ClaimState.evidence=rows.map(item=>item.id);
   target.innerHTML=rows.length?rows.map(item=>{
     const pending=item.status==='ARCHIVED',busy=kpi2EvidenceBusy&&item.busy;
     return `<div class="kpi2-staged-evidence-item ${pending?'is-pending':''}">${item.previewUrl?`<img src="${esc(item.previewUrl)}" alt="Ảnh đang chờ gửi">`:`<span class="pill">Ảnh</span>`}<div><div class="evidence-name">${esc(item.originalName||'minh-chung.webp')}</div><div class="muted">${pending?'Đang chờ xóa file khỏi Storage':'Đã tải lên, chưa gửi'}${item.error?` · ${esc(item.error)}`:''}</div></div><button class="small danger" type="button" data-kpi2-discard-evidence="${esc(item.id)}" ${busy?'disabled':''}>${busy?'Đang xóa...':pending?'Thử xóa lại':'Xóa ảnh'}</button></div>`;
   }).join(''):'<span class="muted">Chưa chọn ảnh.</span>';
+  renderKpi2ClaimCustomerUi();
 }
 function restoreKpi2StagedEvidence(assignmentId){
   if(kpi2StagedEvidence.some(item=>clean(item.assignmentId)!==clean(assignmentId)&&!item.discardedAt))return false;
@@ -5491,11 +5564,12 @@ async function handleKpi2EvidenceFiles(fileList,{source='picker'}={}){
   const input=$('kpi2EvidenceFiles'),assignmentId=clean($('kpi2ClaimAssignmentId')?.value);let ownsBusy=false;
   try{
     if(!assignmentId)return notice('Hãy chọn KPI trước khi thêm minh chứng.',true);
+    if(kpi2ClaimState.evidenceMode==='NONE')return notice('KPI này không nhận ảnh minh chứng.',true);
     const normalized=normalizeKpi2EvidenceFiles(fileList,{source}),files=normalized.files;if(!files.length)return;
     if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
     kpi2EvidenceBusy=true;ownsBusy=true;
     for(const file of files){const item=await stageKpi2Evidence(assignmentId,file);kpi2StagedEvidence.push(item);renderKpi2StagedEvidence();}
-    const sourceLabel=source==='clipboard'?' từ clipboard':source==='drop'?' bằng kéo thả':'';notice(`Đã tải ${files.length} ảnh${sourceLabel}. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.${normalized.rejectedForCapacity?` Còn ${normalized.rejectedForCapacity} ảnh không được thêm vì giới hạn 2 ảnh.`:''}`);
+    const sourceLabel=source==='clipboard'?' từ clipboard':source==='drop'?' bằng kéo thả':'';notice(`Đã tải ${files.length} ảnh${sourceLabel}. Ảnh chỉ được gắn vào KPI sau khi bấm Gửi để duyệt.${normalized.rejectedForCapacity?` Còn ${normalized.rejectedForCapacity} ảnh không được thêm vì giới hạn ${kpi2ClaimState.evidenceMax} ảnh.`:''}`);
   }finally{if(ownsBusy)kpi2EvidenceBusy=false;if(input)input.value='';resetKpi2EvidenceDropState();renderKpi2StagedEvidence();}
 }
 function handleKpi2EvidenceDragEnter(event){if(!event.dataTransfer?.types?.includes('Files'))return;event.preventDefault();kpi2EvidenceDragDepth+=1;setKpi2EvidenceDragActive(true);}
@@ -5532,7 +5606,7 @@ async function submitKpi2Claim(){
   if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
   const customerValidation=buildKpiCustomerEventPayload(kpi2ClaimState,[]);if(!revisionEventId&&!customerValidation.ok){kpi2ClaimState.errors.submit=customerValidation.message;return notice(customerValidation.message,true);}
   const pendingDiscard=kpi2StagedEvidence.some(item=>item.status==='ARCHIVED'&&!item.discardedAt);if(pendingDiscard)return notice('Có ảnh đang chờ xóa. Hãy bấm Thử xóa lại trước khi gửi.',true);
-  const evidence=kpi2StagedEvidence.filter(item=>clean(item.assignmentId)===assignmentId&&item.status==='STAGED'&&!item.discardedAt).map(item=>item.id);if(evidence.length>2)return notice('Tối đa 2 ảnh mỗi event.',true);
+  const evidence=kpi2StagedEvidence.filter(item=>clean(item.assignmentId)===assignmentId&&item.status==='STAGED'&&!item.discardedAt).map(item=>item.id),evidenceValidation=validateKpiEvidenceCount(kpi2ClaimState,evidence.length);if(!evidenceValidation.ok){kpi2ClaimState.errors.submit=evidenceValidation.message;return notice(evidenceValidation.message,true);}
   kpi2ClaimState.submitting=true;renderKpi2ClaimCustomerUi();
   try{
     if(revisionEventId){
@@ -6061,10 +6135,13 @@ function renderAll() {
 function dealItemTemplate(item={}) {
   const productText = item.productLabel || item.product || item.name || "";
   const productId = item.productId || "";
+  const product = productId ? productByAnyValue(productId) : productByAnyValue(productText);
+  const snapshot = quoteSnapshotFromItem(item, product);
   const meta = [item.surface, item.origin, item.color, item.priceText || (item.price ? money(item.price) : "")].filter(Boolean).join(" · ");
   return `<div class="deal-item-row" data-deal-item>
-    <input type="hidden" data-deal-product-id value="${esc(productId)}">
-    <div class="field"><label>Nội dung mua căn bản</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="VD: gạch phòng khách, mẫu showroom, hạng mục khách quan tâm..."><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
+    <input type="hidden" data-deal-product-id value="${esc(snapshot.productId || productId)}">
+    <input type="hidden" data-deal-product-snapshot value="${esc(encodeProductSnapshot(snapshot))}">
+    <div class="field"><label>Nội dung mua căn bản</label><input data-deal-product list="productOptions" value="${esc(productText)}" placeholder="VD: gạch phòng khách, mẫu showroom, hạng mục khách quan tâm..."><div class="product-inline-actions"><button class="small" type="button" data-product-selector-context="deal">Chọn sản phẩm</button><button class="small ${snapshot.productId ? "" : "hide"}" type="button" data-product-website-row="deal">Xem website</button></div><div class="muted" data-deal-product-meta>${esc(meta)}</div></div>
     <div class="field hide"><label>Mã hàng</label><input data-deal-code value="${esc(item.code || "")}"></div>
     <div class="field"><label>Số lượng / ghi chú ngắn</label><input data-deal-qty value="${esc(item.qty || "")}" placeholder="VD: 1 lần mua, 30m2..."></div>
     <button class="small" type="button" data-remove-deal-item>Xóa</button>
@@ -6084,18 +6161,25 @@ function collectDealItems() {
   return [...document.querySelectorAll("[data-deal-item]")].map(row => {
     const productValue = clean(row.querySelector("[data-deal-product]").value);
     const selected = productByAnyValue(clean(row.querySelector("[data-deal-product-id]").value) || productValue);
-    const code = clean(row.querySelector("[data-deal-code]").value) || selected?.code || "";
+    const storedSnapshot = decodeProductSnapshot(row.querySelector("[data-deal-product-snapshot]")?.value || "");
+    const snapshot = storedSnapshot.productId ? storedSnapshot : (selected ? quoteSnapshotFromProduct(selected) : {});
+    const code = clean(row.querySelector("[data-deal-code]").value) || snapshot.productSku || selected?.code || "";
     return {
-      productId: selected?.id || clean(row.querySelector("[data-deal-product-id]").value),
-      product: selected?.name || productValue,
-      productLabel: selected ? productLabel(selected) : productValue,
+      productId: snapshot.productId || clean(row.querySelector("[data-deal-product-id]").value),
+      product: snapshot.productName || selected?.name || productValue,
+      productLabel: productValue,
       code,
-      size: selected ? productSizeLabel(selected) : "",
-      surface: selected?.surface || "",
+      size: snapshot.widthMmSnapshot && snapshot.heightMmSnapshot ? `${Number(snapshot.widthMmSnapshot) / 10} × ${Number(snapshot.heightMmSnapshot) / 10} cm` : (selected ? productSizeLabel(selected) : ""),
+      surface: snapshot.surfaceSnapshot || selected?.surface || "",
       origin: selected?.origin || "",
       color: "",
-      price: selected?.pricePerM2 || 0,
-      priceText: selected ? `Giá/m² ${productMoney(selected.pricePerM2)}` : "",
+      price: snapshot.listPriceSnapshot ?? selected?.pricePerM2 ?? 0,
+      priceText: snapshot.productId ? `Giá/m² ${productMoney(snapshot.listPriceSnapshot)}` : "",
+      widthMmSnapshot: snapshot.widthMmSnapshot ?? null,
+      heightMmSnapshot: snapshot.heightMmSnapshot ?? null,
+      surfaceSnapshot: snapshot.surfaceSnapshot || null,
+      listPriceSnapshot: snapshot.listPriceSnapshot ?? null,
+      catalogVersionSnapshot: snapshot.catalogVersionSnapshot ?? null,
       description: "",
       qty: clean(row.querySelector("[data-deal-qty]").value)
     };
@@ -6114,6 +6198,11 @@ function normalizedDealItem(item = {}, index = 0) {
     discountAmount: item.discountAmount || 0,
     lineTotal: item.lineTotal || 0,
     deliveredQty: item.deliveredQty || 0,
+    widthMmSnapshot: item.widthMmSnapshot ?? null,
+    heightMmSnapshot: item.heightMmSnapshot ?? null,
+    surfaceSnapshot: item.surfaceSnapshot || item.surface || null,
+    listPriceSnapshot: item.listPriceSnapshot ?? item.unitPrice ?? item.price ?? null,
+    catalogVersionSnapshot: item.catalogVersionSnapshot ?? null,
     sortOrder: item.sortOrder ?? index,
     note: item.note || ""
   };
@@ -6269,13 +6358,15 @@ function clearDealEditMode() {
 }
 
 function clearForm() {
+  resetCustomerCreateState();
   ["name","phone","address","customerCompanyName","need","note"].forEach(id => { if ($(id)) $(id).value = ""; });
   ["source","channel","customerType","partnerType","partnerActivity","partnerLevel","partnerCapacity"].forEach(id => { if ($(id)) $(id).value = ""; });
   if ($("potentialLevel")) $("potentialLevel").value = "Bình thường";
   renderPhoneHint();
   hydrateChannelOptions();
   togglePartnerFields();
-  if (isManager()) $("owner").value = "";
+  hydrateCustomerOwnerSelect();
+  restoreInterestProduct($("need"), {});
   $("name")?.focus();
 }
 
@@ -6299,14 +6390,22 @@ function renderPhoneHint() {
 }
 
 async function saveCustomer() {
+  if (customerCreatePartialState) {
+    const identity = customerCreatePartialState.customerId || "chưa xác định";
+    notice(`Khách hàng ${identity} đã được tạo. Hãy đặt lại form có chủ ý trước khi tạo khách khác.`, true);
+    syncCustomerCreateActionState();
+    return;
+  }
+  const ownerSelection = customerOwnerSelectionForSubmit();
+  if (ownerSelection.error) return notice(ownerSelection.error, true);
   const phone = phoneNorm($("phone").value);
-  const selectedOwner = isManager() ? ownerProfileByValue($("owner").value) : {name: ownerName(), email: ownerEmail()};
+  const selectedOwner = ownerSelection.profile;
   const owner = clean(selectedOwner.name);
   const selectedOwnerEmail = clean(selectedOwner.email);
   const data = {
     name: clean($("name").value), phoneRaw: clean($("phone").value), phoneNormalized: phone,
     address: clean($("address").value), source: "", channel: clean($("channel").value), customerType: clean($("customerType").value),
-    owner, ownerEmail: selectedOwnerEmail, need: clean($("need").value), note: clean($("note").value),
+    owner, ownerEmail: selectedOwnerEmail, need: clean($("need").value), ...interestProductFields($("need")), note: clean($("note").value),
     noPhone: !phone,
     companyName: isPartnerChannel(clean($("channel").value)) ? clean($("customerCompanyName").value) : "",
     partnerType: isPartnerChannel(clean($("channel").value)) ? clean($("partnerType").value) : "",
@@ -6324,13 +6423,31 @@ async function saveCustomer() {
   if (!data.name) return notice("Vui lòng nhập tên khách.", true);
   if (!data.channel) return notice("Vui lòng chọn kênh chi tiết.", true);
   if (isPartnerChannel(data.channel) && !data.companyName) return notice("Vui lòng nhập tên công ty.", true);
-  if (!isManager() && !data.ownerEmail && !data.owner) return notice("Sale phải là người phụ trách khách vừa tạo.", true);
+  if (ownerSelection.kind === "sale" && !data.ownerEmail) return notice("Không xác nhận được email nhân viên phụ trách. Vui lòng chọn lại trước khi lưu.", true);
 
   try {
     const customerRef = doc(collection(db, "customers"));
-    await callCrmRpc("crm_create_customer", {p_customer: {...data, id: customerRef.id}});
+    const result = normalizeCustomerCreateResult(await callCrmRpc("crm_create_customer", {p_customer: {...data, id: customerRef.id}}));
+    if (!result.id) {
+      setCustomerCreatePartialState(result, ownerSelection.intendedEmail);
+      return;
+    }
+    if (ownerSelection.kind === "sale") {
+      const expectedId = clean(selectedOwner.id);
+      const emailMatches = normalizeKey(result.ownerEmail) === normalizeKey(ownerSelection.intendedEmail);
+      const idMatches = !expectedId || (result.ownerUserId && normalizeKey(result.ownerUserId) === normalizeKey(expectedId));
+      if (result.assigned !== true || !emailMatches || !idMatches) {
+        setCustomerCreatePartialState(result, ownerSelection.intendedEmail);
+        return;
+      }
+    } else if (result.assigned !== false || result.ownerEmail || result.ownerUserId) {
+      setCustomerCreatePartialState(result, "");
+      return;
+    }
     clearForm();
-    notice("Đã lưu khách mới.");
+    notice(ownerSelection.kind === "sale"
+      ? "Đã lưu khách mới và phân công cho nhân viên."
+      : "Đã lưu khách mới vào hàng chờ phân bổ.");
   } catch (err) {
     const duplicateCustomerId = duplicateCustomerIdFromError(err);
     if (duplicateCustomerId) {
@@ -6374,7 +6491,7 @@ async function saveCareLog() {
     partnerActivity: isPartnerChannel(c.channel) ? clean($("carePartnerActivity").value) : "",
     partnerLevel: isPartnerChannel(c.channel) ? clean($("carePartnerLevel").value) : "",
     partnerCapacity: isPartnerChannel(c.channel) ? clean($("carePartnerCapacity").value) : "",
-    need: clean($("careNeed").value), note: careNote,
+    need: clean($("careNeed").value), ...interestProductFields($("careNeed")), note: careNote,
     nextCareDate, createdByEmail: currentUser.email || "",
     createdAt: serverTimestamp()
   };
@@ -6389,6 +6506,9 @@ async function saveCareLog() {
       partnerLevel: log.partnerLevel || c.partnerLevel || "",
       partnerCapacity: log.partnerCapacity || c.partnerCapacity || "",
       need: log.need || c.need || "",
+      needProductId: log.needProductId || c.needProductId || "",
+      needProductCode: log.needProductCode || c.needProductCode || "",
+      needProductSnapshot: log.needProductSnapshot || c.needProductSnapshot || null,
       note: log.note || c.note || "",
       nextCareDate: log.nextCareDate || "",
       lastCareDate: careDate,
@@ -7153,6 +7273,7 @@ function fillCustomerInfoEdit(c) {
   $("editBasicPurchaseCount").value = basicPurchaseCountFor(c);
   $("editBasicPurchaseValue").value = basicPurchaseValueFor(c);
   $("editNeed").value = clean(c.need);
+  restoreInterestProduct($("editNeed"), c);
   $("editNote").value = clean(c.note);
   if (!isManager()) $("editOwner").value = clean(c.ownerEmail || ownerEmail());
   toggleEditPartnerFields();
@@ -7196,6 +7317,7 @@ async function saveCustomerInfo() {
     basicPurchaseCount: positiveNumber($("editBasicPurchaseCount").value),
     basicPurchaseValue: positiveNumber($("editBasicPurchaseValue").value),
     need: clean($("editNeed").value),
+    ...interestProductFields($("editNeed")),
     note: clean($("editNote").value),
     updatedAt: serverTimestamp(),
     updatedByEmail: currentUser.email || ""
@@ -7268,6 +7390,7 @@ function openDrawer(id, mode="care", {inPlace = false} = {}) {
   $("carePartnerCapacity").value = clean(c.partnerCapacity);
   toggleCarePartnerFields(c.channel);
   $("careNeed").value = clean(c.need);
+  restoreInterestProduct($("careNeed"), c);
   $("careNote").value = "";
   if ($("careDate")) $("careDate").value = todayIso();
   if ($("careShowroomVisit")) $("careShowroomVisit").checked = false;
@@ -9076,7 +9199,6 @@ document.addEventListener("click", e => {
   const toggleUserId = e.target.closest("[data-toggle-user]")?.dataset.toggleUser;
   const deleteUserId = e.target.closest("[data-delete-user]")?.dataset.deleteUser;
   const relinkUserId = e.target.closest("[data-relink-user]")?.dataset.relinkUser;
-  const openProductId = e.target.closest("[data-open-product]")?.dataset.openProduct;
   const confirmDeactivateEmployeeId = e.target.closest("[data-confirm-deactivate-employee]")?.dataset.confirmDeactivateEmployee;
   const copyPhone = e.target.closest("[data-copy-phone]")?.dataset.copyPhone;
   const dashboardAction = e.target.closest("[data-dashboard-action]")?.dataset.dashboardAction;
@@ -9088,6 +9210,34 @@ document.addEventListener("click", e => {
   const channelQuick = e.target.closest("[data-channel-quick]")?.dataset.channelQuick;
   const customerWorkspaceHash = e.target.closest("[data-customer-workspace]")?.dataset.customerWorkspace;
   const loadMoreKey = e.target.closest("[data-load-more]")?.dataset.loadMore;
+  const productSelectorButton = e.target.closest("[data-product-selector-context]");
+  const productWebsiteRowButton = e.target.closest("[data-product-website-row]");
+  const productWebsiteFieldButton = e.target.closest("[data-product-website-for]");
+  const productWebsiteId = e.target.closest("[data-product-website-id]")?.dataset.productWebsiteId;
+  const quoteCreateDealId = e.target.closest("[data-quote-create-deal]")?.dataset.quoteCreateDeal;
+  const quoteOpenTemplateId = e.target.closest("[data-quote-open-template]")?.dataset.quoteOpenTemplate;
+  const quoteCopyId = e.target.closest("[data-quote-copy]")?.dataset.quoteCopy;
+  const openQuoteId = e.target.closest("[data-open-quote]")?.dataset.openQuote;
+  const editQuoteId = e.target.closest("[data-edit-quote]")?.dataset.editQuote;
+  const convertQuoteId = e.target.closest("[data-convert-quote]")?.dataset.convertQuote;
+  const deleteQuoteId = e.target.closest("[data-delete-quote]")?.dataset.deleteQuote;
+  const removeQuoteItemButton = e.target.closest("[data-remove-quote-item]");
+  if (productSelectorButton) openCatalogSelectorFor(productSelectorButton);
+  if (productWebsiteRowButton) openProductWebsite(productFromSnapshotButton(productWebsiteRowButton));
+  if (productWebsiteFieldButton) openProductWebsite(productFromSnapshotButton(productWebsiteFieldButton));
+  if (productWebsiteId) openProductWebsite(products.find(product => product.id === productWebsiteId));
+  if (quoteCreateDealId) createDealFromQuote(quoteCreateDealId);
+  if (quoteOpenTemplateId) openQuoteTemplate(quoteOpenTemplateId);
+  if (quoteCopyId) copyQuoteCustomerInfo(quoteCopyId);
+  if (openQuoteId) openQuoteDetail(openQuoteId);
+  if (editQuoteId) editQuote(editQuoteId);
+  if (convertQuoteId) convertQuoteToDeal(convertQuoteId);
+  if (deleteQuoteId) softDeleteQuote(deleteQuoteId);
+  if (removeQuoteItemButton) {
+    removeQuoteItemButton.closest("[data-quote-item]")?.remove();
+    if (!document.querySelector("[data-quote-item]")) addQuoteItem();
+    updateQuoteTotals();
+  }
   if (overviewRoute) navigateToWorkspace(overviewRoute);
   if (kpiRoute) {
     closeDrawer();
@@ -9184,7 +9334,6 @@ document.addEventListener("click", e => {
   if (toggleUserId) runAction(`toggleUser:${toggleUserId}`, "toggleUser", "Đang cập nhật...", () => toggleUserAdmin(toggleUserId));
   if (deleteUserId) runAction(`deleteUser:${deleteUserId}`, "deleteUser", "Đang xóa...", () => deleteUserAdmin(deleteUserId));
   if (relinkUserId) runAction(`relinkUser:${relinkUserId}`, "relinkUser", "Đang liên kết...", () => relinkReturningEmployee(relinkUserId));
-  if (openProductId) openProductDrawer(openProductId);
   if (confirmDeactivateEmployeeId) confirmDeactivateEmployee(confirmDeactivateEmployeeId);
   if (e.target.closest("[data-remove-deal-item]")) {
     e.target.closest("[data-deal-item]")?.remove();
@@ -9316,6 +9465,7 @@ on("kpiTeamAssignSubmitBtn", "click", () => runAction("kpiTeamAssignSubmitBtn", 
 on("kpiTeamRemoveSubmitBtn", "click", () => runAction("kpiTeamRemoveSubmitBtn", "kpiTeamRemove", "Đang xử lý...", confirmKpiTeamRemoveAssignment));
 on("kpi2ReloadBtn", "click", () => runAction("kpi2ReloadBtn", "kpi2Reload", "Đang tải...", reloadKpi2Data));
 on("kpi2CustomerEntryBtn", "click", () => runAction("kpi2CustomerEntryBtn", "kpi2CustomerEntry", "Đang tải KPI...", () => openKpi2ClaimFromCustomer(selectedCustomerId)));
+on("quoteProposalBtn", "click", () => openQuoteProposal(selectedCustomerId));
 on("kpi2CloseClaimBtn", "click", () => runAction("kpi2CloseClaimBtn", "kpi2CloseClaim", "Đang đóng...", closeKpi2Claim));
 on("kpi2ClaimAssignmentSelect", "change", e => runAction("kpi2ClaimAssignmentSelect", "kpi2ClaimAssignment", "Đang tải KPI...", () => configureKpi2ClaimAssignment(e.target.value,{preserveCustomer:true})));
 on("kpi2CustomerSearchInput", "input", e => scheduleKpi2CustomerSearch({value:e.target.value,session:kpi2ClaimSession}));
@@ -9328,23 +9478,6 @@ on("kpi2SaleClaimPanel", "paste", handleKpi2EvidencePaste);
 on("kpi2SubmitBtn", "click", () => runAction("kpi2SubmitBtn", "kpi2Submit", "Đang gửi...", submitKpi2Claim));
 on("kpi2BulkReviewBtn", "click", () => runAction("kpi2BulkReviewBtn", "kpi2Review", "Đang xử lý...", reviewSelectedKpi2Events));
 on("kpi2SelectAllEvents", "change", e => document.querySelectorAll("[data-kpi2-review-event]").forEach(box => box.checked=e.target.checked));
-on("addProductBtn", "click", () => openProductDrawer(null));
-on("saveProductBtn", "click", () => runAction("saveProductBtn", "saveProduct", "Đang lưu...", saveProductDrawer));
-on("editProductBtn", "click", () => {
-  if (!canEditProduct()) return notice("Bạn không có quyền cập nhật sản phẩm.", true);
-  $("productDrawer").querySelectorAll("input").forEach(input => input.disabled = false);
-  $("editProductBtn").classList.add("hide");
-  $("saveProductBtn").classList.remove("hide");
-});
-on("archiveProductBtn", "click", () => runAction("archiveProductBtn", "archiveProduct", "Đang xử lý...", toggleProductActive));
-on("closeProductDrawerBtn", "click", closeProductDrawer);
-on("productDrawerBackdrop", "click", closeProductDrawer);
-on("resetProductFilterBtn", "click", () => {
-  ["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id => { if ($(id)) $(id).value = ""; });
-  resetPagingAndRender("products", renderProducts);
-});
-["productSearchBox","productFilterSize","productFilterSurface","productFilterOrigin"].forEach(id =>
-  on(id, "input", debounce(() => resetPagingAndRender("products", renderProducts))));
 on("adminBackToCrmBtn", "click", () => {
   window.history.pushState({}, "", "/#/overview");
   showApp();
@@ -9362,7 +9495,6 @@ on("sidebarLogoutBtn", "click", async () => {
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     if (!$('detailModal')?.classList.contains("hide")) return closeDetailModal();
-    if (!$("productDrawer")?.classList.contains("hide")) return closeProductDrawer();
     if ($("kpiTeamAssignDrawer") && !$("kpiTeamAssignDrawer").classList.contains("hide")) return closeKpiTeamAssign();
     if (!$("drawer")?.classList.contains("hide")) return closeDrawer();
     if ($("kpiTeamDetailDrawer") && !$("kpiTeamDetailDrawer").classList.contains("hide")) return closeKpiTeamEmployee();
@@ -9420,9 +9552,14 @@ on("syncPhoneBtn", "click", () => runAction("syncPhoneBtn", "syncPhone", "Đang 
 on("syncOwnerBtn", "click", () => runAction("syncOwnerBtn", "syncOwner", "Đang đồng bộ...", syncOwnerEmail));
 on("importBtn", "click", () => $("importFile").click());
 on("importFile", "change", handleImportFile);
-on("saveCustomerBtn", "click", () => runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer));
+on("saveCustomerBtn", "click", async () => {
+  await runAction("saveCustomerBtn", "saveCustomer", "Đang lưu...", saveCustomer);
+  syncCustomerCreateActionState();
+});
 on("clearBtn", "click", clearForm);
+on("owner", "change", event => setCustomerOwnerIntent(event.target.value, true));
 on("phone", "input", renderPhoneHint);
+["need","editNeed","careNeed"].forEach(id => on(id, "input", event => clearInterestProductIfChanged(event.target)));
 on("enableNotifyBtn", "click", () => runAction("enableNotifyBtn", "enableNotify", "Đang bật...", enableBrowserNotifications));
 on("resetFilterBtn", "click", resetFilters);
 on("exportBtn", "click", exportCsv);
@@ -9437,6 +9574,17 @@ on("toggleCareHistoryBtn", "click", toggleCareHistory);
 on("saveDealBtn", "click", () => runAction("saveDealBtn", "saveDeal", "Đang lưu...", saveDeal));
 on("cancelEditDealBtn", "click", clearDealEditMode);
 on("addDealItemBtn", "click", () => addDealItem());
+on("addQuoteItemBtn", "click", () => addQuoteItem());
+on("saveQuoteBtn", "click", () => runAction("saveQuoteBtn", "saveQuote", "Đang lưu...", saveQuote));
+on("cancelEditQuoteBtn", "click", clearQuoteForm);
+on("quoteItems", "input", event => {
+  if (event.target.matches("[data-quote-product]")) applyProductToQuoteInput(event.target);
+  updateQuoteTotals();
+});
+on("quoteItems", "change", event => {
+  if (event.target.matches("[data-quote-product]")) applyProductToQuoteInput(event.target);
+  updateQuoteTotals();
+});
 on("dealItems", "input", e => {
   if (e.target.matches("[data-deal-product]")) applyProductToDealInput(e.target);
 });

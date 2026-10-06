@@ -21,8 +21,8 @@ export function mmToCm(value){
 
 export function parseVnd(value){
   const source=collapseWhitespace(value);
-  if(!/^(?:[1-9]\d*|[1-9]\d{0,2}(?:\.\d{3})+)$/u.test(source)) return null;
-  const integer=source.replaceAll(".","");
+  if(!/^(?:[1-9]\d*|[1-9]\d{0,2}(?:\.\d{3})+|[1-9]\d{0,2}(?:,\d{3})+)$/u.test(source)) return null;
+  const integer=source.replace(/[.,]/gu,"");
   return integer!=="0"?integer:null;
 }
 

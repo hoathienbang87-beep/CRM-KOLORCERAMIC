@@ -16,13 +16,13 @@ assert.equal((html.match(/id="channelReportChart"/g) || []).length, 1);
 assert.equal((html.match(/id="pipelinePanel"/g) || []).length, 1);
 const overviewStart = html.indexOf('id="overviewDashboard"');
 const reportsStart = html.indexOf('id="reportsPanel"');
-const productsStart = html.indexOf('id="productsPanel"');
+const careStart = html.indexOf('id="needCarePanel"');
 for (const id of ["growthChart", "channelReportChart"]) {
   const offset = html.indexOf(`id="${id}"`);
   assert.ok(offset > overviewStart && offset < reportsStart, `${id} phải nằm trong Overview`);
 }
-assert.ok(html.indexOf('id="pipelinePanel"') > reportsStart && html.indexOf('id="pipelinePanel"') < productsStart, "pipelinePanel phải nằm trong Reports");
-assert.ok(html.indexOf('id="needCarePanel"') > productsStart, "Full Care panel không được nằm trong Overview");
+assert.ok(html.indexOf('id="pipelinePanel"') > reportsStart && html.indexOf('id="pipelinePanel"') < careStart, "pipelinePanel phải nằm trong Reports");
+assert.ok(careStart > reportsStart, "Full Care panel không được nằm trong Overview");
 assert.doesNotMatch(html.slice(overviewStart, reportsStart), /id="careWorkSummary"|id="needCareList"/);
 assert.doesNotMatch(html.slice(overviewStart, reportsStart), /id="userAdminPanel"|id="dropdownSettingsPanel"|id="auditPanel"/);
 assert.doesNotMatch(html, /<aside class="panel">\s*<h2>Thêm khách mới/);

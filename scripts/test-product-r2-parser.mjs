@@ -19,7 +19,8 @@ equal(parseDimensions("60 x 120",{defaultUnit:"cm"}).width_cm,"60","header cm co
 equal(parseDimensions("600x1200").code,"UNKNOWN_SIZE_UNIT","unit cannot be guessed from magnitude");
 equal(parseVnd("760.000"),"760000","grouped VND");
 equal(parseVnd("760000"),"760000","plain VND");
-for(const invalid of ["76.0000","760,000","760.000,5","-760.000","0"]) equal(parseVnd(invalid),null,`reject malformed VND ${invalid}`);
+equal(parseVnd("760,000"),"760000","comma-grouped VND");
+for(const invalid of ["76.0000","760.000,5","-760.000","0"]) equal(parseVnd(invalid),null,`reject malformed VND ${invalid}`);
 equal(parseSqm("1,44"),"1.44","exact sqm");
 equal(parsePackaging(" 2v = 1,44m2 "),{ok:true,source_packaging_text:"2v = 1,44m2",pieces_per_box:"2",sqm_per_box:"1.44"},"package parser");
 equal(extractSurfaceCandidate("SERIES GLOSSY A"),"GLOSSY","surface token");
