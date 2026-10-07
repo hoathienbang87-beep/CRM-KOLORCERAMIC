@@ -547,13 +547,49 @@ async function deleteRef(ref) {
   refreshListeners();
 }
 
+// Protected-data lifecycle gate (Phase 6L-C).
+// Listener fetches (initial, debounced refresh, realtime-triggered) only run while
+// protected data access is enabled for the current epoch. Every enable/disable bumps
+// the epoch, so callbacks queued under an older epoch (before logout, before a user
+// switch) are discarded instead of issuing a read with a stale or anonymous session.
+let protectedDataEnabled = false;
+let protectedDataEpoch = 0;
 let refreshTimer = null;
+
+function protectedDataActive(epoch) {
+  return protectedDataEnabled && epoch === protectedDataEpoch;
+}
+
+export function setProtectedDataAccess(enabled) {
+  protectedDataEnabled = Boolean(enabled);
+  protectedDataEpoch += 1;
+  clearTimeout(refreshTimer);
+  refreshTimer = null;
+  return protectedDataEpoch;
+}
+
+export function protectedDataState() {
+  return {enabled: protectedDataEnabled, epoch: protectedDataEpoch, listeners: listeners.size, realtimeChannels: realtimeTables.size, refreshPending: refreshTimer !== null};
+}
+
+function runListenerFetch(listener) {
+  if (!listeners.has(listener) || !protectedDataActive(listener.epoch)) return;
+  listener.fetch().catch(err => {
+    if (listeners.has(listener) && protectedDataActive(listener.epoch)) listener.error?.(err);
+  });
+}
+
 function refreshListeners(table = "") {
   clearTimeout(refreshTimer);
+  refreshTimer = null;
+  if (!protectedDataEnabled) return;
+  const epoch = protectedDataEpoch;
   refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    if (!protectedDataActive(epoch)) return;
     listeners.forEach(listener => {
       if (table && listener.table !== table) return;
-      listener.fetch().catch(err => listener.error?.(err));
+      runListenerFetch(listener);
     });
   }, 120);
 }
@@ -570,9 +606,12 @@ function subscribeRealtime(table) {
     return () => unsubscribeRealtime(table);
   }
 
+  const epoch = protectedDataEpoch;
   const channel = supabase
     .channel(`crm-realtime-${table}`)
-    .on("postgres_changes", { event: "*", schema: "public", table }, () => refreshListeners(table))
+    .on("postgres_changes", { event: "*", schema: "public", table }, () => {
+      if (protectedDataActive(epoch)) refreshListeners(table);
+    })
     .subscribe();
 
   realtimeTables.set(table, { channel, count: 1 });
@@ -637,10 +676,12 @@ export function onSnapshot(target, next, error) {
   const listener = {
     target,
     table: realtimeTableFor(target),
+    epoch: protectedDataEpoch,
     error,
     fetch: async () => {
       if (target.type === "doc") {
         const row = await fetchRef(target);
+        if (!listeners.has(listener) || !protectedDataActive(listener.epoch)) return;
         next({
           id: target.id,
           exists: () => Boolean(row),
@@ -648,14 +689,19 @@ export function onSnapshot(target, next, error) {
         });
       } else {
         const rows = await selectRows(target);
+        if (!listeners.has(listener) || !protectedDataActive(listener.epoch)) return;
         next(snapFromRows(rows, target.collection));
       }
     }
   };
+  if (!protectedDataActive(listener.epoch)) return () => {};
   listeners.add(listener);
   const unsubscribeRealtimeTable = subscribeRealtime(listener.table);
-  listener.fetch().catch(err => error?.(err));
+  runListenerFetch(listener);
+  let active = true;
   return () => {
+    if (!active) return;
+    active = false;
     listeners.delete(listener);
     unsubscribeRealtimeTable();
   };
@@ -731,6 +777,8 @@ export async function signInWithPopup() {
   return data;
 }
 
+// The callback receives (user, event). It runs synchronously inside the Supabase auth
+// callback, so callers must not await data work in it (auth-lock re-entry).
 export function onAuthStateChanged(_auth, callback) {
   let initialized = false;
 
@@ -738,21 +786,26 @@ export function onAuthStateChanged(_auth, callback) {
     const sessionUser = data?.session?.user || null;
     if (sessionUser) {
       initialized = true;
-      callback(withFirebaseUserCompat(sessionUser));
+      callback(withFirebaseUserCompat(sessionUser), "INITIAL_SESSION");
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     initialized = true;
-    callback(withFirebaseUserCompat(userData?.user));
+    callback(withFirebaseUserCompat(userData?.user), "INITIAL_SESSION");
   });
 
   const { data } = supabase.auth.onAuthStateChange((event, session) => {
     if (event === "INITIAL_SESSION" && !initialized) return;
     initialized = true;
-    callback(withFirebaseUserCompat(session?.user));
+    callback(withFirebaseUserCompat(session?.user), event);
   });
   return () => data.subscription.unsubscribe();
+}
+
+export async function getCurrentAuthUser() {
+  const { data } = await supabase.auth.getSession();
+  return withFirebaseUserCompat(data?.session?.user || null);
 }
 
 export async function signOut() {

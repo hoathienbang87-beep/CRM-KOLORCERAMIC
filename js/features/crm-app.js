@@ -31,6 +31,8 @@ import {
   writeBatch,
   deleteField,
   supabase,
+  setProtectedDataAccess,
+  getCurrentAuthUser,
 } from "../firebase.js";
 
 import { DEFAULT_SETTINGS } from "../config/default-settings.js";
@@ -199,6 +201,11 @@ const pagingState = {
 };
 let pendingLoginSuccessNotice = false;
 let authBootstrapGeneration = 0;
+// Auth lifecycle (Phase 6L-C): UNKNOWN -> AUTHENTICATING -> AUTHENTICATED -> SIGNING_OUT -> ANONYMOUS.
+// Protected watchers/presence only run in AUTHENTICATED; firebase.js enforces the same
+// contract per epoch so queued callbacks from an older session are discarded.
+let authLifecycle = "UNKNOWN";
+let authUserId = "";
 const CUSTOMER_OWNER_UNASSIGNED_VALUE = "__UNASSIGNED__";
 const customerOwnerIntent = {kind:"unset", value:"", explicit:false, unavailable:false};
 let customerCreatePartialState = null;
@@ -2221,8 +2228,14 @@ async function updatePresence(online=true) {
 
 function startPresence() {
   clearInterval(presenceTimer);
+  presenceTimer = null;
+  if (authLifecycle !== "AUTHENTICATED") return;
+  const generation = authBootstrapGeneration;
   updatePresence(true).catch(() => {});
-  presenceTimer = setInterval(() => updatePresence(true).catch(() => {}), 60000);
+  presenceTimer = setInterval(() => {
+    if (authLifecycle !== "AUTHENTICATED" || generation !== authBootstrapGeneration) return stopPresence();
+    updatePresence(true).catch(() => {});
+  }, 60000);
 }
 
 function stopPresence() {
@@ -2293,8 +2306,16 @@ function canSeeCustomer(c) {
   return ownerMatchesCurrentUser(c);
 }
 
+// Idempotent: safe to call when nothing is running, and more than once.
+function teardownProtectedSession() {
+  setProtectedDataAccess(false);
+  stopPresence();
+  stopWatchers();
+}
+
 function watchData() {
   stopWatchers();
+  if (authLifecycle !== "AUTHENTICATED" || !currentUser || !appUser) return;
   customers = [];
   allCustomers = [];
   deletedCustomers = [];
@@ -9046,8 +9067,7 @@ function renderAdminShell() {
 consolidateAdminDom();
 
 function showLogin() {
-  stopPresence();
-  stopWatchers();
+  teardownProtectedSession();
   setMobileNavigationOpen(false, {restoreFocus:false});
   setViewHidden("loginView", false);
   setViewHidden("appView", true);
@@ -9489,8 +9509,7 @@ on("mobileNavOpenBtn", "click", () => setMobileNavigationOpen(true));
 on("mobileNavCloseBtn", "click", () => setMobileNavigationOpen(false));
 on("mobileNavBackdrop", "click", () => setMobileNavigationOpen(false));
 on("sidebarLogoutBtn", "click", async () => {
-  try { await updatePresence(false); } catch {}
-  await signOut(auth);
+  await logoutCurrentSession();
 });
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
@@ -9515,8 +9534,7 @@ document.addEventListener("keydown", event => {
   }
 });
 on("adminLogoutBtn", "click", async () => {
-  try { await updatePresence(false); } catch {}
-  await signOut(auth);
+  await logoutCurrentSession();
 });
 $("adminAppView")?.addEventListener("click", event => {
   const button = event.target.closest("[data-admin-route]");
@@ -9537,8 +9555,7 @@ on("editSource", "change", () => { hydrateEditChannelOptions(); toggleEditPartne
 on("editChannel", "change", toggleEditPartnerFields);
 on("editCustomerType", "change", toggleEditPartnerFields);
 on("logoutBtn", "click", async () => {
-  try { await updatePresence(false); } catch {}
-  await signOut(auth);
+  await logoutCurrentSession();
 });
 on("reloadBtn", "click", () => runAction("reloadBtn", "reload", "Đang tải...", reloadApp));
 on("healthReloadBtn", "click", renderHealthCheck);
@@ -9660,6 +9677,8 @@ async function bootstrapAuthenticatedUser(user, generation) {
     pendingLoginSuccessNotice = false;
     logBootstrapError("profile", err);
     $("loginError").textContent = authMessage(err);
+    authLifecycle = "ANONYMOUS";
+    authUserId = "";
     await signOut(auth);
     return;
   }
@@ -9684,6 +9703,8 @@ async function bootstrapAuthenticatedUser(user, generation) {
   }, warnings);
   if (generation !== authBootstrapGeneration) return;
 
+  authLifecycle = "AUTHENTICATED";
+  setProtectedDataAccess(true);
   startPresence();
   showApp();
   watchData();
@@ -9695,12 +9716,57 @@ async function bootstrapAuthenticatedUser(user, generation) {
   pendingLoginSuccessNotice = false;
 }
 
-onAuthStateChanged(auth, user => {
-  const generation = ++authBootstrapGeneration;
-  currentUser = user;
+// Logout order: stop protected work first, then write presence, then sign out.
+// SIGNED_OUT (handled below) is only an idempotent confirmation of this teardown.
+async function logoutCurrentSession() {
+  if (authLifecycle === "SIGNING_OUT") return;
+  authLifecycle = "SIGNING_OUT";
+  authBootstrapGeneration++;
+  teardownProtectedSession();
+  try { await updatePresence(false); } catch {}
+  try {
+    await signOut(auth);
+  } catch (err) {
+    let user = null;
+    try { user = await getCurrentAuthUser(); } catch {}
+    if (authLifecycle !== "SIGNING_OUT") return;
+    authLifecycle = "UNKNOWN";
+    notice("Không đăng xuất được: " + authMessage(err), true);
+    if (user) {
+      authUserId = "";
+      handleAuthUser(user, "SIGNED_IN");
+    } else {
+      handleAuthUser(null, "SIGNED_OUT");
+    }
+  }
+}
+
+// Runs synchronously inside the Supabase auth callback: never await data work here.
+function handleAuthUser(user, event = "") {
   if (!user) {
+    authBootstrapGeneration++;
+    currentUser = null;
     appUser = null;
+    authUserId = "";
+    authLifecycle = "ANONYMOUS";
     return showLogin();
   }
+  if (authLifecycle === "SIGNING_OUT") return;
+  const uid = clean(user.uid || user.id);
+  if (uid && uid === authUserId && (authLifecycle === "AUTHENTICATED" || authLifecycle === "AUTHENTICATING")) {
+    // Same user (TOKEN_REFRESHED, duplicate INITIAL_SESSION/SIGNED_IN): keep watchers as they are.
+    currentUser = user;
+    return;
+  }
+  const generation = ++authBootstrapGeneration;
+  if (authUserId && authUserId !== uid) {
+    teardownProtectedSession();
+    appUser = null;
+  }
+  currentUser = user;
+  authUserId = uid;
+  authLifecycle = "AUTHENTICATING";
   void bootstrapAuthenticatedUser(user, generation);
-});
+}
+
+onAuthStateChanged(auth, (user, event) => handleAuthUser(user, event));
