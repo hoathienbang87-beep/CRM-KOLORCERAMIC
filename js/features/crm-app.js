@@ -80,6 +80,8 @@ import {
   eventStatusKey,
   filterKpiEmployeeSummaries,
   filterKpiEvents,
+  filterKpiRowsForAssignments,
+  filterKpiRowsForPeriod,
   evidenceForEvent,
   groupEvidenceCount,
   kpiEvidenceMediaKind,
@@ -87,7 +89,8 @@ import {
   kpiEvidenceViewerHtml,
   kpiValue as kpiTeamValue,
   managerKpiEventCardHtml,
-  managerKpiEventViewModel
+  managerKpiEventViewModel,
+  resolveCurrentSaleKpiPeriod
 } from "./kpi-team.js";
 import {
   buildKpiCustomerEventPayload,
@@ -136,6 +139,8 @@ let kpi2Events = [];
 let kpi2Evidence = [];
 let kpi2Submissions = [];
 let kpi2HistoryAssignments = [];
+let currentSaleKpiPeriod = null;
+let currentSaleKpiPeriodResolution = {status:"unresolved",period:null,matches:[]};
 let kpi2SaleHistoryStatus = "all";
 let kpi2StagedEvidence = [];
 let kpi2EvidenceBusy = false;
@@ -2338,6 +2343,13 @@ function watchData() {
   kpiPeriods = [];
   kpiDefinitions = [];
   kpiAssignments = [];
+  kpi2Progress = [];
+  kpi2Events = [];
+  kpi2Evidence = [];
+  kpi2Submissions = [];
+  kpi2HistoryAssignments = [];
+  currentSaleKpiPeriod = null;
+  currentSaleKpiPeriodResolution = {status:"unresolved",period:null,matches:[]};
   auditLogs = [];
 
   const applySnap = (targetName, snap, filterDeleted=false, scopeKey="") => {
@@ -4010,7 +4022,7 @@ function kpi1EligibleSales() {
 }
 
 function kpi1PeriodLabel(period) {
-  const value = clean(period?.periodMonth).slice(0, 7);
+  const value = clean(period?.periodMonth ?? period?.period_month).slice(0, 7);
   if (!/^\d{4}-\d{2}$/.test(value)) return value || "Chưa rõ tháng";
   const [year, month] = value.split("-");
   return `${month}/${year}`;
@@ -5341,35 +5353,57 @@ async function submitKpiTeamAssignment() {
 
 async function reloadKpi2Data() {
   if (!currentUser || !$('kpi2OperationsPanel')) return;
-  kpi2Progress = await callCrmRpc("crm_kpi_get_assignment_progress", {p_period_id:null}) || [];
+  const periodsResult = await supabase.from("kpi_periods")
+    .select("id,period_month,name,status,timezone,starts_at,ends_at")
+    .eq("status","ACTIVE")
+    .limit(10);
+  if (periodsResult.error) throw periodsResult.error;
+  currentSaleKpiPeriodResolution = resolveCurrentSaleKpiPeriod(periodsResult.data || [], new Date());
+  currentSaleKpiPeriod = currentSaleKpiPeriodResolution.period;
+  kpi2Progress = []; kpi2Events = []; kpi2Evidence = []; kpi2Submissions = []; kpi2HistoryAssignments = []; kpi2DuplicateDetails = [];
+  if (currentSaleKpiPeriodResolution.status !== "selected") {
+    renderKpi2Operations();
+    return;
+  }
+  const periodId = clean(currentSaleKpiPeriod.id);
+  const progress = await callCrmRpc("crm_kpi_get_assignment_progress", {p_period_id:periodId}) || [];
+  kpi2Progress = filterKpiRowsForPeriod(progress, periodId);
+  const assignmentIds = uniq(kpi2Progress.map(row => clean(kpi2Field(row,"assignmentId","assignment_id"))).filter(Boolean));
+  if (!assignmentIds.length) {
+    renderKpi2Operations();
+    return;
+  }
   const [eventsResult,evidenceResult,submissionsResult] = await Promise.all([
-    supabase.from("kpi_submission_events").select("*").order("created_at",{ascending:false}).limit(500),
-    supabase.from("kpi_evidence").select("*").in("status",["STAGED","ATTACHED","ARCHIVED"]).limit(1000),
-    supabase.from("kpi_submissions").select("id,sale_note,status,submitted_at").order("submitted_at",{ascending:false}).limit(500)
+    supabase.from("kpi_submission_events").select("*").in("assignment_id",assignmentIds).order("created_at",{ascending:false}).limit(500),
+    supabase.from("kpi_evidence").select("*").in("assignment_id",assignmentIds).in("status",["STAGED","ATTACHED","ARCHIVED"]).limit(1000),
+    supabase.from("kpi_submissions").select("id,assignment_id,sale_note,status,submitted_at").in("assignment_id",assignmentIds).order("submitted_at",{ascending:false}).limit(500)
   ]);
   if (eventsResult.error) throw eventsResult.error;
   if (evidenceResult.error) throw evidenceResult.error;
   if (submissionsResult.error) throw submissionsResult.error;
-  kpi2Events = eventsResult.data || []; kpi2Evidence = await withKpi2EvidencePreviewUrls(evidenceResult.data || []); kpi2Submissions = submissionsResult.data || [];
+  kpi2Events = filterKpiRowsForAssignments(eventsResult.data || [], assignmentIds);
+  kpi2Evidence = await withKpi2EvidencePreviewUrls(filterKpiRowsForAssignments(evidenceResult.data || [], assignmentIds));
+  kpi2Submissions = filterKpiRowsForAssignments(submissionsResult.data || [], assignmentIds);
   const historyAssignmentIds = uniq(kpi2Events.map(event=>clean(event.assignment_id)).filter(Boolean));
   kpi2HistoryAssignments = [];
   if (historyAssignmentIds.length) {
     const historyAssignmentsResult = await supabase.from("kpi_assignments").select("id,definition_snapshot,employee_id,target,assignment_status,period_id").in("id",historyAssignmentIds).limit(500);
     if (historyAssignmentsResult.error) throw historyAssignmentsResult.error;
-    kpi2HistoryAssignments = historyAssignmentsResult.data || [];
-  }
-  kpi2DuplicateDetails = [];
-  if (isManager()) {
-    const duplicateEventIds = kpi2Events.filter(event => event.possible_duplicate).map(event => event.id).slice(0, 500);
-    if (duplicateEventIds.length) {
-      kpi2DuplicateDetails = await callCrmRpc("crm_kpi_get_duplicate_context", {p_event_ids: duplicateEventIds}) || [];
-    }
+    kpi2HistoryAssignments = filterKpiRowsForPeriod(historyAssignmentsResult.data || [], periodId);
   }
   renderKpi2Operations();
 }
 
 function renderKpi2Operations() {
   const rows=$('kpi2ProgressRows'); if(!rows)return;
+  const context=$('kpi2CurrentPeriodContext');
+  const submit=$('kpi2SubmitBtn');
+  if(submit&&(currentSaleKpiPeriodResolution.status!=='selected'||!kpi2Progress.length))submit.disabled=true;
+  if(context){
+    if(currentSaleKpiPeriodResolution.status==='selected')context.textContent=`Kỳ KPI hiện tại: ${kpi1PeriodLabel(currentSaleKpiPeriod)} · ${clean(currentSaleKpiPeriod?.name)||'KPI'}`;
+    else if(currentSaleKpiPeriodResolution.status==='ambiguous')context.textContent='Có nhiều kỳ KPI ACTIVE cùng bao phủ thời gian hiện tại. Vui lòng liên hệ quản lý.';
+    else context.textContent='Chưa có kỳ KPI đang hoạt động cho thời gian hiện tại.';
+  }
   rows.innerHTML=kpi2Progress.length?kpi2Progress.map(row=>{
     const id=kpi2Field(row,"assignmentId","assignment_id"), target=Number(row.target||0), actual=Number(kpi2Field(row,"approvedActual","approved_actual")||0);
     const pending=Number(kpi2Field(row,"pendingCount","pending_count")||0), revision=Number(kpi2Field(row,"needsRevisionCount","needs_revision_count")||0);
@@ -5380,7 +5414,7 @@ function renderKpi2Operations() {
       <div class="metric">${esc(actual)} / ${esc(target)}</div><div class="kpi2-progress-meta"><span class="pill green">Đã duyệt ${esc(actual)}</span><span class="pill orange">Chờ ${esc(pending)}</span>${revision?`<span class="pill red">Bổ sung ${esc(revision)}</span>`:""}</div>
       <div class="muted">Actual ${esc(pct)}% · Score ${esc(score)}%${kpi2Field(row,"scoreEnabled","score_enabled")?"":" · Chỉ tham khảo"}</div>
       ${!isManager()&&canSubmit?`<div class="actions"><button class="small primary" type="button" data-kpi2-open-claim="${esc(id)}">Gửi event</button>${revision?`<button class="small" type="button" data-kpi2-open-revision="${esc(id)}">Bổ sung (${esc(revision)})</button>`:""}</div>`:""}</div>`;
-  }).join(""):`<div class="kpi-team-empty"><b>${kpiPeriods.some(period => clean(period.status).toUpperCase() === "ACTIVE") ? "Chưa có KPI ACTIVE được giao." : "Chưa có kỳ KPI đang hoạt động."}</b><span>Khi quản lý kích hoạt kỳ KPI và phân công cho bạn, KPI sẽ xuất hiện tại đây.</span></div>`;
+  }).join(""):`<div class="kpi-team-empty"><b>${currentSaleKpiPeriodResolution.status==='ambiguous'?'Không thể xác định kỳ KPI hiện tại.':currentSaleKpiPeriodResolution.status==='selected'?'Chưa có KPI ACTIVE được giao.':'Chưa có kỳ KPI đang hoạt động cho thời gian hiện tại.'}</b><span>${currentSaleKpiPeriodResolution.status==='ambiguous'?'Có nhiều kỳ ACTIVE đang chồng lấn. Vui lòng liên hệ quản lý.':'Khi quản lý kích hoạt kỳ KPI và phân công cho bạn, KPI sẽ xuất hiện tại đây.'}</span></div>`;
   $('kpi2ManagerReviewPanel')?.classList.toggle('hide',!isManager());
   renderKpi2SaleHistory();
   if(isManager()) renderKpi2ReviewQueue();
@@ -5451,7 +5485,8 @@ function syncKpi2ClaimStateFromDom(){
   kpi2ClaimState.eventContent=clean($('kpi2ManualDescription').value);kpi2ClaimState.eventTime=clean($('kpi2ManualEventAt').value);kpi2ClaimState.claimedValue=Number($('kpi2ManualValue').value||1);kpi2ClaimState.note=clean($('kpi2SaleNote').value);kpi2ClaimState.evidence=kpi2StagedEvidence.filter(item=>!item.discardedAt).map(item=>item.id);
 }
 async function configureKpi2ClaimAssignment(assignmentId,{preserveCustomer=true}={}){
-  const row=kpi2Progress.find(p=>clean(kpi2Field(p,"assignmentId","assignment_id"))===clean(assignmentId));if(!row)return false;
+  const row=kpi2Progress.find(p=>clean(kpi2Field(p,"assignmentId","assignment_id"))===clean(assignmentId));
+  if(!row||currentSaleKpiPeriodResolution.status!=='selected'||clean(kpi2Field(row,'periodId','period_id'))!==clean(currentSaleKpiPeriod?.id))return false;
   const previousId=clean(kpi2Field(kpi2ClaimState.assignment,'assignmentId','assignment_id'));
   if(previousId&&previousId!==clean(assignmentId)&&kpi2StagedEvidence.some(item=>!item.discardedAt)){notice('Hãy gửi hoặc hủy các ảnh đang chờ trước khi đổi KPI.',true);renderKpi2ClaimCustomerUi();return false;}
   if(previousId&&previousId!==clean(assignmentId))clearKpi2StagedEvidenceLocal();
@@ -5470,9 +5505,10 @@ async function configureKpi2ClaimAssignment(assignmentId,{preserveCustomer=true}
   return true;
 }
 async function openKpi2EventForm({assignmentId='',customer=null,entryPoint='kpi',revisionEvent=null}={}){
+  if(currentSaleKpiPeriodResolution.status!=='selected')return notice(currentSaleKpiPeriodResolution.status==='ambiguous'?'Không thể gửi event vì có nhiều kỳ KPI ACTIVE cùng bao phủ thời gian hiện tại.':'Chưa có kỳ KPI đang hoạt động cho thời gian hiện tại.',true);
   if(!$('kpi2SaleClaimPanel').classList.contains('hide')&&kpi2StagedEvidence.some(item=>!item.discardedAt))return notice('Hãy gửi hoặc hủy các ảnh đang chờ trước khi mở event khác.',true);
   const requestedAssignment=assignmentId?kpi2Progress.find(row=>clean(kpi2Field(row,'assignmentId','assignment_id'))===clean(assignmentId)):null;
-  if(assignmentId&&(!requestedAssignment||clean(kpi2Field(requestedAssignment,'periodStatus','period_status')).toUpperCase()!=='ACTIVE'))return notice('KPI này hiện không còn nhận event.',true);
+  if(assignmentId&&(!requestedAssignment||clean(kpi2Field(requestedAssignment,'periodStatus','period_status')).toUpperCase()!=='ACTIVE'||clean(kpi2Field(requestedAssignment,'periodId','period_id'))!==clean(currentSaleKpiPeriod?.id)))return notice('KPI này hiện không còn nhận event trong kỳ hiện tại.',true);
   kpi2ClaimSession+=1;clearKpi2StagedEvidenceLocal();resetKpiEventFormState(kpi2ClaimState);resetKpi2ClaimDom();
   kpi2ClaimState.entryPoint=entryPoint;kpi2ClaimState.revision=!!revisionEvent;kpi2ClaimState.customerLocked=!!revisionEvent;
   if(customer)setKpiEventCustomer(kpi2ClaimState,customer);
@@ -5501,7 +5537,7 @@ function openKpi2Revision(assignmentId){
 async function openKpi2ClaimFromCustomer(customerId){
   if(!isSale())return notice('Action này chỉ dành cho Sale.',true);
   const customer=normalizeKpiCustomer(customers.find(row=>clean(row.id)===clean(customerId)));if(!customer)return notice('Không tìm thấy khách hàng.',true);
-  await reloadKpi2Data();const eligible=eligibleKpiCustomerAssignments(kpi2Progress);if(!eligible.length)return notice(KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,true);
+  await reloadKpi2Data();if(currentSaleKpiPeriodResolution.status!=='selected')return notice(currentSaleKpiPeriodResolution.status==='ambiguous'?'Không thể gửi event vì có nhiều kỳ KPI ACTIVE cùng bao phủ thời gian hiện tại.':'Chưa có kỳ KPI đang hoạt động cho thời gian hiện tại.',true);const eligible=eligibleKpiCustomerAssignments(kpi2Progress);if(!eligible.length)return notice(KPI_CUSTOMER_NO_ELIGIBLE_MESSAGE,true);
   closeDrawer();navigateToWorkspace('#/kpi/mine');return openKpi2EventForm({customer,entryPoint:'customer'});
 }
 async function runKpi2CustomerSearch(query){
@@ -5624,6 +5660,7 @@ async function getKpi2Location(){return new Promise((resolve,reject)=>navigator.
 
 async function submitKpi2Claim(){
   syncKpi2ClaimStateFromDom();kpi2ClaimState.errors={};const assignmentId=clean($('kpi2ClaimAssignmentId').value),revisionEventId=clean($('kpi2RevisionEventId').value),progress=kpi2Progress.find(p=>clean(kpi2Field(p,'assignmentId','assignment_id'))===assignmentId),snapshot=kpi2Field(progress,'definitionSnapshot','definition_snapshot')||{};if(!progress)return notice('Hãy chọn KPI để tiếp tục.',true);
+  if(currentSaleKpiPeriodResolution.status!=='selected'||clean(kpi2Field(progress,'periodId','period_id'))!==clean(currentSaleKpiPeriod?.id))return notice('KPI này không thuộc kỳ KPI hiện tại. Vui lòng tải lại trang.',true);
   if(kpi2EvidenceBusy)return notice('Ảnh đang được xử lý, vui lòng chờ.',true);
   const customerValidation=buildKpiCustomerEventPayload(kpi2ClaimState,[]);if(!revisionEventId&&!customerValidation.ok){kpi2ClaimState.errors.submit=customerValidation.message;return notice(customerValidation.message,true);}
   const pendingDiscard=kpi2StagedEvidence.some(item=>item.status==='ARCHIVED'&&!item.discardedAt);if(pendingDiscard)return notice('Có ảnh đang chờ xóa. Hãy bấm Thử xóa lại trước khi gửi.',true);

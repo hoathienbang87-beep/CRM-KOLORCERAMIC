@@ -27,6 +27,32 @@ export function kpiValue(row, camel, snake) {
   return row?.[camel] ?? row?.[snake];
 }
 
+export function resolveCurrentSaleKpiPeriod(periods = [], now = new Date()) {
+  const instant = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(instant.getTime())) return {status:"none", period:null, matches:[]};
+  const matches = periods.filter(period => {
+    if (text(period?.status).toUpperCase() !== "ACTIVE") return false;
+    const startsAt = new Date(period?.startsAt ?? period?.starts_at);
+    const endsAt = new Date(period?.endsAt ?? period?.ends_at);
+    return !Number.isNaN(startsAt.getTime())
+      && !Number.isNaN(endsAt.getTime())
+      && startsAt.getTime() <= instant.getTime()
+      && instant.getTime() < endsAt.getTime();
+  });
+  if (matches.length === 1) return {status:"selected", period:matches[0], matches};
+  return {status:matches.length ? "ambiguous" : "none", period:null, matches};
+}
+
+export function filterKpiRowsForPeriod(rows = [], periodId = "") {
+  const target = text(periodId);
+  return target ? rows.filter(row => text(kpiValue(row, "periodId", "period_id")) === target) : [];
+}
+
+export function filterKpiRowsForAssignments(rows = [], assignmentIds = []) {
+  const allowed = new Set(assignmentIds.map(text).filter(Boolean));
+  return rows.filter(row => allowed.has(text(kpiValue(row, "assignmentId", "assignment_id"))));
+}
+
 export function eligibleKpiEmployees(users = []) {
   return users
     .filter(user => text(user?.role).toLowerCase() === "sale")
