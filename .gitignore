@@ -115,3 +115,6 @@ __pycache__/
 # dataconnect generated files
 .dataconnect
 .vercel
+
+# Generated public deployment output (scripts/build-public.mjs)
+/dist/

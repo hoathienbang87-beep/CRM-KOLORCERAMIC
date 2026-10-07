@@ -3,3 +3,4 @@
 .codex*
 .env*
 PRODUCT-R2-STEP*.md
+/dist

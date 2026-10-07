@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/generate-maintenance-config.mjs",
+  "buildCommand": "node scripts/build-public.mjs",
   "installCommand": "",
-  "outputDirectory": ".",
+  "outputDirectory": "dist",
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
