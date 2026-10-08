@@ -90,7 +90,13 @@ import {
   kpiValue as kpiTeamValue,
   managerKpiEventCardHtml,
   managerKpiEventViewModel,
-  resolveCurrentSaleKpiPeriod
+  resolveCurrentSaleKpiPeriod,
+  KPI_PERIOD_CANCEL_OPEN_ITEMS_MESSAGE,
+  kpiPeriodCloseDialogModel,
+  kpiPeriodCloseResultMessage,
+  kpiPeriodLifecycleActions,
+  kpiPeriodLifecycleErrorKind,
+  kpiPeriodReopenDialogModel
 } from "./kpi-team.js";
 import {
   buildKpiCustomerEventPayload,
@@ -4036,11 +4042,15 @@ function kpi1PeriodAssignments(periodId, includeCancelled = false) {
 function kpi1StatusHtml(status) {
   const value = clean(status || "DRAFT").toUpperCase();
   const cls = value === "ACTIVE" ? "kpi1-status-active" : value === "CLOSED" ? "kpi1-status-closed" : value === "CANCELLED" ? "red" : "kpi1-status-draft";
-  return `<span class="pill ${cls}">${esc(value === "CANCELLED" ? "ĐÃ HỦY" : value)}</span>`;
+  return `<span class="pill ${cls}">${esc(value === "CANCELLED" ? "ĐÃ HỦY" : value === "CLOSED" ? "ĐÃ ĐÓNG" : value)}</span>`;
 }
 
 function kpiPeriodHistoryStatusText(period) {
   const status = clean(period?.status).toUpperCase();
+  if (status === "CLOSED") {
+    const closer = users.find(user => kpi1EmployeeId(user) === clean(period.closedByUserId));
+    return `ĐÃ ĐÓNG${period.closedAt ? ` · ${fmtDate(period.closedAt)}` : ""}${closer ? ` · ${closer.name || closer.email}` : ""}`;
+  }
   if (status !== "CANCELLED") return status;
   const actor = users.find(user => kpi1EmployeeId(user) === clean(period.cancelledByUserId));
   return `ĐÃ HỦY${clean(period.cancelReason) ? ` · ${clean(period.cancelReason)}` : ""}${period.cancelledAt ? ` · ${fmtDate(period.cancelledAt)}` : ""}${actor ? ` · ${actor.name || actor.email}` : ""}`;
@@ -4363,6 +4373,137 @@ function closeKpiPeriodLifecycle() {
   $("kpiPeriodLifecycleDrawer")?.classList.add("hide");
   if ($("kpiPeriodLifecycleReason")) $("kpiPeriodLifecycleReason").value = "";
   if ($("kpiPeriodLifecycleDrawer")) $("kpiPeriodLifecycleDrawer").dataset.action = "";
+  resetKpiPeriodLifecycleDrawerChrome();
+}
+
+function resetKpiPeriodLifecycleDrawerChrome() {
+  const openItems = $("kpiPeriodLifecycleOpenItems");
+  if (openItems) { openItems.innerHTML = ""; openItems.classList.add("hide"); }
+  $("kpiPeriodLifecycleCounts")?.classList.remove("hide");
+  if ($("kpiPeriodLifecycleReasonLabel")) $("kpiPeriodLifecycleReasonLabel").textContent = "Lý do nghiệp vụ";
+  if ($("kpiPeriodLifecycleCancelBtn")) $("kpiPeriodLifecycleCancelBtn").textContent = "Hủy thao tác";
+  $("kpiPeriodLifecycleWarning")?.classList.remove("hide");
+}
+
+function showKpiPeriodLifecycleDrawer(focusId) {
+  $("kpiPeriodLifecycleBackdrop").classList.remove("hide");
+  $("kpiPeriodLifecycleDrawer").classList.remove("hide");
+  $(focusId)?.focus();
+}
+
+// 7C-B: Close. Counts always come fresh from crm_kpi_period_open_items (canonical
+// backend predicate); the dialog count is informational, the RPC result is final.
+async function openKpiPeriodClose({changed = false} = {}) {
+  const period = kpi1SelectedPeriod();
+  if (!period) return;
+  const status = clean(period.status).toUpperCase();
+  if (!kpiPeriodLifecycleActions({status, role:roleKey()}).close) return notice("Chỉ Manager/Admin/Owner được đóng kỳ KPI đang ACTIVE.", true);
+  let counts;
+  try {
+    counts = await callCrmRpc("crm_kpi_period_open_items", {p_period_id:period.id});
+  } catch (error) {
+    if (kpiPeriodLifecycleErrorKind(error) === "unsupported") return notice("Máy chủ chưa hỗ trợ đóng kỳ KPI. Không có thay đổi nào được thực hiện.", true);
+    throw error;
+  }
+  const model = kpiPeriodCloseDialogModel({periodLabel:kpi1PeriodLabel(period), counts});
+  resetKpiPeriodLifecycleDrawerChrome();
+  const drawer = $("kpiPeriodLifecycleDrawer");
+  drawer.dataset.action = "close";
+  drawer.dataset.periodId = period.id;
+  drawer.dataset.periodVersion = String(period.version);
+  drawer.dataset.previewOpenTotal = String(model.total);
+  $("kpiPeriodLifecycleTitle").textContent = model.title;
+  $("kpiPeriodLifecycleSubtitle").textContent = `${period.name || kpi1PeriodLabel(period)} · ACTIVE · Version ${period.version}`;
+  $("kpiPeriodLifecycleWarning").textContent = changed
+    ? `Dữ liệu kỳ KPI vừa thay đổi; số liệu dưới đây đã được tải lại. ${model.intro}`
+    : model.intro;
+  const openItems = $("kpiPeriodLifecycleOpenItems");
+  openItems.innerHTML = `${model.warning ? `<div class="maintenance-note" data-kpi-close-warning>${esc(model.warning)}</div>` : ""}<div class="kpi1-summary-grid">${model.breakdown.map(([label, value]) => `<div class="kpi1-summary-card"><span class="muted">${esc(label)}</span><b data-kpi-close-count="${esc(label)}">${esc(value)}</b></div>`).join("")}<div class="kpi1-summary-card"><span class="muted">Sẽ bị từ chối tự động</span><b data-kpi-close-total>${esc(model.total)}</b></div></div>`;
+  openItems.classList.remove("hide");
+  $("kpiPeriodLifecycleCounts").textContent = model.note;
+  $("kpiPeriodLifecycleReason")?.closest(".field")?.classList.add("hide");
+  $("kpiPeriodLifecycleSubmitBtn").textContent = model.submitLabel;
+  $("kpiPeriodLifecycleCancelBtn").textContent = model.cancelLabel;
+  showKpiPeriodLifecycleDrawer("kpiPeriodLifecycleCancelBtn");
+}
+
+function openKpiPeriodReopen() {
+  const period = kpi1SelectedPeriod();
+  if (!period) return;
+  if (!kpiPeriodLifecycleActions({status:period.status, role:roleKey()}).reopen) return notice("Chỉ Owner/Admin được mở lại kỳ KPI đã đóng.", true);
+  const model = kpiPeriodReopenDialogModel({periodLabel:kpi1PeriodLabel(period)});
+  resetKpiPeriodLifecycleDrawerChrome();
+  const drawer = $("kpiPeriodLifecycleDrawer");
+  drawer.dataset.action = "reopen";
+  drawer.dataset.periodId = period.id;
+  drawer.dataset.periodVersion = String(period.version);
+  $("kpiPeriodLifecycleTitle").textContent = model.title;
+  $("kpiPeriodLifecycleSubtitle").textContent = `${period.name || kpi1PeriodLabel(period)} · ${kpiPeriodHistoryStatusText(period)}`;
+  $("kpiPeriodLifecycleWarning").textContent = model.points.join(" ");
+  $("kpiPeriodLifecycleCounts").textContent = "";
+  $("kpiPeriodLifecycleCounts").classList.add("hide");
+  $("kpiPeriodLifecycleReasonLabel").textContent = model.reasonLabel;
+  $("kpiPeriodLifecycleReason")?.closest(".field")?.classList.remove("hide");
+  $("kpiPeriodLifecycleSubmitBtn").textContent = model.submitLabel;
+  $("kpiPeriodLifecycleCancelBtn").textContent = model.cancelLabel;
+  showKpiPeriodLifecycleDrawer("kpiPeriodLifecycleReason");
+}
+
+async function refreshAfterKpiPeriodLifecycle(periodId) {
+  kpiTeamState.periodDependencies.delete(clean(periodId));
+  await reloadKpiFoundationData();
+  await loadKpiPeriodDependencies(periodId).catch(() => {});
+  kpiTeamState.summaryCacheKey = "";
+  kpiTeamState.globalQueueEvents = []; kpiTeamState.globalQueueEvidence = [];
+  await Promise.all([
+    reloadKpiTeamSummary({force:true}).catch(() => {}),
+    refreshCanonicalKpiPendingCount().catch(() => {}),
+    reloadKpi2Data().catch(() => {})
+  ]);
+}
+
+async function confirmKpiPeriodClose(periodId, expectedVersion) {
+  let result;
+  try {
+    result = await callCrmRpc("crm_kpi_close_period_foundation", {p_period_id:periodId, p_expected_version:expectedVersion});
+  } catch (error) {
+    const kind = kpiPeriodLifecycleErrorKind(error);
+    // Never assume success: reload the real server state before saying anything.
+    await refreshAfterKpiPeriodLifecycle(periodId).catch(() => {});
+    if (kind === "version_conflict") {
+      notice("Kỳ KPI vừa được thay đổi bởi người khác. Số liệu đã được tải lại; hãy kiểm tra và xác nhận lại.", true);
+      return openKpiPeriodClose({changed:true});
+    }
+    closeKpiPeriodLifecycle();
+    if (kind === "not_active") return notice("Kỳ KPI không còn ở trạng thái ACTIVE. Dữ liệu đã được tải lại.", true);
+    throw error;
+  }
+  if (result?.closed !== true) {
+    // Pre-7C-A backend returns closed:false without changing anything.
+    closeKpiPeriodLifecycle();
+    await refreshAfterKpiPeriodLifecycle(periodId).catch(() => {});
+    return notice("Máy chủ chưa hỗ trợ đóng kỳ KPI. Kỳ vẫn ACTIVE, không có dữ liệu nào thay đổi.", true);
+  }
+  closeKpiPeriodLifecycle();
+  await refreshAfterKpiPeriodLifecycle(periodId);
+  notice(kpiPeriodCloseResultMessage(result));
+}
+
+async function confirmKpiPeriodReopen(periodId, expectedVersion, reason) {
+  if (!reason) return notice("Hãy nhập lý do mở lại kỳ KPI.", true);
+  try {
+    await callCrmRpc("crm_kpi_reopen_period", {p_period_id:periodId, p_expected_version:expectedVersion, p_reason:reason});
+  } catch (error) {
+    await refreshAfterKpiPeriodLifecycle(periodId).catch(() => {});
+    if (kpiPeriodLifecycleErrorKind(error) === "version_conflict") {
+      closeKpiPeriodLifecycle();
+      return notice("Kỳ KPI vừa được thay đổi bởi người khác. Dữ liệu đã được tải lại; hãy mở lại hộp thoại và xác nhận lại.", true);
+    }
+    throw error;
+  }
+  closeKpiPeriodLifecycle();
+  await refreshAfterKpiPeriodLifecycle(periodId);
+  notice("Đã mở lại kỳ KPI. Các đề xuất đã bị từ chối khi đóng kỳ vẫn giữ trạng thái từ chối.");
 }
 
 function openKpiPeriodLifecycle(action) {
@@ -4376,6 +4517,7 @@ function openKpiPeriodLifecycle(action) {
   if (action === "revert" && (status !== "ACTIVE" || runtimeTotal !== 0)) return notice("Chỉ kỳ ACTIVE chưa có dữ liệu thực hiện mới được đưa về DRAFT.", true);
   if (action === "delete" && (status !== "DRAFT" || runtimeTotal !== 0)) return notice("Chỉ kỳ DRAFT chưa có dữ liệu thực hiện mới được xóa.", true);
   if (action === "cancel" && (status !== "ACTIVE" || runtimeTotal === 0 || !(isOwner() || isAdmin()))) return notice("Chỉ Owner/Admin được hủy kỳ ACTIVE đã có dữ liệu.", true);
+  resetKpiPeriodLifecycleDrawerChrome();
   const drawer = $("kpiPeriodLifecycleDrawer");
   drawer.dataset.action = action;
   drawer.dataset.periodId = period.id;
@@ -4391,7 +4533,7 @@ function openKpiPeriodLifecycle(action) {
     warning:"Kỳ này chưa có dữ liệu thực hiện. Xóa kỳ sẽ loại bỏ cấu hình kỳ và assignment liên quan. Definitions dùng chung không bị xóa."
   } : {
     title:"Hủy kỳ KPI", submit:"Xác nhận hủy kỳ KPI",
-    warning:"Kỳ KPI này đã có dữ liệu thực hiện. Hủy kỳ sẽ ngừng toàn bộ KPI của kỳ này và loại kỳ khỏi kết quả KPI hiện hành. Submission, sự kiện, bằng chứng và lịch sử đã phát sinh vẫn được giữ lại."
+    warning:"Chỉ dùng khi kỳ KPI được tạo/vận hành sai — không dùng để kết thúc tháng (hãy dùng “Đóng kỳ KPI”). Hủy kỳ sẽ ngừng toàn bộ KPI của kỳ này và loại kỳ khỏi kết quả KPI hiện hành. Submission, sự kiện, bằng chứng và lịch sử đã phát sinh vẫn được giữ lại. Máy chủ sẽ từ chối hủy nếu còn đề xuất chưa xử lý."
   };
   $("kpiPeriodLifecycleTitle").textContent = config.title;
   $("kpiPeriodLifecycleSubtitle").textContent = `${period.name || kpi1PeriodLabel(period)} · ${status}`;
@@ -4410,6 +4552,8 @@ async function confirmKpiPeriodLifecycle() {
   const periodId = clean(drawer?.dataset.periodId);
   const expectedVersion = Number(drawer?.dataset.periodVersion || 0);
   const reason = clean($("kpiPeriodLifecycleReason")?.value);
+  if (action === "close") return confirmKpiPeriodClose(periodId, expectedVersion);
+  if (action === "reopen") return confirmKpiPeriodReopen(periodId, expectedVersion, reason);
   if (action === "activate") {
     await activateKpi1Period();
     closeKpiPeriodLifecycle();
@@ -4423,7 +4567,16 @@ async function confirmKpiPeriodLifecycle() {
   const args = action === "delete"
     ? {p_period_id:periodId, p_expected_period_version:expectedVersion, p_reason:reason}
     : {p_period_id:periodId, p_expected_version:expectedVersion, p_reason:reason};
-  await callCrmRpc(rpc, args);
+  try {
+    await callCrmRpc(rpc, args);
+  } catch (error) {
+    if (action === "cancel" && kpiPeriodLifecycleErrorKind(error) === "open_items") {
+      closeKpiPeriodLifecycle();
+      await refreshAfterKpiPeriodLifecycle(periodId).catch(() => {});
+      return notice(KPI_PERIOD_CANCEL_OPEN_ITEMS_MESSAGE, true);
+    }
+    throw error;
+  }
   closeKpiPeriodLifecycle();
   kpiTeamState.periodDependencies.delete(periodId);
   if (action === "delete") selectedKpiFoundationPeriodId = "";
@@ -4585,14 +4738,22 @@ function renderKpiFoundation() {
   $("kpi1LockedNotice").classList.toggle("hide", !locked);
   $("kpi1ActivatePeriodBtn").classList.toggle("hide", locked);
   $("kpi1ActivatePeriodBtn").disabled = !validation.canActivate;
-  $("kpi1LifecycleInfo").textContent = periodStatus === "CANCELLED"
+  const lifecycleActions = kpiPeriodLifecycleActions({status:periodStatus, role:roleKey(), runtimeTotal});
+  $("kpi1LifecycleInfo").textContent = ["CANCELLED", "CLOSED"].includes(periodStatus)
     ? `${kpiPeriodHistoryStatusText(period)}. ${kpiPeriodDependencyText(dependencies)}`
     : kpiPeriodDependencyText(dependencies);
   $("kpi1RevertPeriodBtn").classList.toggle("hide", !(periodStatus === "ACTIVE" && runtimeTotal === 0));
   $("kpi1DeletePeriodR31Btn").classList.toggle("hide", !(periodStatus === "DRAFT" && runtimeTotal === 0));
-  $("kpi1CancelPeriodBtn").classList.toggle("hide", !(periodStatus === "ACTIVE" && runtimeTotal > 0 && (isOwner() || isAdmin())));
+  $("kpi1ClosePeriodBtn")?.classList.toggle("hide", !lifecycleActions.close);
+  $("kpi1ReopenPeriodBtn")?.classList.toggle("hide", !lifecycleActions.reopen);
+  $("kpi1CancelPeriodBtn").classList.toggle("hide", !lifecycleActions.cancel);
   if (periodStatus === "ACTIVE" && runtimeTotal > 0 && !(isOwner() || isAdmin())) {
-    $("kpi1LifecycleInfo").textContent += " · Kỳ đã có dữ liệu thực hiện. Chỉ Owner có thể hủy toàn bộ kỳ.";
+    $("kpi1LifecycleInfo").textContent += " · Manager có thể đóng kỳ KPI khi kết thúc tháng. Chỉ Owner/Admin có thể hủy kỳ.";
+  }
+  if (periodStatus === "CLOSED") {
+    $("kpi1LifecycleInfo").textContent += lifecycleActions.reopen
+      ? " · Kỳ đã đóng chỉ đọc. Owner/Admin có thể mở lại kỳ khi cần điều chỉnh."
+      : " · Kỳ đã đóng chỉ đọc. Chỉ Owner/Admin có thể mở lại kỳ.";
   }
   renderKpi1Matrix(period);
 }
@@ -5002,7 +5163,7 @@ function renderKpiTeamProposalTab(summary) {
   const periodFrozen = ["CANCELLED", "CLOSED"].includes(clean(kpiTeamPeriod()?.status).toUpperCase());
   const evidenceCounts = groupEvidenceCount(kpiTeamState.employeeEvidence);
   $("kpiTeamDetailStatus").textContent = `${kpiTeamState.employeeEvents.length} đề xuất · ${pendingCount} chờ duyệt`;
-  target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "CLOSED"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"],["withdrawn","Đã thu hồi"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
+  target.innerHTML = `${periodFrozen ? `<div class="maintenance-note">Kỳ ${clean(kpiTeamPeriod()?.status).toUpperCase() === "CANCELLED" ? "ĐÃ HỦY" : "ĐÃ ĐÓNG"} chỉ đọc; dữ liệu và lịch sử được giữ nguyên.</div>` : ""}<div class="kpi-team-event-filters" role="tablist" aria-label="Lọc trạng thái đề xuất">${[["all","Tất cả"],["pending","Chờ duyệt"],["approved","Đã duyệt"],["revision","Cần sửa"],["rejected","Từ chối"],["withdrawn","Đã thu hồi"]].map(([key,label]) => `<button class="small ${kpiTeamState.eventStatus===key?"primary":""}" type="button" data-kpi-team-event-filter="${key}">${label}</button>`).join("")}</div>${pendingCount && !periodFrozen ? `<div class="kpi-team-review-controls"><select id="kpiTeamReviewDecision"><option value="APPROVED">Duyệt</option><option value="NEEDS_REVISION">Yêu cầu bổ sung</option><option value="REJECTED">Từ chối</option></select><select id="kpiTeamReviewReason"><option value="">-- Lý do --</option><option>DUPLICATE</option><option>INVALID_EVIDENCE</option><option>MISSING_LOCATION</option><option>MISSING_TIMESTAMP</option><option>INCOMPLETE_INFORMATION</option><option>NOT_NEW</option><option>OUT_OF_SCOPE</option><option>OTHER</option></select><input id="kpiTeamManagerNote" placeholder="Ghi chú Manager"><button id="kpiTeamReviewBtn" class="small primary" type="button">Xử lý mục đã chọn</button></div>` : ""}<div class="kpi-team-event-list">${events.length ? events.map(event => {
     const assignment = kpiTeamEventAssignment(event);
     const eventEvidence = evidenceForEvent(kpiTeamState.employeeEvidence, event.id);
     const evidenceCount = evidenceCounts.get(clean(event.id)) || 0;
@@ -9482,6 +9643,8 @@ on("kpi1ActivatePeriodBtn", "click", () => openKpiPeriodLifecycle("activate"));
 on("kpi1RevertPeriodBtn", "click", () => openKpiPeriodLifecycle("revert"));
 on("kpi1DeletePeriodR31Btn", "click", () => openKpiPeriodLifecycle("delete"));
 on("kpi1CancelPeriodBtn", "click", () => openKpiPeriodLifecycle("cancel"));
+on("kpi1ClosePeriodBtn", "click", () => runAction("kpi1ClosePeriodBtn", "kpiPeriodCloseOpen", "Đang kiểm tra...", () => openKpiPeriodClose()));
+on("kpi1ReopenPeriodBtn", "click", openKpiPeriodReopen);
 on("kpi1ClosePeriodDetailBtn", "click", closeKpi1PeriodDetail);
 on("kpiPeriodLifecycleCloseBtn", "click", closeKpiPeriodLifecycle);
 on("kpiPeriodLifecycleCancelBtn", "click", closeKpiPeriodLifecycle);

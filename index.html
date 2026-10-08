@@ -473,7 +473,9 @@
                 <button id="kpi1ActivatePeriodBtn" class="primary" type="button">Kích hoạt kỳ</button>
                 <button id="kpi1RevertPeriodBtn" class="hide" type="button">Đưa về DRAFT</button>
                 <button id="kpi1DeletePeriodR31Btn" class="danger hide" type="button">Xóa kỳ</button>
-                <button id="kpi1CancelPeriodBtn" class="danger hide" type="button">Hủy kỳ KPI</button>
+                <button id="kpi1ClosePeriodBtn" class="primary hide" type="button" title="Hoàn tất/chốt kỳ KPI bình thường">Đóng kỳ KPI</button>
+                <button id="kpi1ReopenPeriodBtn" class="hide" type="button">Mở lại kỳ KPI</button>
+                <button id="kpi1CancelPeriodBtn" class="danger hide" type="button" title="Hủy kỳ KPI do kỳ được tạo/vận hành sai">Hủy kỳ KPI</button>
                 <button id="kpi1ClosePeriodDetailBtn" type="button">Đóng chi tiết</button>
               </div>
             </div>
@@ -1032,8 +1034,9 @@
       <button id="kpiPeriodLifecycleCloseBtn" class="small" type="button">Đóng</button>
     </div>
     <div id="kpiPeriodLifecycleWarning" class="maintenance-note"></div>
+    <div id="kpiPeriodLifecycleOpenItems" class="kpi-lifecycle-open-items hide" role="status" aria-live="polite"></div>
     <div id="kpiPeriodLifecycleCounts" class="detail-note muted"></div>
-    <div class="field"><label for="kpiPeriodLifecycleReason">Lý do nghiệp vụ</label><textarea id="kpiPeriodLifecycleReason" maxlength="500" placeholder="Nhập lý do bắt buộc"></textarea></div>
+    <div class="field"><label id="kpiPeriodLifecycleReasonLabel" for="kpiPeriodLifecycleReason">Lý do nghiệp vụ</label><textarea id="kpiPeriodLifecycleReason" maxlength="500" placeholder="Nhập lý do bắt buộc"></textarea></div>
     <div class="actions"><button id="kpiPeriodLifecycleCancelBtn" type="button">Hủy thao tác</button><button id="kpiPeriodLifecycleSubmitBtn" class="danger" type="button">Xác nhận</button></div>
   </aside>
 

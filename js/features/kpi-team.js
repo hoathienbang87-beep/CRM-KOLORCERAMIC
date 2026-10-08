@@ -302,9 +302,103 @@ export function managerKpiEventCardHtml(viewModel, {selectable = false, focused 
   const view = viewModel || managerKpiEventViewModel();
   const status = managerStatus(view.status);
   const showContent = view.eventContent && view.eventContent !== view.eventTitle;
-  const review = [view.reviewReason ? `Lý do: ${view.reviewReason}` : "", view.managerNote ? `Ghi chú Manager: ${view.managerNote}` : ""].filter(Boolean);
+  const review = [view.reviewReason ? `Lý do: ${kpiReviewReasonLabel(view.reviewReason)}` : "", view.managerNote ? `Ghi chú Manager: ${view.managerNote}` : ""].filter(Boolean);
   const withdrawn = view.status === "WITHDRAWN" ? [view.withdrawReason ? `Lý do thu hồi: ${view.withdrawReason}` : "", view.withdrawnAt ? `Thu hồi lúc: ${eventTime(view.withdrawnAt)}` : ""].filter(Boolean) : [];
   const canWithdraw = withdrawAction && view.status === "PENDING" && !view.supersedesEventId;
   const thumbnails = kpiEvidenceThumbnailsHtml(view.evidence, view.eventId);
   return `<article class="kpi-team-event-card ${focused ? "is-focused" : ""}" data-kpi-manager-event="${html(view.eventId)}"><div class="kpi-team-event-head"><div>${selectable ? `<input type="checkbox" data-kpi2-review-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}" aria-label="Chọn đề xuất ${html(view.eventTitle)}">` : ""}<b>${html(view.saleName || "Nhân viên")}</b><span>${html(view.kpiName || "KPI")}${view.kpiCode ? ` · ${html(view.kpiCode)}` : ""}</span></div><span class="pill ${status.className}">${html(status.label)}</span></div>${managerKpiCustomerSnapshotHtml(view,{showCurrentCustomerAction:customerAction})}<div class="kpi-team-event-body"><b>${html(view.eventTitle)}</b>${showContent ? `<span>${html(view.eventContent)}</span>` : ""}<div class="kpi-manager-event-meta"><div><span>Giá trị đề xuất</span><b>${html(eventNumber(view.claimedValue))}</b></div>${view.approvedValue != null ? `<div><span>Giá trị duyệt</span><b>${html(eventNumber(view.approvedValue))}</b></div>` : ""}<div><span>Thời gian thực hiện</span><b>${html(eventTime(view.eventAt))}</b></div><div><span>Thời gian gửi</span><b>${html(eventTime(view.createdAt))}</b></div></div>${view.evidenceCount ? `<span>${html(view.evidenceCount)} minh chứng${view.location ? " · Có vị trí" : ""}${view.revisionNo > 1 ? ` · Bản bổ sung ${html(view.revisionNo)}` : ""}</span>${thumbnails}` : `${view.location || view.revisionNo > 1 ? `<span>${view.location ? "Có vị trí" : ""}${view.location && view.revisionNo > 1 ? " · " : ""}${view.revisionNo > 1 ? `Bản bổ sung ${html(view.revisionNo)}` : ""}</span>` : ""}`}${view.saleNote ? `<div class="detail-note">Ghi chú Sale: ${html(view.saleNote)}</div>` : ""}${view.possibleDuplicate ? `<span class="pill orange">Có thể trùng${view.duplicateCount ? ` · ${html(view.duplicateCount)} kết quả` : ""}</span>` : ""}${review.length || view.reviewedAt ? `<div class="kpi-manager-review-history">${review.map(item => `<span>${html(item)}</span>`).join("")}${view.reviewedAt ? `<span>Review lúc: ${html(eventTime(view.reviewedAt))}</span>` : ""}</div>` : ""}${withdrawn.length ? `<div class="kpi-manager-review-history">${withdrawn.map(item => `<span>${html(item)}</span>`).join("")}</div>` : ""}</div><div class="actions">${view.evidenceCount ? `<button class="small" type="button" data-kpi2-view-evidence="${html(view.eventId)}">Xem tất cả (${html(view.evidenceCount)})</button>` : ""}${canWithdraw ? `<button class="small danger" type="button" data-kpi2-withdraw-event="${html(view.eventId)}" data-version="${html(view.lockVersion)}">Thu hồi đề xuất</button>` : ""}${openAction ? `<button class="small primary" type="button" data-kpi-team-open-event="${html(view.eventId)}" data-employee-id="${html(view.saleUserId)}">Mở đề xuất</button>` : ""}</div></article>`;
 }
+
+
+// ---------------------------------------------------------------------
+// KPI 7C-B — period Close / Reopen / Cancel UI contract (pure helpers).
+// Open-item semantics come ONLY from the backend (crm_kpi_period_open_items);
+// these helpers never count events themselves.
+// ---------------------------------------------------------------------
+export const KPI_PERIOD_CLOSED_REASON_LABEL = "Từ chối tự động do kỳ KPI đã được đóng";
+
+const KPI_REVIEW_REASON_LABELS = {
+  PERIOD_CLOSED: KPI_PERIOD_CLOSED_REASON_LABEL
+};
+
+export function kpiReviewReasonLabel(code) {
+  const value = text(code);
+  return KPI_REVIEW_REASON_LABELS[value.toUpperCase()] || value;
+}
+
+const lifecycleCount = value => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.trunc(number) : 0;
+};
+
+export function kpiPeriodLifecycleActions({status = "", role = "", runtimeTotal = null} = {}) {
+  const value = text(status).toUpperCase();
+  const key = text(role).toLowerCase();
+  const adminOwner = key === "admin" || key === "owner";
+  const manager = adminOwner || ["manager", "quanly", "quản lý", "quản lí"].includes(key);
+  return {
+    close: value === "ACTIVE" && manager,
+    reopen: value === "CLOSED" && adminOwner,
+    cancel: value === "ACTIVE" && adminOwner && runtimeTotal != null && Number(runtimeTotal) > 0
+  };
+}
+
+export function kpiPeriodOpenItemCounts(counts = {}) {
+  const pending = lifecycleCount(counts?.pendingCount ?? counts?.pending_count);
+  const revision = lifecycleCount(counts?.needsRevisionCount ?? counts?.needs_revision_count);
+  const total = lifecycleCount(counts?.openTotal ?? counts?.open_total);
+  return {pending, revision, total};
+}
+
+export function kpiPeriodCloseDialogModel({periodLabel = "", counts = {}} = {}) {
+  const {pending, revision, total} = kpiPeriodOpenItemCounts(counts);
+  const label = text(periodLabel) || "này";
+  return {
+    title: `Đóng kỳ KPI ${label}?`,
+    intro: "Kỳ KPI sẽ chuyển sang trạng thái Đã đóng và chỉ còn chế độ xem.",
+    pending,
+    revision,
+    total,
+    warning: total > 0
+      ? `Có ${total} đề xuất chưa được xử lý. Khi đóng kỳ, ${total} đề xuất này sẽ tự động bị từ chối và không được tính vào KPI.`
+      : "",
+    breakdown: [["Chờ duyệt", pending], ["Cần bổ sung", revision]],
+    note: "Đề xuất đã duyệt, minh chứng và lịch sử được giữ nguyên. Số liệu cuối cùng do máy chủ xác nhận khi đóng kỳ.",
+    submitLabel: total > 0 ? `Đóng kỳ & từ chối ${total} đề xuất` : "Đóng kỳ KPI",
+    cancelLabel: "Hủy"
+  };
+}
+
+export function kpiPeriodCloseResultMessage(result = {}) {
+  const total = lifecycleCount(result?.autoRejectedTotal ?? result?.auto_rejected_total);
+  return total > 0
+    ? `Kỳ KPI đã được đóng. ${total} đề xuất chưa xử lý đã được từ chối tự động.`
+    : "Kỳ KPI đã được đóng. Không có đề xuất nào cần từ chối tự động.";
+}
+
+export function kpiPeriodReopenDialogModel({periodLabel = ""} = {}) {
+  const label = text(periodLabel) || "này";
+  return {
+    title: `Mở lại kỳ KPI ${label}?`,
+    points: [
+      "Kỳ sẽ chuyển về trạng thái ACTIVE.",
+      "Nhân viên có thể phát sinh đề xuất mới trong kỳ.",
+      "Các đề xuất đã bị từ chối khi đóng kỳ sẽ KHÔNG tự phục hồi."
+    ],
+    reasonLabel: "Lý do mở lại",
+    submitLabel: "Mở lại kỳ",
+    cancelLabel: "Hủy"
+  };
+}
+
+export function kpiPeriodLifecycleErrorKind(error) {
+  const message = text(error?.message ?? error);
+  if (/KPI_VERSION_CONFLICT/i.test(message)) return "version_conflict";
+  if (/KPI_PERIOD_OPEN_ITEMS/i.test(message)) return "open_items";
+  if (/KPI_PERIOD_NOT_ACTIVE/i.test(message)) return "not_active";
+  if (/crm_kpi_period_open_items|PGRST202|Could not find the function/i.test(message)) return "unsupported";
+  return "";
+}
+
+export const KPI_PERIOD_CANCEL_OPEN_ITEMS_MESSAGE =
+  "Không thể hủy kỳ vì còn đề xuất chưa xử lý. Hãy đóng kỳ nếu mục đích là kết thúc kỳ KPI.";

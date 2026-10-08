@@ -98,6 +98,7 @@ begin
     'eventSnapshot', jsonb_build_object('title', 'Synthetic visit'),
     'evidenceIds', jsonb_build_array(v_evidence))));
   perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claim.role', '', true);
   perform set_config('crm.kpi_write', '', true);
   return (v_result->'eventIds'->>0)::uuid;
 end $$;
@@ -111,6 +112,7 @@ begin
   perform public.crm_kpi_review_events(gen_random_uuid(), jsonb_build_array(jsonb_build_object('eventId', p_event, 'expectedVersion', v_version)),
     p_decision, p_reason, coalesce(p_note, case when p_decision = 'NEEDS_REVISION' then 'Bổ sung ảnh' end));
   perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claim.role', '', true);
   perform set_config('crm.kpi_write', '', true);
 end $$;
 
@@ -121,6 +123,7 @@ begin
   perform lifecycle_test.actor(p_sale);
   perform public.crm_kpi_withdraw_event(p_event, v_version, 'Gửi nhầm', gen_random_uuid());
   perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claim.role', '', true);
   perform set_config('crm.kpi_write', '', true);
 end $$;
 
@@ -137,6 +140,7 @@ begin
     jsonb_build_object('eventSnapshot', jsonb_build_object('title', 'Synthetic visit (revised)'),
                        'evidenceIds', jsonb_build_array(v_evidence)));
   perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claim.role', '', true);
   perform set_config('crm.kpi_write', '', true);
   return (v_result->'eventIds'->>0)::uuid;
 end $$;

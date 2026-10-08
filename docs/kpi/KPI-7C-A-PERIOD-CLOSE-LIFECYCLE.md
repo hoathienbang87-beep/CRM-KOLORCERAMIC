@@ -89,3 +89,29 @@ Before any Close has run (no `PERIOD_CLOSED` rows): re-run the previous definiti
 After a Close: keep the reason check (existing `PERIOD_CLOSED` rows need it). Roll back
 only the functions (Close then returns to the no-op foundation), or reopen the period.
 Never rewrite auto-rejected events.
+
+## 7C-B — Close / Reopen UI
+
+Surface: **Bộ KPI & Kỳ KPI → Chi tiết kỳ KPI** (the existing lifecycle drawer is reused).
+
+| Period | Sale | Manager | Admin / Owner |
+|---|---|---|---|
+| ACTIVE | — | Đóng kỳ KPI | Đóng kỳ KPI · Hủy kỳ KPI (if it has runtime data) |
+| CLOSED (ĐÃ ĐÓNG) | — | read-only | Mở lại kỳ KPI |
+
+- **Close dialog:** counts come from `crm_kpi_period_open_items`, refreshed every time the dialog opens; the frontend never counts events itself.
+  - Title: "Đóng kỳ KPI MM/YYYY?"
+  - Warning: "Có N đề xuất chưa được xử lý…", with a breakdown of Chờ duyệt and Cần bổ sung.
+  - Primary button: "Đóng kỳ & từ chối N đề xuất", or "Đóng kỳ KPI" when N = 0. Secondary button: "Hủy".
+- **Close result:**
+  - The success toast uses `autoRejectedTotal` returned by the RPC, never the count shown in the dialog.
+  - `KPI_VERSION_CONFLICT`: the dialog reloads with the fresh version and counts and asks for a fresh confirmation. It never retries automatically.
+  - Any other error: the server state is reloaded and the period is never shown as CLOSED optimistically.
+- **Reopen:** asks for "Lý do mở lại", which is required and checked in the client. The dialog says auto-rejected proposals are not restored.
+- **Cancel:** `KPI_PERIOD_OPEN_ITEMS` shows "Không thể hủy kỳ vì còn đề xuất chưa xử lý. Hãy đóng kỳ nếu mục đích là kết thúc kỳ KPI." Cancel never falls back to Close.
+- **PERIOD_CLOSED label:** shown as "Từ chối tự động do kỳ KPI đã được đóng" by the shared event card, so it covers Sale history, Manager KPI Team detail and the queue.
+- **Sale view:** "KPI của tôi" stays scoped to the current ACTIVE period (7T contract), so a CLOSED month is not listed there. Its events show the label again if the period is reopened.
+
+Tests:
+- `scripts/test-kpi-period-lifecycle-ui.mjs`: static and unit checks.
+- `scripts/test-kpi-period-lifecycle-ui-browser.mjs`: real frontend plus the real 7C-A backend on disposable Postgres, through `scripts/helpers/kpi-lifecycle-local-gateway.mjs` (fixture `scripts/fixtures/kpi-lifecycle-ui-fixture.sql`).
