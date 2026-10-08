@@ -77,6 +77,8 @@ exports/
 !scripts/test-phase-kpi2-customer-linked-event-integration.sql
 !scripts/test-kpi21e2-draft-config-delete.sql
 !harness-prod-baseline.sql
+!scripts/fixtures/kpi-lifecycle-prod-baseline.sql
+!scripts/fixtures/kpi-lifecycle-test-helpers.sql
 !scripts/capture-pre-change-references.sql
 !scripts/test-hotfix-r1-0-fail-closed.sql
 !scripts/test-phase-employee-onboarding-r1-integration.sql
