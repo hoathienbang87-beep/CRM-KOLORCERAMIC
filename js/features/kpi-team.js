@@ -402,3 +402,62 @@ export function kpiPeriodLifecycleErrorKind(error) {
 
 export const KPI_PERIOD_CANCEL_OPEN_ITEMS_MESSAGE =
   "Không thể hủy kỳ vì còn đề xuất chưa xử lý. Hãy đóng kỳ nếu mục đích là kết thúc kỳ KPI.";
+
+// ---------------------------------------------------------------------
+// KPI 7D — Sale period history selector (pure helpers).
+// Two separate concepts:
+//   * current operational period  — resolveCurrentSaleKpiPeriod (7T), the
+//     ONLY source for any Sale write (proposal, Customer-origin, evidence);
+//   * selected view period        — what KPI Mine is showing; read-only
+//     unless it is exactly the current operational ACTIVE period.
+// Period visibility itself is enforced by RLS (kpi_periods: ACTIVE/CLOSED
+// with an own ASSIGNED assignment); these helpers only order and label.
+// ---------------------------------------------------------------------
+export const SALE_KPI_VIEW_STATUSES = Object.freeze(["ACTIVE", "CLOSED"]);
+
+const saleKpiMonthLabel = period => {
+  const value = text(period?.periodMonth ?? period?.period_month).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(value)) return value || "Chưa rõ tháng";
+  const [year, month] = value.split("-");
+  return `${month}/${year}`;
+};
+
+export function saleKpiPeriodStatusLabel(status) {
+  const value = text(status).toUpperCase();
+  if (value === "ACTIVE") return "Đang hoạt động";
+  if (value === "CLOSED") return "Đã đóng";
+  return value;
+}
+
+export function saleKpiPeriodLabel(period) {
+  const month = saleKpiMonthLabel(period);
+  const name = text(period?.name);
+  const generic = !name || /^kpi\s+(tháng\s*)?\d{1,2}([\/\-.]\d{4})?$/i.test(name) || name.includes(month);
+  const shortName = name.length > 28 ? `${name.slice(0, 27)}…` : name;
+  return [month, generic ? "" : shortName, saleKpiPeriodStatusLabel(period?.status)].filter(Boolean).join(" · ");
+}
+
+export function saleKpiPeriodOptions(periods = []) {
+  const seen = new Set();
+  return periods
+    .filter(period => SALE_KPI_VIEW_STATUSES.includes(text(period?.status).toUpperCase()))
+    .filter(period => { const id = text(period?.id); if (!id || seen.has(id)) return false; seen.add(id); return true; })
+    .sort((a, b) => text(b?.periodMonth ?? b?.period_month).localeCompare(text(a?.periodMonth ?? a?.period_month)))
+    .map(period => ({id: text(period.id), status: text(period.status).toUpperCase(), label: saleKpiPeriodLabel(period), period}));
+}
+
+export function resolveSaleKpiViewPeriodId({resolution = {}, options = [], previousId = ""} = {}) {
+  const ids = new Set(options.map(option => option.id));
+  if (previousId && ids.has(text(previousId))) return text(previousId);
+  if (resolution?.status === "selected" && ids.has(text(resolution.period?.id))) return text(resolution.period.id);
+  // No single current ACTIVE period: fall back to newest CLOSED history (read-only), never to an ACTIVE row.
+  return options.find(option => option.status === "CLOSED")?.id || "";
+}
+
+export function saleKpiViewIsWritable({resolution = {}, currentPeriod = null, viewPeriodId = ""} = {}) {
+  return resolution?.status === "selected"
+    && !!currentPeriod
+    && text(currentPeriod.status).toUpperCase() === "ACTIVE"
+    && text(viewPeriodId) !== ""
+    && text(viewPeriodId) === text(currentPeriod.id);
+}

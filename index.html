@@ -500,6 +500,11 @@
             <div><h3>KPI của tôi</h3><div id="kpi2CurrentPeriodContext" class="muted">Đang xác định kỳ KPI hiện tại...</div></div>
             <button id="kpi2ReloadBtn" class="small" type="button">Tải lại</button>
           </div>
+          <div id="kpi2PeriodSelectField" class="field hide" style="max-width:360px">
+            <label for="kpi2PeriodSelect">Kỳ KPI</label>
+            <select id="kpi2PeriodSelect" aria-describedby="kpi2PeriodViewNote"></select>
+          </div>
+          <div id="kpi2PeriodViewNote" class="maintenance-note hide" role="status" aria-live="polite"></div>
           <div id="kpi2ProgressRows" class="kpi2-progress-grid"><div class="muted">Chưa có KPI ACTIVE được giao.</div></div>
           <section id="kpi2SaleClaimPanel" class="kpi2-workspace hide">
             <div class="pro-section-title"><h3 id="kpi2ClaimTitle">Gửi event KPI</h3><button id="kpi2CloseClaimBtn" class="small" type="button">Đóng</button></div>

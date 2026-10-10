@@ -95,7 +95,7 @@ ok(/kpiPeriodLifecycleActions\(\{status:periodStatus, role:roleKey\(\), runtimeT
 // --- CLOSED read-only (existing guards preserved) --------------------------
 ok(/pendingCount && !periodFrozen/.test(app) && /\["CANCELLED", "CLOSED"\]\.includes\(clean\(kpiTeamPeriod\(\)\?\.status\)\.toUpperCase\(\)\)/.test(app), "KPI Team CLOSED ẩn duyệt/từ chối");
 ok(/const canConfigure = \["DRAFT", "ACTIVE"\]\.includes\(periodStatus\)/.test(app), "CLOSED không sửa target/assignment");
-ok(/canSubmit=clean\(kpi2Field\(row,"periodStatus","period_status"\)\)\.toUpperCase\(\)==='ACTIVE'/.test(app), "CLOSED không gửi đề xuất mới");
+ok(/canSubmit=(?:display\.writable&&)?clean\(kpi2Field\(row,"periodStatus","period_status"\)\)\.toUpperCase\(\)==='ACTIVE'/.test(app), "CLOSED không gửi đề xuất mới");
 ok(/value === "CLOSED" \? "ĐÃ ĐÓNG"/.test(app), "nhãn trạng thái ĐÃ ĐÓNG");
 
 console.log(`KPI 7C-B lifecycle UI static contract: PASS (${checks} checks)`);

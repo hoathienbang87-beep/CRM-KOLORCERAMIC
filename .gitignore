@@ -80,6 +80,8 @@ exports/
 !scripts/fixtures/kpi-lifecycle-prod-baseline.sql
 !scripts/fixtures/kpi-lifecycle-test-helpers.sql
 !scripts/fixtures/kpi-lifecycle-ui-fixture.sql
+!scripts/fixtures/kpi-sale-read-rls.sql
+!scripts/fixtures/kpi-sale-history-fixture.sql
 !scripts/capture-pre-change-references.sql
 !scripts/test-hotfix-r1-0-fail-closed.sql
 !scripts/test-phase-employee-onboarding-r1-integration.sql

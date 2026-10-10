@@ -73,7 +73,12 @@ function parseFilter(column, raw) {
   return negate ? `not (${sql})` : sql;
 }
 
-export async function startLocalGateway({root, pg, onRequest = () => {}}) {
+// rlsReads: run KPI table SELECTs as role `authenticated` with the caller's JWT
+// claims, so Production RLS policies (scripts/fixtures/kpi-sale-read-rls.sql)
+// decide visibility exactly like PostgREST does.
+const RLS_TABLES = new Set(["kpi_periods","kpi_definitions","kpi_assignments","kpi_submissions","kpi_submission_events","kpi_evidence","kpi_duplicate_matches"]);
+// staticTables: fixed synthetic rows for non-KPI tables (e.g. one test Customer) — filters ignored.
+export async function startLocalGateway({root, pg, onRequest = () => {}, rlsReads = false, staticTables = {}}) {
   if (!(pg.host.startsWith("/") || ["localhost", "127.0.0.1", "::1"].includes(pg.host))) throw new Error(`REFUSING non-local PGHOST ${pg.host}`);
   const tokens = new Map(); // token -> auth user
   const columnsCache = new Map();
@@ -130,7 +135,8 @@ commit;`;
     return {status: 200, body: JSON.parse(r.out.split("\n").pop() || "null")};
   }
 
-  async function handleSelect(table, url, headers, method) {
+  async function handleSelect(table, url, headers, method, authUser) {
+    if (staticTables[table]) return {status: 200, body: method === "HEAD" ? undefined : staticTables[table], total: staticTables[table].length};
     if (!READ_TABLES.has(table)) return {status: 200, body: [], total: 0};
     const columns = await tableColumns(table);
     const where = [], order = [];
@@ -151,7 +157,14 @@ commit;`;
     const base = `from public.${table}${where.length ? ` where ${where.join(" and ")}` : ""}`;
     const sql = `select coalesce(jsonb_agg(t), '[]') from (select ${cols} ${base}${order.length ? ` order by ${order.join(",")}` : ""}${limit ? ` limit ${limit}` : ""}${offset ? ` offset ${offset}` : ""}) t;
 select count(*) ${base};`;
-    const r = await runPsql(pg, sql);
+    const asCaller = rlsReads && RLS_TABLES.has(table);
+    const r = await runPsql(pg, asCaller ? `begin;
+\\o /dev/null
+set local role authenticated;
+select set_config('request.jwt.claim.sub', ${lit(authUser?.id || "")}, true), set_config('request.jwt.claim.role', 'authenticated', true);
+\\o
+${sql}
+commit;` : sql);
     if (r.code !== 0) return {status: 400, body: pgError(r.err)};
     const [rows, total] = r.out.split("\n");
     return {status: 200, body: method === "HEAD" ? undefined : JSON.parse(rows), total: Number(total)};
@@ -210,7 +223,7 @@ select count(*) ${base};`;
         }
         const table = sbPath.slice("/rest/v1/".length).split("/")[0];
         if (req.method !== "GET" && req.method !== "HEAD") { record.ignoredWrite = true; return send(201, []); }
-        const result = await handleSelect(table, url, req.headers, req.method);
+        const result = await handleSelect(table, url, req.headers, req.method, authUser);
         if (result.status !== 200) return send(result.status, result.body);
         const rows = result.body || [];
         const single = String(req.headers.accept || "").includes("vnd.pgrst.object");
