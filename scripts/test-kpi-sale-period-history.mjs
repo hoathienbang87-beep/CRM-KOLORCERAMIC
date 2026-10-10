@@ -28,6 +28,16 @@ eq(opts.map(o => o.id), ["p-oct", "p-sep"], "only ACTIVE/CLOSED, deduplicated, n
 eq(opts.map(o => o.label), ["10/2026 · Đang hoạt động", "09/2026 · Đã đóng"], "Sale-facing labels");
 eq(saleKpiPeriodLabel({period_month: "2026-10-01", name: "Thi đua quý 4", status: "ACTIVE"}), "10/2026 · Thi đua quý 4 · Đang hoạt động", "custom name kept");
 ok(saleKpiPeriodLabel({period_month: "2026-10-01", name: "Một tên rất rất dài cho kỳ KPI đặc biệt", status: "ACTIVE"}).includes("…"), "long names truncated");
+// Unicode: Production stores some names in NFD ("tháng"); label must not depend on normalization form
+const sepNfc = {...sep, name: "KPI tháng 9/2026".normalize("NFC")};
+const sepNfd = {...sep, name: "KPI tháng 9/2026".normalize("NFD")};
+ok(sepNfd.name !== sepNfc.name && sepNfd.name.includes("á"), "fixture really differs in NFC vs NFD");
+eq(saleKpiPeriodLabel(sepNfc), "09/2026 · Đã đóng", "generic NFC name hidden");
+eq(saleKpiPeriodLabel(sepNfd), "09/2026 · Đã đóng", "generic NFD name hidden (same label as NFC)");
+eq(saleKpiPeriodLabel({...oct, name: "KPI Tháng 10".normalize("NFD")}), "10/2026 · Đang hoạt động", "generic NFD 'KPI Tháng 10' hidden");
+eq(saleKpiPeriodLabel({...sep, name: "KPI Đại lý Miền Nam".normalize("NFC")}), "09/2026 · KPI Đại lý Miền Nam · Đã đóng", "custom NFC name kept");
+eq(saleKpiPeriodLabel({...sep, name: "KPI Đại lý Miền Nam".normalize("NFD")}), "09/2026 · KPI Đại lý Miền Nam · Đã đóng", "custom NFD name kept (shown as NFC)");
+eq(saleKpiPeriodOptions([sepNfd, oct]).map(o => o.label), ["10/2026 · Đang hoạt động", "09/2026 · Đã đóng"], "selector labels with NFD Production name");
 eq(saleKpiPeriodOptions([{...oct, created_at: "2026-01-01"}, {...sep, created_at: "2026-12-31"}]).map(o => o.id), ["p-oct", "p-sep"], "order ignores created_at / row order");
 
 // default view period and write gate

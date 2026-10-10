@@ -431,7 +431,7 @@ export function saleKpiPeriodStatusLabel(status) {
 
 export function saleKpiPeriodLabel(period) {
   const month = saleKpiMonthLabel(period);
-  const name = text(period?.name);
+  const name = text(period?.name).normalize("NFC");
   const generic = !name || /^kpi\s+(tháng\s*)?\d{1,2}([\/\-.]\d{4})?$/i.test(name) || name.includes(month);
   const shortName = name.length > 28 ? `${name.slice(0, 27)}…` : name;
   return [month, generic ? "" : shortName, saleKpiPeriodStatusLabel(period?.status)].filter(Boolean).join(" · ");

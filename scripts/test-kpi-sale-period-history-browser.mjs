@@ -117,6 +117,7 @@ try {
     await waitMine(page, /10\/2026/);
     await page.waitForSelector("#kpi2PeriodSelectField:not(.hide)");
     const opts = await options(page);
+    check(q(`select name = normalize(name, NFD) and name <> normalize(name, NFC) from public.kpi_periods where id = '${P.sep}'`) === "t", "fixture: September name stored in Unicode NFD (as in Production)");
     check(JSON.stringify(opts.map(o => o.text)) === JSON.stringify(["10/2026 · Đang hoạt động", "09/2026 · Đã đóng"]), "selector: newest first, ACTIVE + CLOSED only, clear labels", JSON.stringify(opts));
     check(await page.inputValue("#kpi2PeriodSelect") === P.oct, "initial view = current October");
     check(!(await page.locator("#kpi2PeriodViewNote").isVisible()), "October: no historical banner");

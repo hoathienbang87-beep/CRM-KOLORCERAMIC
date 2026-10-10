@@ -69,3 +69,6 @@ select lifecycle_test.review(lifecycle_test.submit('u_sale2', '7d100000-0000-400
 select lifecycle_test.set_status('7d000000-0000-4000-8000-000000000007', 'CLOSED');
 
 update public.kpi_periods set name = '[KPI TEST] ' || to_char(period_month, 'MM/YYYY');
+-- Production stores the September name in Unicode NFD; mirror it so the
+-- selector label normalization (NFC) is exercised end-to-end.
+update public.kpi_periods set name = normalize('KPI tháng 9/2026', NFD) where id = '7d000000-0000-4000-8000-000000000009';
